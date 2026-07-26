@@ -29,9 +29,14 @@ export function createContentRegistry(packs: readonly ContentPack[]): ContentReg
     definitions[definition.id] = definition;
   }
   const replacementMap: Record<string, string> = {};
-  for (const replacement of packs.flatMap((pack) => pack.replacements ?? [])) {
+  const replacements = packs.flatMap((pack) => pack.replacements ?? []).sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0));
+  for (const replacement of replacements) {
+    if (replacementMap[replacement.replacesDefinitionId]) {
+      const winner = replacements.find((candidate) => candidate.replacesDefinitionId === replacement.replacesDefinitionId)!;
+      if ((winner.priority ?? 0) === (replacement.priority ?? 0)) throw new Error(`Conflicting replacement: ${replacement.replacesDefinitionId}`);
+      continue;
+    }
     if (!definitions[replacement.replacesDefinitionId] || !definitions[replacement.replacementDefinitionId]) throw new Error(`Invalid card replacement: ${replacement.replacesDefinitionId}`);
-    if (replacementMap[replacement.replacesDefinitionId]) throw new Error(`Conflicting replacement: ${replacement.replacesDefinitionId}`);
     replacementMap[replacement.replacesDefinitionId] = replacement.replacementDefinitionId;
     delete definitions[replacement.replacesDefinitionId];
   }
