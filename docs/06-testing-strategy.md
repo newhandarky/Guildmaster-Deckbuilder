@@ -1,0 +1,179 @@
+# 測試策略
+
+## 測試金字塔
+
+測試同時服務 MVP 與完整目標架構。規則案例放在 `game-engine`，內容案例放在各 content pack，session/protocol 行為用 contract suite 驗證，避免只從 web UI 測到一套本機流程。
+
+### 純規則單元測試
+
+數量最多、執行最快，覆蓋：
+
+- command legality
+- phase transition
+- zone movement 與 ownership invariants
+- party shift 與 equipment attachment
+- 戰力計算、計分與 tie-breaker
+- effect primitives 與個別 custom handlers
+- 抽牌途中牌庫重建、供應牌庫事件與 seeded shuffle
+- Rules Module state、Zone、Encounter、結束條件與 Scoring Pipeline
+
+### 場景整合測試
+
+以完整 `GameState` fixture 執行 Commands，驗證事件序列、module state、pending choice 與最後狀態。場景檔命名採規則意圖，例如 `combat-stops-at-first-sufficient-prefix`；英文 `combat` 可保留在程式名稱，中文描述使用「討伐」。
+
+### UI 元件測試
+
+確認 view model 正確呈現、合法按鈕可操作、非法目標不可提交、hot-seat 遮罩與 choice dialog 可用。不要在 UI 測試重複證明所有規則數學。
+
+### E2E
+
+對應功能里程碑啟用後，至少包含：
+
+- 建立 2 人遊戲並完成一個完整回合
+- 擊敗敵人、購買卡片、休息補牌
+- 儲存後 reload 恢復
+- 觸發兩種終局條件並完成終局輪
+- 四人 hot-seat 交接不顯示下一位手牌
+- 載入 Vol.1 測試 pack，觸發究極魔神、取得隱藏 HP、完成排名與終局輪
+
+## Package 與 contract 測試
+
+### Engine contract
+
+- 相同 registry、seed、state 與 command envelope 必須得到相同結果。
+- engine 不需要 DOM、browser global、React 或網路即可在 Node 執行。
+- engine 不包含任何 `base:*` 或 expansion-specific import。
+- 隊伍上限、敵方目標數量、結束條件與計分規則不以固定常數寫死。
+
+### ContentPack contract
+
+所有基礎與擴充 pack 共用測試套件：
+
+- manifest、ruleset version、dependencies/conflicts 與 hash 合法
+- namespaced definition／extension IDs 唯一
+- replacement graph 正確解析，舊版與替換版不會同時進入 registry
+- 每個 handler 都可序列化輸入、確定性輸出且沒有 I/O
+- pack 可單獨載入，也能與宣告相容的 packs 組合
+
+### RulesModule contract
+
+- module state、zone state、encounter state 可通過 schema 與 JSON round-trip。
+- end conditions、scoring、visibility、party-limit 與 overflow policies 使用 namespaced IDs。
+- module handler 不把函式、DOM、連線或非注入式亂數寫入 state。
+- Snapshot restore 後產生相同 legal Commands、PlayerViews 與衍生數值。
+
+### GameSession contract
+
+local 與 remote adapters 必須共用同一套行為測試：
+
+- submit 成功後 revision 遞增
+- 重送同 command ID 不重複執行
+- stale revision 回傳 typed error
+- subscribe 收到順序一致的 view/events
+- resume 回到最新 revision
+- leave 後不再洩漏或接受該 session 的私人資料
+
+MVP 先讓 LocalGameSession 通過；M10 的 RemoteGameSession 必須通過同一套 suite。
+
+### PlayerView 資訊安全
+
+- 每位玩家只能看到規則允許的手牌、選項與牌庫資訊。
+- spectator view 不含任何玩家私人資訊。
+- typed events 依 viewer 裁切，不在 payload 中先放完整資料再由 React 隱藏。
+- hot-seat viewer 切換前後沒有上一位玩家的 cached private data。
+- Vol.1 HP 預設只對 owner 顯示；全體同意公開後才出現在其他 PlayerViews／Events。
+
+### Protocol compatibility
+
+- command/view/event/error schemas 有 version fixtures。
+- 新版能讀取宣告支援的舊 snapshot，或明確回傳 incompatible error。
+- content hash/ruleset 不一致會被拒絕，不以目前最新資料繼續。
+- Snapshot → restore → Replay 的 revision、RNG、module state、zones 與 encounters 一致。
+
+## 必測規則矩陣
+
+| 類別 | 案例 |
+| --- | --- |
+| 個人抽牌 | 牌庫足夠；抽完剛好為空但不需續抽時不洗；抽牌途中為空且仍需抽時才洗棄牌；牌庫與棄牌都不足 |
+| 展示牌頂 | 數量足夠、不足；兩者都不得觸發洗牌 |
+| 公共供應牌庫 | 抽取後耗盡產生正式事件；基礎 Module 標示 pending ruling 且不做未授權狀態變更；Vol.1 Module 觸發究極魔神 |
+| 隊伍 | 未滿加入、達目前上限時擠出位置 1、上限提高／降低、降低時從最右側棄置至合法 |
+| 裝備 | 空槽裝備、替換、參戰後一併棄置 |
+| 討伐 | 剛好、超過、仍不足、不可過量派遣、連續討伐、主動停止 |
+| 特殊敵人 | 人數／職業限制、替代目的地、附屬卡、必要條件失敗 |
+| 購買 | 召喚石／精靈結晶各 1、魔王／魔物印刷值、討伐金錢、效果修正、多張購買、資源不足、每回合一次刷新 |
+| 休息 | 補公開列、翻下一魔王、棄手牌與使用區、抽 5 |
+| 羈絆 | 任意時點達成、已完成不重複、全部完成觸發終局 |
+| 終局 | 每個座位觸發、完成當前輪次、該輪已行動者不重複、多條件同時觸發只建立一次終局狀態 |
+| 基礎計分 | 僅自己的牌庫、手牌、棄牌堆、隊伍、裝備、使用區與完成羈絆；公共區、他人公會與移除區不計 |
+| Vol.1 設置 | 魔王數等於玩家數、選定四張魔神卡置於魔王牌庫底、預留 HP 與效果卡 |
+| 究極魔神 | 最後魔王／冒險者牌庫／物資牌庫觸發登場；討伐後禁止同回合討伐魔王／魔物；全隊結算與剩餘 HP 上限 |
+| 多部位魔神 | 四個 targets 獨立 HP／被動／擊敗狀態；所有必要部位擊敗才完成 encounter |
+| HP 排名 | 預設隱藏、全體同意公開、第一 20／第二 14／第三 8、官方兩種同分算例、HP 0 不排名；未說明排列不得猜測 |
+| 線上語意 | command 去重、過期 revision、resync、viewer 資訊裁切 |
+| 內容組合 | pack 相依、衝突、ID 重複、ruleset/content hash mismatch |
+| 卡片替換 | 首刷舊版被新版取代、份數不重複、舊 Snapshot 仍能辨識原版本 |
+
+## 基礎版官方 FAQ／勘誤回歸
+
+必須建立固定 fixture：
+
+- 使用道具後仍在玩家遊戲區域，休息才置入棄牌堆。
+- 個人牌庫剩 1 張、執行抽 2：先抽 1，因仍需抽 1 才洗棄牌堆並繼續。
+- 個人牌庫剩 1 張、執行抽 1：抽完後不立刻洗棄牌堆。
+- 個人牌庫為空、執行抽牌：此時才洗棄牌堆；若棄牌也空則抽不到。
+- 展示／查看牌庫頂時，牌庫不足或為空都不洗棄牌堆。
+- 神樂的「查看」依官方勘誤改為「展示」。
+- 戰力達標後不能加入更多後方冒險者。
+- 討伐階段結束觸發來源已離隊時不觸發。
+- `thisTurn` 進隊效果在來源離隊後仍存在。
+- 巫妖的額外條件失敗不會使巫妖離場或發獎勵。
+- 巴風特與基礎冒險者的不同去向。
+- 奇美拉被擊敗時移除附屬魔物。
+- 修爾蒂對同名他卡與自身的判定。
+
+## Vol.1 官方規則／FAQ 回歸
+
+- 冒險者或物資牌庫被抽空時發出供應牌庫耗盡事件並使究極魔神登場。
+- 最後一隻魔王被擊敗時究極魔神登場。
+- 選擇討伐究極魔神後，本回合其前後都不能討伐魔王／魔物。
+- 究極魔神討伐使用整支隊伍戰力，結算後所有隊員與配戴裝備置入棄牌堆。
+- 戰力超過剩餘 HP 時只取得剩餘血量標記。
+- 【機械魔神】四個部位有獨立狀態；未擊敗部位的被動持續；前三個部位擊破不觸發終局，擊敗全部四部位才擊敗整體。
+- 隊伍上限下降時，從最右側冒險者開始，連同裝備置入棄牌堆，直到符合上限。
+- HP 標記預設不公開；只有全體同意後所有 viewers 才看得到。
+- HP 排名 20／14／8；兩人並列第一各 17、下一名 8；三人並列各 14；HP 0 不排名。
+- 四人同分跨越無獎勵名次或產生非整數平均時，不套用猜測的捨入；在官方確認前回傳 pending-ruling／不啟用該未決結算。
+- 擊敗究極魔神後取得魔神卡、觸發結束，並完成當前輪次。
+- 冒險者牌庫抽空不觸發【機械魔神】右手部位效果。
+- 莉茲米 A 左手邊玩家無其他冒險者時不結算後半段，也不將卡置入我方棄牌堆。
+- 指定主遊戲裝備若在魔神討伐結算前已離場，不視為實際用於本次討伐，也不因討伐成功而移除。
+
+## 性質與不變條件測試
+
+適合加入 property-based testing 的性質：
+
+- 任意成功 command 後，每個 instance 只存在於一個主要區域。
+- 任意 party operation 後，隊伍長度不超過當下衍生上限，且每格裝備不超過 Rules Module 允許數量。
+- 任意洗牌不增加或遺失卡片。
+- 購買不會使可用資源小於 0。
+- 相同初始 state 與 command 得到深度相等的結果。
+- 任意 target operation 後，每個 target 只屬於一個 encounter，部位與整體擊敗狀態符合 module invariant。
+- PlayerView 永遠不包含 viewer 無權看到的 counter 真值。
+- Snapshot JSON round-trip 不遺失任何 module state、zone、target、visibility 或 revision。
+
+## UI test snapshot 使用原則
+
+不要把 Jest/Vitest snapshot assertion 與正式 `VersionedSnapshot` 存檔混淆。測試中不對整個 `GameState` 做大型文字 snapshot；優先精確 assertion。正式存檔則必須另外做 schema、migration 與 round-trip 測試。
+
+## 品質門檻
+
+合併前至少執行：
+
+- typecheck
+- lint
+- unit/integration tests
+- production build
+- workspace architecture 與 package contract tests
+
+修改引擎或卡牌內容時，必須增加或更新對應規則測試。覆蓋率是提示，不取代規則矩陣。

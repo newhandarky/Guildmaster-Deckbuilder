@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# Dependencies and builds
+node_modules/
+dist/
+coverage/
+.vite/
+.pnpm-store/
+*.tsbuildinfo
+
+# Test output
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+.envrc
+*.local
+*.pem
+*.key
+credentials.json
+secrets/
+.secrets/
+
+# Logs and local game saves
+*.log
+*.save.json
+*.pid
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Temporary source/reference downloads
+work/
+tmp/
+temp/
+.tmp/
+rulebook-*

@@ -1,0 +1,68 @@
+# 內容與素材政策
+
+## 原則
+
+本 repository 不收錄官方卡圖、規則書掃描、網站截圖、Logo 或原始版面。實作規則所需的資料與顯示素材分離，先用純色 placeholder 完成玩法，之後再加入自製或 AI 生成的原創素材。
+
+## 卡牌資料
+
+建議每張卡分成三層：
+
+1. `mechanics`：類型、費用、戰力、榮譽、tags、效果結構
+2. `localization`：顯示名稱、說明與提示
+3. `presentation`：圖片 key、框色、icon 與音效 key
+
+規則引擎只能依賴 mechanics 與穩定 ID，不得以圖片檔名或中文顯示名稱判斷效果。
+
+## 資料建立流程
+
+1. 建立 card inventory：穩定 ID、卡種、份數、規則來源。
+2. 輸入機制欄位與 effect schema。
+3. 由第二次人工核對確認數值、條件、時序與份數。
+4. 為每個新 effect pattern 增加規則測試。
+5. 通過 schema、內容數量與 reference integrity 檢查。
+6. 最後才撰寫面向玩家的原創／重寫顯示文案與加入素材。
+
+## AI 生成素材紀錄
+
+每個正式素材建議附 manifest：
+
+- asset ID 與檔案路徑
+- 生成日期與工具／模型
+- prompt 或創作 brief 的版本
+- 是否使用參考圖片；參考來源與使用權狀態
+- 人工修改紀錄
+- 適用卡片與 crop safe area
+
+不要以官方卡圖作 image-to-image 參考。可從原創世界觀、角色設定、職業輪廓與自訂 palette 建立一致的視覺語言。
+
+## Repository 素材結構
+
+```text
+public-assets/generated/
+├── cards/
+├── characters/
+├── backgrounds/
+├── icons/
+└── manifest.json
+```
+
+規則／顯示內容則位於獨立 workspace packages：
+
+```text
+packages/content-base/
+packages/content-<pack-id>/
+```
+
+每個內容包擁有自己的 manifest、definitions、localization、effect extensions、tests 與 asset references。需要改變規則時，另以版本化 Rules Module 宣告 setup hooks、額外 zones、module state、結束／計分 policies 與 visibility policies；不得把這些狀態藏在 UI。
+
+替換卡必須在 manifest 以穩定 ID 明確宣告 `replaces` 關係。組合牌池時先驗證相依、衝突、替換循環與版本，再保證原卡和替換卡不會同時進入同一局。內容包不得直接 import web/server，也不得依靠全域卡片顯示名稱或載入順序判斷是否啟用擴充。
+
+大型原始生成檔、PSD 與未壓縮工作檔不要直接放入一般 Git history；需要時評估 Git LFS 或獨立素材儲存。正式 build 使用經壓縮、固定尺寸的 WebP/AVIF，並保留文字替代。
+
+## 發布前檢查
+
+- 沒有官方圖片、掃描或擷取資源殘留在 Git history 與 build output。
+- 遊戲名稱、Logo、角色名稱與宣傳文案是否要改成原創品牌，需在公開發行前另行確認。
+- 第三方字型、icon、音效與生成素材保留來源與授權紀錄。
+- 若計畫商業化或公開散布，針對規則文字、商標與整體表現另做權利審查；本文件不是法律意見。

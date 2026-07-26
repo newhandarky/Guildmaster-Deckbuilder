@@ -1,0 +1,26 @@
+{
+  "name": "guildmaster-deckbuilder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "pnpm --filter @guildmaster/web dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint . --max-warnings=0",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "test": "pnpm --filter @guildmaster/game-engine test",
+    "test:watch": "pnpm --filter @guildmaster/game-engine test:watch",
+    "check": "pnpm typecheck && pnpm lint && pnpm check:architecture && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.18",
+    "globals": "^15.14.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.20.0"
+  }
+}

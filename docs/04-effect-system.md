@@ -1,0 +1,192 @@
+# 卡牌效果與時序
+
+卡牌效果是本專案風險最高的區域。目標是讓大多數效果可由資料描述，少數真正例外透過有名稱、可測試的 Content Pack／Rules Module extension 實作。engine 不得 import 基礎卡或任何擴充包。
+
+## 效果處理流程
+
+```text
+Command
+  → 驗證一般規則與所有 Rules Module constraints
+  → 產生事件
+  → 收集替代／限制效果
+  → 解析主要效果
+  → 解析觸發效果佇列
+  → 建立玩家選擇（若需要）
+  → 檢查不變條件、供應牌庫耗盡、羈絆與所有結束條件
+  → 執行 viewer-aware event projection
+  → 回傳新狀態與事件紀錄
+```
+
+## 優先規則
+
+1. 明確寫在卡片上的限制或替代效果
+2. 當前敵方目標、究極魔神部位或協助者的效果
+3. Rules Module 的替代／限制 policy
+4. 階段規則
+5. 一般遊戲規則
+
+若同一層同時有多個玩家可控制的觸發，且官方卡片未指定順序，目前列為 `09-open-questions.md` 的待確認規則，不自行採用「active player 選擇」等慣例。引擎應讓順序規則成為具名 policy；官方卡片指出固定順序時，資料中必須明確標示。若產品日後決定 house rule，須以可關閉、明示為非官方的獨立 policy 啟用。
+
+## 效果生命週期
+
+建議區分：
+
+- `instant`：立即執行一次
+- `whileInParty`：來源仍在隊伍時有效
+- `thisTurn`：建立後持續到回合結束，來源離隊也不取消
+- `thisCombat`：本次討伐結束時失效；`combat` 僅為內部 enum
+- `untilRest`：休息結算時失效
+- `permanentGame`：本局永久改變，通常伴隨卡片或 token 狀態
+
+這個差異直接涵蓋官方 Q&A 中「討伐階段結束時仍需在隊」與「進隊後此回合持續」兩類效果。
+
+## 宣告式效果原語
+
+第一版優先支援下列 primitives：
+
+- `drawCards`
+- `moveCard`
+- `discardCard`
+- `removeCard`
+- `gainPurchasePower`
+- `modifyCombatPower`
+- `replaceCombatRule`
+- `revealTopCards`
+- `searchCards`
+- `refreshMarket`
+- `acquireCard`
+- `attachEquipment`
+- `completeBond`
+- `createChoice`
+- `sequence`
+- `conditional`
+- `repeat`
+- `modifyPartyLimit`
+- `adjustPlayerCounter`
+- `changeCounterVisibility`
+- `createEncounter`
+- `createEnemyTarget`
+- `damageEnemyTarget`
+- `defeatEnemyTarget`
+- `writeModuleState`
+- `emitDomainEvent`
+- `addScoreContribution`
+
+條件與 selector 使用穩定 enum／物件，不將任意 JavaScript 字串存入卡牌 JSON。
+
+## 事件與時序點
+
+至少定義：
+
+- `TURN_STARTED`
+- `PHASE_STARTED` / `PHASE_ENDED`
+- `ADVENTURER_ENTERED_PARTY`
+- `ADVENTURER_LEFT_PARTY`
+- `ITEM_USED`
+- `COMBAT_STARTED`
+- `COMBAT_POWER_CALCULATED`
+- `ENEMY_DEFEAT_ATTEMPTED`
+- `ENEMY_DEFEATED`
+- `COMBAT_ENDED`
+- `CARD_ACQUIRED`
+- `CARD_DRAWN`
+- `REST_STARTED` / `REST_FINISHED`
+- `BOND_CONDITION_CHECK`
+- `FINAL_ROUND_TRIGGERED`
+- `SUPPLY_DECK_DEPLETED`
+- `PARTY_LIMIT_CHANGED`
+- `ENCOUNTER_STARTED` / `ENCOUNTER_FINISHED`
+- `ENEMY_TARGET_DAMAGED` / `ENEMY_TARGET_DEFEATED`
+- `PLAYER_COUNTER_CHANGED`
+- `COUNTER_VISIBILITY_CHANGED`
+- `END_CONDITION_TRIGGERED`
+- `SCORE_CONTRIBUTION_ADDED`
+
+事件名稱表示事實，不使用模糊的 `ON_CARD` 或畫面 click 名稱。
+
+## 替代效果與失敗條件
+
+巴風特、奇美拉與巫妖類效果不應散落在 UI：
+
+- 替代卡片目的地：原本要進棄牌堆，改為供應牌庫或移除區。
+- 附屬卡：由敵人狀態保存 attachment；主卡離場時依規則移除附屬卡。
+- 擊敗嘗試：先驗證所有必要條件。若已支付部分成本但特殊條件失敗，必須依卡片規則保留／回滾目標與獎勵，而不是套用一般成功流程。
+
+## 公共供應牌庫耗盡
+
+- `drawCards` 只處理玩家個人牌庫的抽牌途中重建。
+- 公共冒險者／物資等供應牌庫使用不同的 `drawFromSupply` primitive。
+- 供應牌庫因抽取成為空牌庫時，primitive 必須發出 `SUPPLY_DECK_DEPLETED`；不能只回傳空陣列讓 UI 猜測。
+- 啟用的 Rules Modules 收到事件後決定後續。Vol.1 可使究極魔神登場；基礎版未公布的結果應回報 `pendingOfficialRuling`，不得把 silent no-op、繼續補牌或直接結束當成官方規則。
+
+## 多目標與多部位 Encounter
+
+- Effect target 使用 `EnemyTargetId` 或 selector，不假設只有一張 active boss。
+- 一個 encounter 可以同時擁有多個 targets，各自持有血量、被動能力與擊敗狀態。
+- 「部位擊敗」與「整體 encounter 擊敗」是不同事件；Rules Module 明確定義聚合條件。
+- 效果若要影響所有部位、指定部位或整體血量，必須在 selector／primitive 中明說，不能依陣列第一張卡推測。
+
+## 動態隊伍上限
+
+- 隊伍上限由 selector 與 modifiers 計算，基礎值 5 不是 engine constant。
+- `PARTY_LIMIT_CHANGED` 後由啟用 Rules Module 的 overflow policy 結算超額成員。
+- Vol.1 policy 為從最右側開始將冒險者與配戴裝備置入棄牌堆，直到符合上限。
+
+## 隱藏計數資源
+
+- HP 標記等計數值透過 `PlayerCounterState` 與 visibility policy 管理。
+- effect 修改的是權威數值；event 與 PlayerView 在投影時裁切。
+- 「全體同意公開」必須由正式 Command 與 Event 改變 policy，才能進入 Snapshot／Replay；不可只改本機 UI。
+
+## 自訂 handler 的界線
+
+只有當效果無法以現有 primitives 清楚表達時，才新增 custom handler。每個 handler 必須：
+
+- 使用 `definitionId` 對應的具名函式，不用卡片顯示名稱查找。
+- 只讀寫引擎提供的 context，不碰 UI store。
+- 與擁有該效果的 content pack 放在一起，以 namespaced extension ID 註冊；不可寫進中央 engine switch。
+- 必須是確定性純邏輯，不可直接存取網路、DOM、localStorage、時間或非注入式亂數。
+- 至少有正常、邊界與非法狀態測試。
+- 在卡牌資料中留下原因註解與規則來源頁碼／Q&A。
+
+當三張以上卡片出現相同 custom pattern，應提煉成新的 declarative primitive。
+
+handler 可讀寫的 module state 必須先通過該 Rules Module 的 schema，且輸出仍為 JSON 可序列化資料。effect queue 與 pending choice 保存 handler／continuation ID，不保存 closure。
+
+## 擴充包組合
+
+開局前先由 content registry 合併所有已核准 packs：
+
+1. 驗證 manifest、ruleset compatibility、相依與衝突。
+2. 驗證 definition、effect extension 與 localization key 不重複。
+3. 先解析卡片 replacements，再依明確 priority／replace policy 組合 setup modules；不可依載入順序碰運氣。
+4. 產生 content hash，寫入 GameState、存檔與線上房間設定。
+5. 對局開始後鎖定 registry，本局中途不可熱替換擴充內容。
+
+新擴充優先新增 pack、definitions 與 primitives，不應要求修改既有基礎卡資料。若真的需要改變共通規則，先以版本化 rules module 與 ADR 處理。
+
+## 結束條件與計分擴充
+
+- 每個 Rules Module 註冊具 ID 的 end conditions 與 finish policy；engine 不用單一 `allBossesDefeated || allBondsCompleted` 寫死終局。
+- 多個條件同時達成時，依 registry priority／simultaneous policy 記錄所有來源，再只建立一次終局輪狀態。
+- 計分由 `ScoreContribution` pipeline 組合基礎卡牌、羈絆、究極魔神卡、HP 排名與未來擴充分數。
+- 排名、同分、無資格與捨入都是具名 scoring policy；官方未說明的情況不得自行採用一般數學慣例。
+
+## 內容資料驗證
+
+啟動與測試時檢查：
+
+- definition ID 唯一
+- copies 為正整數
+- 本地化 key 存在
+- effect schema 合法
+- target selector 能對應正確 card type／zone
+- custom handler 名稱已註冊
+- replacement graph 無循環且沒有未解衝突
+- Rules Module state／zone／event schema 可序列化且版本完整
+- end condition、scoring、visibility 與 overflow policy IDs 已註冊
+- 圖片 key 缺少時可安全回退至 placeholder
+
+## 除錯支援
+
+開發模式顯示：seed、turn/phase、revision、command、effect queue、module state、pending choice、卡片移動與事件序列。玩家版只顯示該 viewer 可見的自然語言紀錄，不顯示其他玩家私人手牌、隱藏牌序或非公開 HP 標記。

@@ -1,0 +1,63 @@
+# Guildmaster Deckbuilder 開發文件
+
+本目錄是專案規格的唯一入口。遊戲邏輯、卡牌資料與畫面實作若有衝突，先以已確認的規則規格與 ADR 為準，再補上測試。
+
+## 文件索引
+
+1. [產品範圍](./00-product-scope.md)
+2. [核心規則規格](./01-game-rules.md)
+3. [領域模型](./02-domain-model.md)
+4. [系統架構](./03-architecture.md)
+5. [卡牌效果與時序](./04-effect-system.md)
+6. [MVP 路線圖](./05-mvp-roadmap.md)
+7. [測試策略](./06-testing-strategy.md)
+8. [內容與素材政策](./07-content-and-assets.md)
+9. [開發工作流程](./08-development-workflow.md)
+10. [待確認事項](./09-open-questions.md)
+11. [第一擴充 Vol.1 正式規則](./10-expansion-vol1-rules.md)
+12. [模組化與檔案拆分規範](./11-modularity-guidelines.md)
+13. [完整目標架構與演進策略](./12-target-architecture.md)
+14. [ADR：前端技術選型](./adr/0001-frontend-stack.md)
+15. [ADR：純規則引擎邊界](./adr/0002-pure-rules-engine.md)
+16. [ADR：模組邊界與依賴規則](./adr/0003-module-boundaries.md)
+17. [ADR：Workspace 與線上權威架構](./adr/0004-workspace-and-online-authority.md)
+
+## 文件適用範圍
+
+文件分成兩種範圍，不可混用：
+
+- **正式規則**：`01` 是基礎版，`10` 是第一擴充 Vol.1；未確認規則只放在 `09`，不得自行推測。
+- **目標架構**：`02`、`03`、`04`、`11`、`12` 與 ADR。這些文件針對完整產品，包含基礎版、擴充、AI 與線上對戰，從第一天就要遵守。
+- **交付切片**：`00` 的 MVP 段落與 `05` 路線圖。它們只決定每個階段先交付哪些功能，不降低目標架構標準。
+
+若 MVP 實作方式與目標架構衝突，以目標架構為準；應縮小當期功能，而不是建立日後必須推翻的捷徑。
+
+## 規則來源與版本
+
+- 主要來源：[《冒險少女公會》官方網站](https://www.paintcanfarm.com/aggboardgames/zh)
+- 基礎規則書：官方網站提供的 13 頁規則圖檔
+- 第一擴充 Vol.1：官方網站提供的 8 頁擴充說明書
+- 補充來源：官方勘誤與 Q&A（網站標示更新日 2025-09-01）
+- 本文件整理日期：2026-07-26
+
+這些文件是為程式實作而整理的規則摘要，不保存官方圖片、規則書掃描檔或卡面素材。若官方日後更新規則，請在 PR 中同步修改規格、卡牌資料版本與對應測試。
+
+## MVP 定義摘要
+
+- 離線網頁遊戲
+- 一位真人玩家對上一位 AI 對手
+- 基礎遊戲規則與完整基礎卡牌資料
+- 暫不啟用連線對戰、Vol.1、協助者與羈絆輪抽；AI 先採簡單可替換策略
+- 使用佔位圖或自製／AI 生成素材，不使用官方卡圖
+
+MVP 會執行在完整架構的 `apps/web`、`packages/game-engine`、`packages/game-protocol` 與 `packages/content-base` 上，只是先使用 local session adapter，不建立線上伺服器。
+
+## 文件維護原則
+
+- 規則改動必須同步更新 `01-game-rules.md` 與測試案例。
+- 架構決策若難以回復，新增 ADR，不直接覆蓋舊決策。
+- 所有新功能遵守 `11-modularity-guidelines.md`；不可把功能持續堆進既有大檔案。
+- 未確認的規則不得默默猜測；記入 `09-open-questions.md`，正式 ruleset 保持未啟用或回傳明確 pending-ruling。只有經產品負責人核准、且明示為非官方的 house rule 才可用獨立 policy 隔離。
+- 卡片名稱、顯示文字、機制資料與圖片路徑分離，方便日後換主題與素材。
+- 中文玩家規則統一使用「物資、魔物、協助者、道具、討伐階段」；英文 enum 可保留內部使用。
+- Playwright 是 MVP 的關鍵瀏覽器流程測試工具；GitNexus 與 CodeGraph 屬選用的程式碼導覽工具，待模組規模成長、確有跨檔案分析需求時再導入。詳細準則見 `08-development-workflow.md`。
