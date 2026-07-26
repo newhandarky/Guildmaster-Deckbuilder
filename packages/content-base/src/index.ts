@@ -2,6 +2,7 @@ import type { ContentPack } from '@guildmaster/game-protocol';
 import { demoCards } from './cards/demo-cards.js';
 export * from './audit/index.js';
 export * from './inventory/index.js';
+export * from './sources/index.js';
 
 export const baseDemoContentPack: ContentPack = {
   manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base', contentStatus: 'demo' },

@@ -21,6 +21,7 @@
 15. [ADR：純規則引擎邊界](./adr/0002-pure-rules-engine.md)
 16. [ADR：模組邊界與依賴規則](./adr/0003-module-boundaries.md)
 17. [ADR：Workspace 與線上權威架構](./adr/0004-workspace-and-online-authority.md)
+18. [基礎版官方資料來源 Manifest](./15-official-base-source-manifest.md)
 
 ## 文件適用範圍
 
