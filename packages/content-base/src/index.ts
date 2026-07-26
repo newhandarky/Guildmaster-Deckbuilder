@@ -3,7 +3,7 @@ import { demoCards } from './cards/demo-cards.js';
 export * from './audit/index.js';
 
 export const baseDemoContentPack: ContentPack = {
-  manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base' },
+  manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base', contentStatus: 'demo' },
   definitions: demoCards,
   starter: {
     adventurerDefinitionId: 'base:starter/newcomer',

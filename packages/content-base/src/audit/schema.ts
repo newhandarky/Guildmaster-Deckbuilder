@@ -10,13 +10,18 @@ export type ContentAuditCatalog = { packId: string; sourceCatalog: readonly Offi
 
 export function validateContentAudit(catalog: ContentAuditCatalog, definitions: readonly CardDefinition[]): string[] {
   const errors: string[] = []; const sources = new Set(catalog.sourceCatalog.map((source) => source.sourceId)); const definitionIds = new Set(definitions.map((definition) => definition.id)); const auditedIds = new Set<string>();
-  for (const source of catalog.sourceCatalog) if (!source.url.startsWith('https://') || !source.locator.trim()) errors.push(`Source ${source.sourceId} requires an HTTPS URL and locator.`);
+  for (const source of catalog.sourceCatalog) if (!source.url.startsWith('https://') || !source.locator.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(source.accessedOn)) errors.push(`Source ${source.sourceId} requires an HTTPS URL, locator, and ISO access date.`);
   for (const entry of catalog.cards) {
     if (!definitionIds.has(entry.definitionId)) errors.push(`Audit entry references unknown definition ${entry.definitionId}.`);
     if (auditedIds.has(entry.definitionId)) errors.push(`Duplicate audit entry for ${entry.definitionId}.`); auditedIds.add(entry.definitionId);
+    if (entry.sourceIds.length === 0) errors.push(`Audit entry ${entry.definitionId} requires at least one official source.`);
     for (const sourceId of entry.sourceIds) if (!sources.has(sourceId)) errors.push(`Unknown source ${sourceId} on ${entry.definitionId}.`);
-    for (const field of entry.fieldAudits) for (const sourceId of field.sourceIds) if (!sources.has(sourceId)) errors.push(`Unknown field source ${sourceId} on ${entry.definitionId}.`);
+    for (const field of entry.fieldAudits) {
+      if (field.status === 'verified' && field.sourceIds.length === 0) errors.push(`Verified field ${field.field} on ${entry.definitionId} requires a source.`);
+      for (const sourceId of field.sourceIds) if (!sources.has(sourceId)) errors.push(`Unknown field source ${sourceId} on ${entry.definitionId}.`);
+    }
     if (entry.activation === 'enabled' && entry.status !== 'verified') errors.push(`Unverified definition ${entry.definitionId} must remain disabled.`);
+    if (entry.activation === 'enabled' && entry.fieldAudits.length === 0) errors.push(`Enabled definition ${entry.definitionId} requires field audits.`);
     if (entry.activation === 'enabled' && entry.fieldAudits.some((field) => field.status !== 'verified' || field.sourceIds.length === 0)) errors.push(`Enabled definition ${entry.definitionId} has unverified fields.`);
     if (entry.status !== 'verified' && entry.activation !== 'disabled') errors.push(`Non-verified definition ${entry.definitionId} must be disabled.`);
   }
