@@ -1,7 +1,7 @@
 export type CardType = string;
 export type CardDefinition = { id: string; name: string; type: CardType; copies: number; cost?: number; combat?: number; purchasePower?: number; honor?: number; itemEffect?: 'purchase+2' | 'combat+2'; source: string; tags?: string[] };
 export type CardInstance = { id: string; definitionId: string; ownerId?: string; state?: Record<string, unknown> };
-export type PackManifest = { id: string; version: string; hash: string; role?: 'base' | 'expansion'; dependencies?: readonly string[]; conflicts?: readonly string[]; compatibleRuleset?: { min: string; max?: string } };
+export type PackManifest = { id: string; version: string; hash: string; role?: 'base' | 'expansion'; contentStatus?: 'demo' | 'official-audited'; dependencies?: readonly string[]; conflicts?: readonly string[]; compatibleRuleset?: { min: string; max?: string } };
 export type ReplacementDeclaration = { replacementDefinitionId: string; replacesDefinitionId: string; priority?: number };
 export type ContentPack = { manifest: PackManifest; definitions: readonly CardDefinition[]; replacements?: readonly ReplacementDeclaration[]; starter?: { adventurerDefinitionId: string; summonStoneDefinitionId: string; crystalDefinitionId: string }; bonds?: readonly { id: string; name: string; honor: number; requiredBosses: number }[]; rulesModuleIds?: readonly string[] };
 export type ContentRegistry = { packs: readonly PackManifest[]; definitions: Readonly<Record<string, CardDefinition>>; starter: NonNullable<ContentPack['starter']>; bonds: NonNullable<ContentPack['bonds']>; replacementMap: Readonly<Record<string, string>> };
