@@ -4,13 +4,14 @@ import { dispatch, envelope } from '../src/index.js';
 import { refillSupply } from '../src/engine/supply.js';
 import { getPlayer } from '../src/model/factories.js';
 import { makeGame, testRuleset } from './fixtures.js';
+import { baseZoneIds } from '../src/model/zones.js';
 
 describe('FAQ 與供應牌庫邊界', () => {
   it('道具使用後留在使用區，休息時才進棄牌堆', () => {
     const state = makeGame();
     const player = getPlayer(state, 'p1');
-    const itemId = state.sharedZones.itemRow.find((id) => testRuleset.registry.definitions[state.cards[id]!.definitionId]!.type === 'item')!;
-    state.sharedZones.itemRow = state.sharedZones.itemRow.filter((id) => id !== itemId);
+    const itemId = state.zones[baseZoneIds.itemRow]!.cardIds.find((id) => testRuleset.registry.definitions[state.cards[id]!.definitionId]!.type === 'item')!;
+    state.zones[baseZoneIds.itemRow]!.cardIds = state.zones[baseZoneIds.itemRow]!.cardIds.filter((id) => id !== itemId);
     player.hand.push(itemId);
     const used = dispatch(state, testRuleset, envelope(state, 'p1', { type: 'USE_ITEM', cardId: itemId }));
     expect(used.state.players[0]!.playArea).toContain(itemId);
@@ -26,8 +27,8 @@ describe('FAQ 與供應牌庫邊界', () => {
 
   it('公共供應牌庫耗盡會發出正式事件並暫停待官方確認', () => {
     const state = makeGame();
-    state.sharedZones.monsterRow = [];
-    state.sharedZones.monsterDeck = [state.sharedZones.monsterDeck[0]!];
+    state.zones[baseZoneIds.monsterRow]!.cardIds = [];
+    state.zones[baseZoneIds.monsterDeck]!.cardIds = [state.zones[baseZoneIds.monsterDeck]!.cardIds[0]!];
     const events: DomainEvent[] = [];
     refillSupply(state, testRuleset, 'monster', events);
     expect(events.some((event) => event.type === 'SUPPLY_DECK_DEPLETED')).toBe(true);

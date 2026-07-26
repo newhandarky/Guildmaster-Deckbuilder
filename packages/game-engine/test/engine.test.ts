@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { dispatch, envelope, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { getPlayer } from '../src/model/factories.js';
 import { makeGame, testRuleset } from './fixtures.js';
+import { baseZoneIds } from '../src/model/zones.js';
 
 describe('基礎規則引擎', () => {
   it('隊伍滿員時加入冒險者會擠出最左側成員', () => {
     const state = makeGame();
     const player = getPlayer(state, 'p1');
-    const cardId = state.sharedZones.adventurerRow[0]!;
-    state.sharedZones.adventurerRow.splice(0, 1);
+    const cardId = state.zones[baseZoneIds.adventurerRow]!.cardIds[0]!;
+    state.zones[baseZoneIds.adventurerRow]!.cardIds.splice(0, 1);
     player.hand.push(cardId);
     const displaced = player.party[0]!.adventurerId;
     const result = dispatch(state, testRuleset, envelope(state, player.id, { type: 'PLAY_ADVENTURER', cardId }));

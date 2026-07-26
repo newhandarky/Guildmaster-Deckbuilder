@@ -1,6 +1,7 @@
 import type { CommandEnvelope, GameCommand, GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from '../rules/ruleset.js';
+import { baseZoneIds } from '../model/zones.js';
 
 export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: string): number {
   const player = getPlayer(state, playerId);
@@ -42,7 +43,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   }
   if (state.phase === 'purchase') {
     const power = getPurchasePower(state, ruleset, actorId);
-    for (const cardId of [...state.sharedZones.adventurerRow, ...state.sharedZones.itemRow]) {
+    for (const cardId of [...state.zones[baseZoneIds.adventurerRow]!.cardIds, ...state.zones[baseZoneIds.itemRow]!.cardIds]) {
       if ((getDefinition(ruleset.registry, state, cardId).cost ?? Number.POSITIVE_INFINITY) <= power) commands.push({ type: 'BUY_CARD', cardId });
     }
   }
