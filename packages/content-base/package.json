@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@guildmaster/game-protocol": "workspace:*" }
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
+  "dependencies": { "@guildmaster/game-protocol": "workspace:*" },
+  "devDependencies": { "vitest": "^2.1.9" }
 }
