@@ -2,7 +2,7 @@ import type { ContentPack } from '@guildmaster/game-protocol';
 import { demoCards } from './cards/demo-cards.js';
 
 export const baseDemoContentPack: ContentPack = {
-  manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1' },
+  manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base' },
   definitions: demoCards,
   starter: {
     adventurerDefinitionId: 'base:starter/newcomer',

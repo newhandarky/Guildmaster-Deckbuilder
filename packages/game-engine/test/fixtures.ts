@@ -3,7 +3,7 @@ import { createGame, createRuleset } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 
 export const testPack: ContentPack = {
-  manifest: { id: 'test:content', version: '1.0.0', hash: 'test-hash' },
+  manifest: { id: 'test:content', version: '1.0.0', hash: 'test-hash', role: 'base' },
   definitions: [
     { id: 'test:starter/adventurer', name: '測試冒險者', type: 'starter', copies: 0, combat: 1, source: 'mvp-demo' },
     { id: 'test:starter/stone', name: '測試石', type: 'starter', copies: 0, purchasePower: 1, source: 'mvp-demo' },

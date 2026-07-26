@@ -5,6 +5,7 @@ import { getEndCondition, getPartyLimit, type Ruleset } from '../rules/ruleset.j
 import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
+import { baseZoneIds, getZone } from '../model/zones.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}) });
@@ -110,8 +111,7 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
   }
   target.status = 'defeated';
-  if (target.kind === 'monster') removeFrom(state.sharedZones.monsterRow, target.cardInstanceId);
-  if (target.kind === 'boss') removeFrom(state.sharedZones.bossRow, target.cardInstanceId);
+  if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
   player.discardPile.push(target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
@@ -124,13 +124,13 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
 function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'BUY_CARD' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
   const phaseError = requirePhase(state, ['purchase']);
   if (phaseError) return phaseError;
-  const isAdventurer = state.sharedZones.adventurerRow.includes(command.cardId);
-  const isItem = state.sharedZones.itemRow.includes(command.cardId);
+  const isAdventurer = getZone(state, baseZoneIds.adventurerRow).cardIds.includes(command.cardId);
+  const isItem = getZone(state, baseZoneIds.itemRow).cardIds.includes(command.cardId);
   if (!isAdventurer && !isItem) return { code: 'INVALID_COMMAND', message: '只能購買招募區或商店的公開卡。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
   const cost = definition.cost ?? Number.POSITIVE_INFINITY;
   if (getPurchasePower(state, ruleset, player.id) < cost) return { code: 'INVALID_COMMAND', message: '購買力不足。' };
-  removeFrom(isAdventurer ? state.sharedZones.adventurerRow : state.sharedZones.itemRow, command.cardId);
+  removeFrom(getZone(state, isAdventurer ? baseZoneIds.adventurerRow : baseZoneIds.itemRow).cardIds, command.cardId);
   player.turnPurchaseSpent += cost;
   player.discardPile.push(command.cardId);
   event(state, events, 'CARD_ACQUIRED', `${player.name} 取得了 ${definition.name}。`, commandId);
@@ -148,7 +148,7 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
   refillSupply(state, ruleset, 'item', events);
   refillSupply(state, ruleset, 'monster', events);
   refillSupply(state, ruleset, 'boss', events);
-  attachTargets(state, ruleset);
+  attachTargets(state);
   drawCards(state, player.id, 5, events);
   event(state, events, 'REST_FINISHED', `${player.name} 完成休息。`, commandId);
   if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === player.id) {
