@@ -18,4 +18,12 @@ describe('official base source manifest', () => {
     const broken = { ...officialBaseSourceManifest, records: officialBaseSourceManifest.records.map((record) => record.recordId === 'base:official/kagura' ? { ...record, fields: record.fields.map((field) => field.field === 'name' ? { ...field, sourceIds: [] } : field) } : record) };
     expect(validateOfficialBaseSourceManifest(broken)).toContain('Verified field base:official/kagura.name requires a value and source.');
   });
+  it('rejects an image-only source as evidence for a verified field', () => {
+    const broken = { ...officialBaseSourceManifest, records: officialBaseSourceManifest.records.map((record) => record.recordId === 'base:official/kagura' ? { ...record, fields: record.fields.map((field) => field.field === 'name' ? { ...field, sourceIds: ['official-base-card-list-web'] } : field) } : record) };
+    expect(validateOfficialBaseSourceManifest(broken)).toContain('Verified field base:official/kagura.name cannot cite non-text-readable source official-base-card-list-web.');
+  });
+  it('rejects a source outside the controlled official domain allowlist', () => {
+    const broken = { ...officialBaseSourceManifest, sources: officialBaseSourceManifest.sources.map((source) => source.sourceId === 'official-base-faq-2025-09-01-web' ? { ...source, url: 'https://example.com/faq' } : source) };
+    expect(validateOfficialBaseSourceManifest(broken)).toContain('Source official-base-faq-2025-09-01-web requires an allowlisted official HTTPS URL, title, version/update value, locator, and ISO access date.');
+  });
 });
