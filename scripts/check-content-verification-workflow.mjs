@@ -10,10 +10,13 @@ const required = [
   '## 模糊、衝突與退回',
   '## 顯示文字與素材隔離',
   '## 批次確認清單',
+  'image-only 視覺資料、OCR 結果、示範資料或推測',
   '不得將任何卡牌欄位標成 `verified`／`enabled`',
+  '視覺來源只可輔助定位，不能單獨支援正式 `verified`。',
+  '任意 | `todo` + `disabled`',
   '不提交、嵌入或在前端載入官方圖片、掃描、卡面或美術。'
 ];
 const missing = required.filter((fragment) => !workflow.includes(fragment));
 if (missing.length > 0) throw new Error(`Content verification workflow is missing required contract text: ${missing.join(', ')}`);
-if (workflow.includes('![')) throw new Error('Content verification workflow must not embed images.');
+if (['![', '<img', '<object', '<embed', 'data:image'].some((fragment) => workflow.toLowerCase().includes(fragment))) throw new Error('Content verification workflow must not embed images.');
 console.log('Content verification workflow check passed.');

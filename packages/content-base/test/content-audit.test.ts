@@ -27,4 +27,11 @@ describe('base Content Pack audit', () => {
     expect(errors.some((error) => error.startsWith('Missing audit entry'))).toBe(true);
     expect(errors).toContain(`Unknown source missing-source on ${demoCards[0]!.id}.`);
   });
+
+  it('rejects enabling formal content from image-only candidate, or OCR evidence', () => {
+    const imageOnly: ContentAuditCatalog = { sourceCatalog: [{ sourceId: 'official-card-list', kind: 'official-card-list', title: '官方卡片列表', url: 'https://www.paintcanfarm.com/aggboardgames/zh', locator: '卡片列表', accessedOn: '2026-07-27', availability: 'image-only' }], packId: 'base:official', cards: [{ definitionId: demoCards[0]!.id, status: 'verified', activation: 'enabled', sourceIds: ['official-card-list'], fieldAudits: [{ field: 'combat', status: 'verified', sourceIds: ['official-card-list'] }] }] };
+    expect(validateContentAudit(imageOnly, [demoCards[0]!])).toContain(`Verified field combat on ${demoCards[0]!.id} cannot cite non-text-readable source official-card-list.`);
+    const ocr = { ...imageOnly, sourceCatalog: [{ ...imageOnly.sourceCatalog[0]!, sourceId: 'ocr-output', availability: 'ocr-derived' as const }], cards: [{ ...imageOnly.cards[0]!, sourceIds: ['ocr-output'], fieldAudits: [{ field: 'combat' as const, status: 'verified' as const, sourceIds: ['ocr-output'] }] }] };
+    expect(validateContentAudit(ocr, [demoCards[0]!])).toContain(`Verified field combat on ${demoCards[0]!.id} cannot cite non-text-readable source ocr-output.`);
+  });
 });
