@@ -16,4 +16,10 @@ describe('base starter candidates', () => {
     const broken = { ...baseStarterCandidateCatalog, candidates: baseStarterCandidateCatalog.candidates.map((candidate) => candidate.candidateId === 'base:starter-candidate/maina' ? { ...candidate, runtimeLoadable: true as false } : candidate) };
     expect(validateBaseStarterCandidateCatalog(broken)).toContain('Starter candidate base:starter-candidate/maina must remain disabled and outside runtime.');
   });
+  it('rejects forged enabled and verified values in deserialized candidate data', () => {
+    const broken = { ...baseStarterCandidateCatalog, candidates: baseStarterCandidateCatalog.candidates.map((candidate) => candidate.candidateId === 'base:starter-candidate/maina' ? { ...candidate, activation: 'enabled' as 'disabled', fields: candidate.fields.map((field) => field.field === 'name' ? { ...field, status: 'verified' as 'needs-human-confirmation' } : field) } : candidate) };
+    const errors = validateBaseStarterCandidateCatalog(broken);
+    expect(errors).toContain('Starter candidate base:starter-candidate/maina must remain disabled and outside runtime.');
+    expect(errors).toContain('Starter candidate field base:starter-candidate/maina.name has an invalid non-candidate status.');
+  });
 });

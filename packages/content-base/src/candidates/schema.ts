@@ -31,6 +31,7 @@ export function validateBaseStarterCandidateCatalog(catalog: BaseStarterCandidat
     if (candidate.fields.length === 0) errors.push(`Starter candidate ${candidate.candidateId} requires field evidence.`);
     for (const field of candidate.fields) {
       for (const evidenceId of field.evidenceIds) if (!evidenceIds.has(evidenceId)) errors.push(`Unknown candidate evidence ${evidenceId} on ${candidate.candidateId}.${field.field}.`);
+      if (field.status !== 'needs-human-confirmation' && field.status !== 'todo') errors.push(`Starter candidate field ${candidate.candidateId}.${field.field} has an invalid non-candidate status.`);
       if (field.status === 'needs-human-confirmation' && (field.candidateValue === undefined || field.evidenceIds.length === 0)) errors.push(`Candidate field ${candidate.candidateId}.${field.field} requires a value and visual evidence.`);
       if (field.status === 'todo' && !field.gapReason?.trim()) errors.push(`TODO candidate field ${candidate.candidateId}.${field.field} requires a gap reason.`);
     }
