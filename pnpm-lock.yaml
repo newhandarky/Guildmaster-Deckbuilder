@@ -44,6 +44,9 @@ importers:
       '@guildmaster/game-protocol':
         specifier: workspace:*
         version: link:../../packages/game-protocol
+      '@guildmaster/presentation-core':
+        specifier: workspace:*
+        version: link:../../packages/presentation-core
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -107,6 +110,12 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/presentation-core:
+    devDependencies:
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(lightningcss@1.32.0)
 
 packages:
 
