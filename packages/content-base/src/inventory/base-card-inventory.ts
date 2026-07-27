@@ -1,7 +1,7 @@
 import { demoCards } from '../cards/demo-cards.js';
 import type { BaseCardInventory, BaseCardInventoryEntry, InventoryPriority } from './schema.js';
 
-const officialWebsite = { sourceId: 'official-base-qa-2025-09-01', kind: 'official-faq' as const, title: '冒險少女公會：規則說明書、Q&A', url: 'https://www.paintcanfarm.com/aggboardgames/zh', locator: '規則說明書、Q&A > Q&A 2025/9/1更新 > 效果敘述微調與補充說明', accessedOn: '2026-07-26' };
+const officialWebsite = { sourceId: 'official-base-qa-2025-09-01', kind: 'official-faq' as const, title: '冒險少女公會：規則說明書、Q&A', url: 'https://www.paintcanfarm.com/aggboardgames/zh', locator: '規則說明書、Q&A > Q&A 2025/9/1更新 > 效果敘述微調與補充說明', accessedOn: '2026-07-26', availability: 'text-readable' as const };
 const todo = (reason: string) => ({ status: 'todo' as const, sourceIds: [] as const, todoReason: reason });
 const priorityFor = (id: string): InventoryPriority => id.includes(':starter/') ? 'starter' : id.includes(':adventurer/') || id.includes(':equipment/') || id.includes(':item/') ? 'common-supply' : 'remaining-base';
 
