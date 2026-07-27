@@ -1,6 +1,7 @@
 import type { ContentPack } from '@guildmaster/game-protocol';
 import { demoCards } from './cards/demo-cards.js';
 export * from './audit/index.js';
+export * from './candidates/index.js';
 export * from './inventory/index.js';
 export * from './sources/index.js';
 

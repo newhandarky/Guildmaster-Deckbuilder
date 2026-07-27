@@ -23,6 +23,7 @@
 17. [ADR：Workspace 與線上權威架構](./adr/0004-workspace-and-online-authority.md)
 18. [基礎版官方資料來源 Manifest](./15-official-base-source-manifest.md)
 19. [待使用者提供的官方資料清單](./16-requested-official-base-materials.md)
+20. [基礎版起始內容候選盤點](./17-base-starter-candidates.md)
 
 ## 文件適用範圍
 
