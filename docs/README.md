@@ -4,27 +4,30 @@
 
 ## 文件索引
 
-1. [產品範圍](./00-product-scope.md)
-2. [核心規則規格](./01-game-rules.md)
-3. [領域模型](./02-domain-model.md)
-4. [系統架構](./03-architecture.md)
-5. [卡牌效果與時序](./04-effect-system.md)
-6. [MVP 路線圖](./05-mvp-roadmap.md)
-7. [測試策略](./06-testing-strategy.md)
-8. [內容與素材政策](./07-content-and-assets.md)
-9. [開發工作流程](./08-development-workflow.md)
-10. [待確認事項](./09-open-questions.md)
-11. [第一擴充 Vol.1 正式規則](./10-expansion-vol1-rules.md)
-12. [模組化與檔案拆分規範](./11-modularity-guidelines.md)
-13. [完整目標架構與演進策略](./12-target-architecture.md)
-14. [ADR：前端技術選型](./adr/0001-frontend-stack.md)
-15. [ADR：純規則引擎邊界](./adr/0002-pure-rules-engine.md)
-16. [ADR：模組邊界與依賴規則](./adr/0003-module-boundaries.md)
-17. [ADR：Workspace 與線上權威架構](./adr/0004-workspace-and-online-authority.md)
-18. [基礎版官方資料來源 Manifest](./15-official-base-source-manifest.md)
-19. [待使用者提供的官方資料清單](./16-requested-official-base-materials.md)
-20. [基礎版起始內容候選盤點](./17-base-starter-candidates.md)
-21. [Content Verification 人工確認流程](./18-content-verification-approval-workflow.md)
+1. [產品範圍](./00-產品範圍.md)
+2. [核心規則規格](./01-基礎版核心規則.md)
+3. [領域模型](./02-領域模型.md)
+4. [系統架構](./03-系統架構.md)
+5. [卡牌效果與時序](./04-卡牌效果與時序.md)
+6. [MVP 路線圖](./05-MVP路線圖.md)
+7. [測試策略](./06-測試策略.md)
+8. [內容與素材政策](./07-內容與素材政策.md)
+9. [開發工作流程](./08-開發工作流程.md)
+10. [待確認事項](./09-待確認事項.md)
+11. [第一擴充 Vol.1 正式規則](./10-第一擴充Vol1規則.md)
+12. [模組化與檔案拆分規範](./11-模組化與檔案拆分規範.md)
+13. [完整目標架構與演進策略](./12-完整目標架構與演進策略.md)
+14. [ADR：前端技術選型](./adr/0001-前端技術選型.md)
+15. [ADR：純規則引擎邊界](./adr/0002-純規則引擎邊界.md)
+16. [ADR：模組邊界與依賴規則](./adr/0003-模組邊界與依賴規則.md)
+17. [ADR：Workspace 與線上權威架構](./adr/0004-Workspace與線上權威架構.md)
+18. [基礎版官方資料來源 Manifest](./15-基礎版官方資料來源.md)
+19. [待使用者提供的官方資料清單](./16-待提供官方資料.md)
+20. [基礎版起始內容候選盤點](./17-起始牌候選資料.md)
+21. [Content Verification 人工確認流程](./18-內容驗證審核流程.md)
+22. [起始內容人工審核包](./19-起始牌審核包.md)
+23. [Presentation Pack／Appearance Pack 規格](./20-呈現包規格.md)
+24. [起始設置政策](./21-起始設置政策.md)
 
 ## 文件適用範圍
 
@@ -58,10 +61,10 @@ MVP 會執行在完整架構的 `apps/web`、`packages/game-engine`、`packages/
 
 ## 文件維護原則
 
-- 規則改動必須同步更新 `01-game-rules.md` 與測試案例。
+- 規則改動必須同步更新 `01-基礎版核心規則.md` 與測試案例。
 - 架構決策若難以回復，新增 ADR，不直接覆蓋舊決策。
-- 所有新功能遵守 `11-modularity-guidelines.md`；不可把功能持續堆進既有大檔案。
-- 未確認的規則不得默默猜測；記入 `09-open-questions.md`，正式 ruleset 保持未啟用或回傳明確 pending-ruling。只有經產品負責人核准、且明示為非官方的 house rule 才可用獨立 policy 隔離。
+- 所有新功能遵守 `11-模組化與檔案拆分規範.md`；不可把功能持續堆進既有大檔案。
+- 未確認的規則不得默默猜測；記入 `09-待確認事項.md`，正式 ruleset 保持未啟用或回傳明確 pending-ruling。只有經產品負責人核准、且明示為非官方的 house rule 才可用獨立 policy 隔離。
 - 卡片名稱、顯示文字、機制資料與圖片路徑分離，方便日後換主題與素材。
 - 中文玩家規則統一使用「物資、魔物、協助者、道具、討伐階段」；英文 enum 可保留內部使用。
-- Playwright 是 MVP 的關鍵瀏覽器流程測試工具；GitNexus 與 CodeGraph 屬選用的程式碼導覽工具，待模組規模成長、確有跨檔案分析需求時再導入。詳細準則見 `08-development-workflow.md`。
+- Playwright 是 MVP 的關鍵瀏覽器流程測試工具；GitNexus 與 CodeGraph 屬選用的程式碼導覽工具，待模組規模成長、確有跨檔案分析需求時再導入。詳細準則見 `08-開發工作流程.md`。

@@ -79,6 +79,12 @@ feature 可使用 shared UI、web store 與 protocol view models，但不能直�
 
 卡牌資料依 `set/card-type` 切分。單一內容檔建議不超過約 20–30 個 definitions；index 只合併、驗證與 export。大量重複資料應由明確 factory 產生，但不犧牲可讀性。
 
+### Presentation
+
+- Presentation Pack 與 Content Pack 分屬不同 package／module；前者只能以 stable definition ID 對應 display name、asset key、短文案、theme／locale。
+- `PresentationResolver` 是唯一將規則 ID 轉成 UI view model 的入口；React component 不得硬編人物名稱、官方卡名或圖片路徑。
+- resolver、fallback、locale／theme variant 與 asset registry 分檔；不得將呈現選擇塞入 rules engine、AI 或 Snapshot migration。
+
 ### Model
 
 按概念拆成 `gameState`、`card`、`player`、`command`、`event`、`choice` 等檔案。不要建立一個永久成長的 `types.ts`。

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const workflow = readFileSync(new URL('../docs/18-content-verification-approval-workflow.md', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../docs/18-內容驗證審核流程.md', import.meta.url), 'utf8');
 const required = [
   '## 角色與責任',
   '## 每張卡的最小核對欄位',

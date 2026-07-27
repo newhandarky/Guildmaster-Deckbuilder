@@ -38,7 +38,7 @@ pnpm check
 
 - `packages/content-base` 目前是可玩的**原創示範內容包**；不是完整、逐字對應的官方卡表。待卡表完成雙人覆核後，可替換資料而不修改引擎。
 - 個別卡牌的複雜效果、協助者、羈絆輪抽與 Vol.1 尚未啟用。
-- 基礎版公共供應牌庫耗盡時，依 `docs/09-open-questions.md` 進入 `pendingOfficialRuling`，不自行杜撰後續結果。
+- 基礎版公共供應牌庫耗盡時，依 `docs/09-待確認事項.md` 進入 `pendingOfficialRuling`，不自行杜撰後續結果。
 - 沒有連線、帳號、伺服器、房間或遠端 Session；這些只保留了 protocol／adapter 邊界。
 - AI 為可完整走完基本回合的簡單策略，尚未做難度、評估或長期規劃。
 
