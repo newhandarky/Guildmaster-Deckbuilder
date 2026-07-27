@@ -25,6 +25,8 @@
 19. [待使用者提供的官方資料清單](./16-requested-official-base-materials.md)
 20. [基礎版起始內容候選盤點](./17-base-starter-candidates.md)
 21. [Content Verification 人工確認流程](./18-content-verification-approval-workflow.md)
+22. [起始內容人工審核包](./19-starter-review-packet.md)
+23. [Presentation Pack／Appearance Pack 規格](./20-presentation-pack-spec.md)
 
 ## 文件適用範圍
 

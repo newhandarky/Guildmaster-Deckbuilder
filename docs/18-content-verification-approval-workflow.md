@@ -67,3 +67,5 @@
 | `<candidateId>` | `name, copies` | `<page / region>` | `needs-human-confirmation` | 候選讀值是否與合法原件一致？ |
 | `<candidateId>` | `cost, combat, honor` | `<page / region>` | `todo` | 是否可提供清晰頁面或官方文字來源？ |
 | `<candidateId>` | `effect, timing` | `<page / region>` | `todo` | 是否有對應 FAQ／勘誤與完整效果文字？ |
+
+起始候選的實際預填審核列見 [起始內容人工審核包](./19-starter-review-packet.md)。

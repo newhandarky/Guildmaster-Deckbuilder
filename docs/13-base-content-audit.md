@@ -15,6 +15,8 @@
 
 未確認資料一律保留 `todo` 或 `blocked`，並維持 `disabled`。不得以現有 MVP 示範數值、常見桌遊慣例或卡名推測補齊。
 
+官方來源中的名稱只屬於 audit metadata，不能自動成為玩家 UI 的 display name。正式規則資料與 Presentation Pack 顯示資料分離；詳見 `20-presentation-pack-spec.md`。
+
 ## 驗證
 
 `validateContentAudit` 會拒絕未知來源、重複／缺少卡片盤點，以及含未驗證欄位卻標記為 `enabled` 的資料。內容測試位於 `packages/content-base/test/`。

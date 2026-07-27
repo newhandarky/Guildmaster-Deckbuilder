@@ -42,6 +42,8 @@
 
 `GameSession` 是 web feature 唯一可見的對局入口。local 與 remote adapter 必須回傳相同的 command result、player view、event 與 error DTO，因此線上化不需要重寫 UI。
 
+UI 另經由 `PresentationResolver` 將 `CardDefinition.id` 解析為純顯示 view model；resolver 不參與 Command、Event、規則計算或 session authority。
+
 ## Repository 結構
 
 ```text
@@ -89,6 +91,7 @@ Guildmaster-Deckbuilder/
 │   ├── game-protocol/                    # commands/views/events/snapshot/replay schemas
 │   ├── content-base/                     # M0–M3：基礎 ContentPack
 │   ├── content-<pack-id>/                # M7+：每個擴充獨立 package
+│   ├── presentation-<theme-id>/          # 未來：可替換名稱、文案、asset key
 │   ├── game-ai/                          # M8：AI actor
 │   └── test-kit/                         # builders、fixtures、contract suites
 ├── docs/
@@ -151,6 +154,12 @@ content-* ────────────▶ game-engine extension API + ga
 - 基礎遊戲與擴充使用相同 manifest、definitions、replacements、Rules Modules 與 effect extension contract。
 - engine 只接收驗證完成的 `ContentRegistry`，不 hard-code pack ID。
 - server 只允許預先安裝且 hash 相符的 packs，client 不能上傳任意 handler。
+
+### PresentationPack
+
+- Presentation Pack 只依 stable definition ID 產出 display name、asset key、短文案與 theme／locale variant；不能包含 effect、數值、Command handler 或 Rules Module。
+- React component 只能消費 resolver 輸出的 presentation view model；不得寫死人物名稱、圖片路徑或以顯示文字判斷卡種。
+- 線上權威狀態不傳遞圖片；不同 client 可選不同 Presentation Pack。缺少 pack 時 client 使用中性 placeholder，不影響連線相容性。
 
 ### RulesModule
 
