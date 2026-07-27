@@ -14,12 +14,12 @@ export const baseStarterCandidateCatalog: BaseStarterCandidateCatalog = {
     { evidenceId: evidenceIds.cards, officialUrl, documentName: '冒險少女公會 起始卡候選合成視覺頁', providedFileName: 'card-07.jpg', region: '上排第 1–4 張、下排左側冒險者、下排中央召喚石、下排右側精靈結晶', reviewedOn: '2026-07-26', repositoryAsset: 'not-committed' }
   ],
   candidates: [
-    adventurer('base:starter-candidate/maina', '麥娜', 1, 'card-07.jpg 上排第 1 張'),
-    adventurer('base:starter-candidate/musa', '慕莎', 2, 'card-07.jpg 下排左側'),
-    adventurer('base:starter-candidate/kanon', '卡儂', 1, 'card-07.jpg 上排第 2 張'),
-    adventurer('base:starter-candidate/shuruti', '修爾蒂', 1, 'card-07.jpg 上排第 3 張'),
-    adventurer('base:starter-candidate/symphony', '辛芙妮', 1, 'card-07.jpg 上排第 4 張'),
-    { candidateId: 'base:starter-candidate/summon-stone', category: 'starter-resource', activation: 'disabled', runtimeLoadable: false, fields: [candidate('name', '召喚石', 'cards'), candidate('copies', 4, 'setup'), candidate('purchasePower', 1, 'cards'), todo('effect', missingCardField)] },
-    { candidateId: 'base:starter-candidate/spirit-crystal', category: 'starter-resource', activation: 'disabled', runtimeLoadable: false, fields: [candidate('name', '精靈結晶', 'cards'), candidate('copies', 1, 'setup'), candidate('purchasePower', 1, 'cards'), todo('effect', missingCardField)] }
+    adventurer('base:starter/adventurer-01', '麥娜', 1, 'card-07.jpg 上排第 1 張'),
+    adventurer('base:starter/adventurer-02', '慕莎', 2, 'card-07.jpg 下排左側'),
+    adventurer('base:starter/adventurer-03', '卡儂', 1, 'card-07.jpg 上排第 2 張'),
+    adventurer('base:starter/adventurer-04', '修爾蒂', 1, 'card-07.jpg 上排第 3 張'),
+    adventurer('base:starter/adventurer-05', '辛芙妮', 1, 'card-07.jpg 上排第 4 張'),
+    { candidateId: 'base:starter/summoning-stone', category: 'starter-resource', activation: 'disabled', runtimeLoadable: false, fields: [candidate('name', '召喚石', 'cards'), candidate('copies', 4, 'setup'), candidate('purchasePower', 1, 'cards'), todo('effect', missingCardField)] },
+    { candidateId: 'base:starter/spirit-crystal', category: 'starter-resource', activation: 'disabled', runtimeLoadable: false, fields: [candidate('name', '精靈結晶', 'cards'), candidate('copies', 1, 'setup'), candidate('purchasePower', 1, 'cards'), todo('effect', missingCardField)] }
   ]
 };
