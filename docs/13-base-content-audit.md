@@ -18,3 +18,5 @@
 ## 驗證
 
 `validateContentAudit` 會拒絕未知來源、重複／缺少卡片盤點，以及含未驗證欄位卻標記為 `enabled` 的資料。內容測試位於 `packages/content-base/test/`。
+
+候選資料的人工確認、正式 audit 升格與衝突退回流程見 [Content Verification 人工確認流程](./18-content-verification-approval-workflow.md)。
