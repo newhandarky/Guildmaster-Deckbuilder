@@ -70,6 +70,21 @@ describe('Rules Module lifecycle dispatcher', () => {
     expect(dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'phase-start', phase: 'action1' }, { controllerId: 'p1' })).toMatchObject({ status: 'completed', hookIds: [], evaluatedContinuousHookIds: ['aura'] }); expect(state.players[0]!.turnPurchaseBonus).toBe(0);
   });
 
+  it('wires command and filtered enemy-defeated lifecycle boundaries through the authoritative reducer', () => {
+    const before = hook('test:command', 'before', 'command-before', 1, modify(1)); const after = hook('test:command', 'after', 'command-after', 1, modify(2));
+    const reward = hook('test:reward', 'reward', 'event-after', 1, { kind: 'grant-combat-reward', recipient: { kind: 'controller' }, rewards: [{ kind: 'counter', resourceId: 'test:reward', amount: 3 }, { kind: 'purchase-bonus', amount: 4 }] }); reward.eventType = 'ENEMY_DEFEATED';
+    const ruleset = createRuleset([testPack], [baseRulesModule, module('test:command', [before, after]), module('test:reward', [reward])]); const state = gameFor(ruleset); state.phase = 'combat'; const targetId = Object.values(state.enemyTargets).find((target) => target.kind === 'monster')!.targetId;
+    const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
+    expect(result.error).toBeUndefined(); expect(result.state.players[0]!.turnPurchaseBonus).toBe(7); expect(result.state.players[0]!.counters).toContainEqual({ resourceId: 'test:reward', amount: 3, visibility: 'ownerOnly' }); expect(result.events.some((entry) => entry.type === 'COMBAT_REWARD_GRANTED')).toBe(true);
+  });
+
+  it('rejects a suspending command-before hook and rolls back a failing event hook with the command', () => {
+    const suspends = hook('test:before', 'choose', 'command-before', 1, choiceBody()); const rejectRuleset = createRuleset([testPack], [baseRulesModule, module('test:before', [suspends])]); const rejectState = gameFor(rejectRuleset); const rejectBefore = structuredClone(rejectState);
+    expect(dispatch(rejectState, rejectRuleset, envelope(rejectState, 'p1', { type: 'END_PHASE', phase: 'action1' })).error?.code).toBe('INVALID_COMMAND'); expect(rejectState).toEqual(rejectBefore);
+    const bad = hook('test:bad', 'bad', 'event-after', 1, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } }); bad.eventType = 'ENEMY_DEFEATED'; const rollbackRuleset = createRuleset([testPack], [baseRulesModule, module('test:bad', [bad])]); const rollbackState = gameFor(rollbackRuleset); rollbackState.phase = 'combat'; const targetId = Object.values(rollbackState.enemyTargets).find((target) => target.kind === 'monster')!.targetId; const rollbackBefore = structuredClone(rollbackState);
+    expect(dispatch(rollbackState, rollbackRuleset, envelope(rollbackState, 'p1', { type: 'ATTACK_TARGET', targetId })).error?.code).toBe('INVALID_COMMAND'); expect(rollbackState).toEqual(rollbackBefore);
+  });
+
   it('rejects invalid registration and non-serializable hook data', () => {
     expect(() => createRuleset([testPack], [baseRulesModule, module('test:bad', [hook('test:bad', 'bad', 'turn-start', 1, modify(1), 'replacement')])])).toThrow('Replacement hooks are only valid');
     const invalid = hook('test:function', 'function', 'turn-start', 1, { kind: 'conditional', condition: { kind: 'always', value: true }, whenTrue: modify(1) }); (invalid as unknown as { callback: () => void }).callback = () => undefined;

@@ -82,7 +82,7 @@ function continueHooks(state: GameState, ruleset: Ruleset, pending: PendingLifec
 /** Runs only serializable registry records. Continuous hooks are evaluated as boundaries but are not applied as card effects. */
 export function dispatchLifecycle(state: GameState, ruleset: Ruleset, payload: LifecyclePayload, context: EffectContext): LifecycleDispatchResult {
   if (state.effectState.pendingChoice || state.effectState.pendingLifecycle) return { status: 'failed', hookIds: [], evaluatedContinuousHookIds: [], events: [], error: 'Another effect continuation is pending.' };
-  const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.point === payload.point && active(hook, state));
+  const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType) && active(hook, state));
   const continuous = hooks.filter((hook) => hook.kind === 'continuous');
   const executable = hooks.filter((hook) => hook.kind !== 'continuous');
   const order = resolveEffectOrder(executable.map((hook) => ({ id: refKey(hookRef(hook)), ...(hook.priority === undefined ? {} : { priority: hook.priority }) })), 'explicit-priority');

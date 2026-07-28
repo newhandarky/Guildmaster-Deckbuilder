@@ -4,7 +4,7 @@ export const lifecyclePoints = ['game-setup', 'game-start', 'turn-start', 'turn-
 export type LifecyclePoint = (typeof lifecyclePoints)[number];
 export type LifecycleHookKind = 'trigger' | 'continuous' | 'replacement';
 /** JSON-only registry record owned by a Rules Module; no executable closures. */
-export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; effect: EffectDefinition; priority?: number; activation?: { kind: 'always' } | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null } };
+export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; eventType?: string; effect: EffectDefinition; priority?: number; activation?: { kind: 'always' } | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null } };
 export type LifecyclePayload = { schemaVersion: 1; point: LifecyclePoint; actorId?: string; commandType?: string; eventType?: string; phase?: string; metadata?: Record<string, string | number | boolean | null> };
 function isJsonValue(value: unknown): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
@@ -19,6 +19,7 @@ export function validateLifecycleHook(hook: LifecycleHook, moduleId: string): st
   if (hook.schemaVersion !== 1 || hook.moduleId !== moduleId || !hook.hookId.trim()) errors.push('Lifecycle hook requires schema version, stable ID, and owning module ID.');
   if (hook.kind === 'replacement' && hook.point !== 'event-before') errors.push('Replacement hooks are only valid at event-before.');
   if (hook.kind === 'trigger' && hook.point === 'event-before') errors.push('Triggered effects run after facts, never at event-before.');
+  if (hook.eventType && hook.point !== 'event-before' && hook.point !== 'event-after') errors.push('Event type filters are only valid at event lifecycle points.');
   errors.push(...validateEffectDefinition(hook.effect).map((error) => `Lifecycle hook ${hook.hookId}: ${error}`));
   if (!isJsonValue(hook)) errors.push(`Lifecycle hook ${hook.hookId} must contain JSON-serializable data only.`);
   return errors;
