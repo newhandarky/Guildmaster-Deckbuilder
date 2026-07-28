@@ -78,11 +78,18 @@ describe('Rules Module lifecycle dispatcher', () => {
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.turnPurchaseBonus).toBe(7); expect(result.state.players[0]!.counters).toContainEqual({ resourceId: 'test:reward', amount: 3, visibility: 'ownerOnly' }); expect(result.events.some((entry) => entry.type === 'COMBAT_REWARD_GRANTED')).toBe(true);
   });
 
-  it('rejects a suspending command-before hook and rolls back a failing event hook with the command', () => {
+  it('suspends a command-before hook and rolls back a failing event hook with the command', () => {
     const suspends = hook('test:before', 'choose', 'command-before', 1, choiceBody()); const rejectRuleset = createRuleset([testPack], [baseRulesModule, module('test:before', [suspends])]); const rejectState = gameFor(rejectRuleset); const rejectBefore = structuredClone(rejectState);
-    expect(dispatch(rejectState, rejectRuleset, envelope(rejectState, 'p1', { type: 'END_PHASE', phase: 'action1' })).error?.code).toBe('INVALID_COMMAND'); expect(rejectState).toEqual(rejectBefore);
+    const suspended = dispatch(rejectState, rejectRuleset, envelope(rejectState, 'p1', { type: 'END_PHASE', phase: 'action1' })); expect(suspended.error).toBeUndefined(); expect(suspended.state.effectState.pendingCommand).toBeDefined(); expect(rejectState).toEqual(rejectBefore);
     const bad = hook('test:bad', 'bad', 'event-after', 1, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } }); bad.eventType = 'ENEMY_DEFEATED'; const rollbackRuleset = createRuleset([testPack], [baseRulesModule, module('test:bad', [bad])]); const rollbackState = gameFor(rollbackRuleset); rollbackState.phase = 'combat'; const targetId = Object.values(rollbackState.enemyTargets).find((target) => target.kind === 'monster')!.targetId; const rollbackBefore = structuredClone(rollbackState);
     expect(dispatch(rollbackState, rollbackRuleset, envelope(rollbackState, 'p1', { type: 'ATTACK_TARGET', targetId })).error?.code).toBe('INVALID_COMMAND'); expect(rollbackState).toEqual(rollbackBefore);
+  });
+
+  it('resumes a command exactly once after a command-before choice Snapshot round-trip', () => {
+    const before = hook('test:before', 'choose', 'command-before', 1, choiceBody(1)); const after = hook('test:after', 'after', 'command-after', 1, modify(2)); const ruleset = createRuleset([testPack], [baseRulesModule, module('test:before', [before]), module('test:after', [after])]); const state = gameFor(ruleset);
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' })); expect(suspended.error).toBeUndefined(); expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingCommand?.envelope.command.type).toBe('END_PHASE');
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === 'accept')!;
+    const result = dispatch(restored, ruleset, envelope(restored, 'p1', choice)); expect(result.error).toBeUndefined(); expect(result.state.revision).toBe(1); expect(result.state.phase).toBe('combat'); expect(result.state.players[0]!.turnPurchaseBonus).toBe(3); expect(result.state.effectState).toEqual({});
   });
 
   it('rejects invalid registration and non-serializable hook data', () => {

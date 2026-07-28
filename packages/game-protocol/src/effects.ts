@@ -36,7 +36,9 @@ export type PendingLifecycleDispatch = {
   registry: LifecycleRegistrySnapshot;
   rollbackState: import('./state.js').GameState;
 };
-export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch };
+/** Original command held while its command-before lifecycle choice is unresolved. */
+export type PendingCommandContinuation = { schemaVersion: 1; envelope: import('./commands.js').CommandEnvelope };
+export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch; pendingCommand?: PendingCommandContinuation };
 /** Registry skeleton: card content is not registered in this PR. */
 export type EffectTrigger = { schemaVersion: 1; triggerId: string; eventType: string; effect: EffectDefinition; priority?: number };
 export type ContinuousEffect = { schemaVersion: 1; continuousId: string; source: EffectCardRef; duration: 'while-source-present' | 'until-rest' | 'this-turn' | 'this-combat'; effect: EffectDefinition };
