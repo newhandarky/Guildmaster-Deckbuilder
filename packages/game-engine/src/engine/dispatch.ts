@@ -7,6 +7,7 @@ import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice } from '../effects/executor.js';
+import { resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}) });
@@ -176,9 +177,14 @@ function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, comma
 }
 
 function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'RESOLVE_EFFECT_CHOICE' }>, events: DomainEvent[]): EngineError | undefined {
-  const result = resumeEffectChoice(state, ruleset, player.id, command.executionId, command.choiceId, command.optionId);
+  const result = state.effectState.pendingLifecycle
+    ? resumeLifecycleChoice(state, ruleset, player.id, command.executionId, command.choiceId, command.optionId)
+    : resumeEffectChoice(state, ruleset, player.id, command.executionId, command.choiceId, command.optionId);
   events.push(...result.events);
-  return result.status === 'failed' ? { code: 'INVALID_COMMAND', message: result.error ?? '無法恢復效果選擇。' } : undefined;
+  const resultError = 'error' in result && typeof result.error === 'string' ? result.error : undefined;
+  const resultReason = 'reason' in result && typeof result.reason === 'string' ? result.reason : undefined;
+  const message = resultError ?? resultReason ?? '無法恢復效果選擇。';
+  return result.status === 'failed' || result.status === 'unsupported' ? { code: 'INVALID_COMMAND', message } : undefined;
 }
 
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
@@ -186,7 +192,7 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
   if (envelope.actorId !== state.activePlayerId) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
-  if (state.effectState.pendingChoice && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
+  if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
   const nextState = structuredClone(state);
   const player = getPlayer(nextState, envelope.actorId);
   const events: DomainEvent[] = [];

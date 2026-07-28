@@ -18,7 +18,23 @@ export type EffectNode =
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
 export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };
-export type EffectExecutionState = { pendingChoice?: PendingEffectChoice };
+export type LifecycleHookRef = { moduleId: string; hookId: string };
+export type LifecycleRegistrySnapshot = { rulesetVersion: string; modules: readonly { id: string; version: string }[] };
+/**
+ * Serializable continuation for one transactional lifecycle dispatch.
+ * rollbackState is captured before the first hook and never contains this continuation.
+ */
+export type PendingLifecycleDispatch = {
+  schemaVersion: 1;
+  dispatchId: string;
+  payload: import('./lifecycle.js').LifecyclePayload;
+  context: EffectContext;
+  currentHook: LifecycleHookRef;
+  remainingHooks: readonly LifecycleHookRef[];
+  registry: LifecycleRegistrySnapshot;
+  rollbackState: import('./state.js').GameState;
+};
+export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch };
 /** Registry skeleton: card content is not registered in this PR. */
 export type EffectTrigger = { schemaVersion: 1; triggerId: string; eventType: string; effect: EffectDefinition; priority?: number };
 export type ContinuousEffect = { schemaVersion: 1; continuousId: string; source: EffectCardRef; duration: 'while-source-present' | 'until-rest' | 'this-turn' | 'this-combat'; effect: EffectDefinition };
