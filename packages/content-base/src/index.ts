@@ -6,6 +6,7 @@ export * from './inventory/index.js';
 export * from './sources/index.js';
 export * from './provisional/index.js';
 export * from './playtest/index.js';
+export * from './capabilities/index.js';
 
 export const baseDemoContentPack: ContentPack = {
   manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base', contentStatus: 'demo' },

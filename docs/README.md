@@ -33,6 +33,7 @@
 27. [起始機制審核表](./24-起始機制審核表.md)
 28. [基礎版 Provisional 內容盤點](./25-基礎版Provisional內容盤點.md)
 29. [基礎版 Provisional 例外清單](./26-基礎版Provisional例外清單.md)
+30. [基礎版 Provisional 效果能力矩陣](./27-基礎版Provisional效果能力矩陣.md)
 
 ## 文件適用範圍
 
