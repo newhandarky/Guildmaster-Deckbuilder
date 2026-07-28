@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest';
+import { baseProvisionalContentCatalog, validateProvisionalBaseContentCatalog } from '../src/provisional/index.js';
+
+describe('base provisional content catalog', () => {
+  it('keeps visual-evidence candidates non-runtime and auditable', () => {
+    expect(validateProvisionalBaseContentCatalog(baseProvisionalContentCatalog)).toEqual([]);
+    expect(baseProvisionalContentCatalog.candidates).toHaveLength(7 + 30 + 28 + 14 + 11 + 30 + 12);
+    expect(baseProvisionalContentCatalog.candidates.every((candidate) => candidate.activation === 'disabled' && !candidate.runtimeLoadable)).toBe(true);
+    expect(baseProvisionalContentCatalog.evidence.every((source) => source.repositoryAsset === 'not-committed')).toBe(true);
+  });
+
+  it('uses neutral mechanics IDs and retains official names only as source metadata', () => {
+    const ids = baseProvisionalContentCatalog.candidates.map((candidate) => candidate.definitionId);
+    expect(ids).toContain('base:starter/adventurer-01');
+    expect(ids).toContain('base:starter/summoning-stone');
+    expect(ids.some((id) => /麥娜|慕莎|卡儂|修爾蒂|辛芙妮/.test(id))).toBe(false);
+  });
+
+  it('requires a reason for every exception and does not promote provisional data to verified', () => {
+    const fields = baseProvisionalContentCatalog.candidates.flatMap((candidate) => candidate.fields);
+    expect(fields.filter((field) => field.status === 'exception').every((field) => Boolean(field.exceptionReason))).toBe(true);
+    expect(fields.some((field) => field.status === 'provisional')).toBe(true);
+    expect(fields.some((field) => field.status === 'verified')).toBe(true); // FAQ-confirmed errata only
+  });
+
+  it('maps the official profession icons and reads the six previously incomplete adventurer effects', () => {
+    const find = (id: string) => baseProvisionalContentCatalog.candidates.find((candidate) => candidate.definitionId === id)!;
+    const value = (id: string, field: string) => find(id).fields.find((entry) => entry.field === field)!;
+    expect(value('base:adventurer/adventurer-01', 'profession').candidateValue).toBe('support');
+    expect(value('base:adventurer/adventurer-02', 'profession').candidateValue).toBe('melee');
+    expect(value('base:adventurer/adventurer-03', 'profession').candidateValue).toBe('mage');
+    expect(value('base:adventurer/adventurer-04', 'profession').candidateValue).toBe('tank');
+    expect(value('base:adventurer/adventurer-07', 'profession').candidateValue).toBe('ranged');
+    for (const id of ['adventurer-06', 'adventurer-09', 'adventurer-19', 'adventurer-22', 'adventurer-26', 'adventurer-29']) {
+      expect(value(`base:adventurer/${id}`, 'effect')).toMatchObject({ status: 'provisional', confidence: 'medium' });
+    }
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentPack, GameState } from '@guildmaster/game-protocol';
-import { createContentRegistry, createRuleset, dispatch, envelope, getEndCondition, getScoreboard, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createContentRegistry, createGame, createRuleset, dispatch, envelope, getEndCondition, getScoreboard, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseZoneIds } from '../src/model/zones.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule } from '../src/rules/ruleset.js';
@@ -62,6 +62,21 @@ describe('core abstraction contracts', () => {
     expect(registry.replacementMap['test:adventurer/a']).toBe('test:adventurer/replacement');
     const higherPriority: ContentPack = { manifest: { id: 'test:replacement-high', version: '1', hash: 'd' }, definitions: [{ id: 'test:adventurer/replacement-high', name: '高優先替換', type: 'adventurer', copies: 1, source: 'test' }], replacements: [{ replacesDefinitionId: 'test:adventurer/a', replacementDefinitionId: 'test:adventurer/replacement-high', priority: 1 }] };
     expect(createContentRegistry([testPack, replacement, higherPriority]).replacementMap['test:adventurer/a']).toBe('test:adventurer/replacement-high');
+  });
+
+  it('rejects provisional playtest packs unless a caller explicitly opts in', () => {
+    const provisional: ContentPack = { ...testPack, manifest: { ...testPack.manifest, id: 'test:provisional', contentStatus: 'provisional-playtest' } };
+    expect(() => createContentRegistry([provisional])).toThrow('Provisional playtest Content Packs require explicit allowProvisionalPlaytest.');
+    expect(createContentRegistry([provisional], { allowProvisionalPlaytest: true }).packs[0]!.contentStatus).toBe('provisional-playtest');
+    expect(() => createRuleset([provisional], [baseRulesModule])).toThrow('Provisional playtest Content Packs require explicit allowProvisionalPlaytest.');
+    expect(createRuleset([provisional], [baseRulesModule], { allowProvisionalPlaytest: true }).registry.packs[0]!.contentStatus).toBe('provisional-playtest');
+  });
+
+  it('supports an explicit distinct starter-party setup while retaining legacy starter setup', () => {
+    const ids = ['test:starter/adventurer', 'test:starter/adventurer-02', 'test:starter/adventurer-03', 'test:starter/adventurer-04', 'test:starter/adventurer-05'];
+    const explicit: ContentPack = { ...testPack, manifest: { ...testPack.manifest, id: 'test:distinct-starters' }, definitions: [...testPack.definitions, ...ids.slice(1).map((id) => ({ id, name: id, type: 'starter', copies: 0, combat: 1, source: 'test' }))], starter: { partyDefinitionIds: ids, summonStoneDefinitionId: 'test:starter/stone', crystalDefinitionId: 'test:starter/crystal' } };
+    const state = createGame({ gameId: 'distinct', seed: 4, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, createRuleset([explicit], [baseRulesModule]));
+    expect(state.players[0]!.party.map((slot) => state.cards[slot.adventurerId]!.definitionId)).toEqual(ids);
   });
 
   it('does not mutate state for stale or illegal commands', () => {

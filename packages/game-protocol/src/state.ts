@@ -1,4 +1,5 @@
 import type { CardInstance } from './cards.js';
+import type { EffectExecutionState } from './effects.js';
 
 export type Phase = 'action1' | 'combat' | 'action2' | 'purchase' | 'rest';
 export type GameStatus = 'playing' | 'finalRound' | 'finished' | 'pendingOfficialRuling';
@@ -29,7 +30,7 @@ export type GameState = {
   players: PlayerState[]; activePlayerId: string; startingPlayerId: string; round: number; phase: Phase;
   cards: Record<string, CardInstance>; zones: Record<ZoneId, ZoneState>;
   enemyTargets: Record<string, EnemyTargetState>; enemyEncounters: EnemyEncounterState[];
-  removedCards: string[]; moduleState: Record<string, unknown>; endState?: EndState; eventLogCursor: number;
+  removedCards: string[]; moduleState: Record<string, unknown>; effectState: EffectExecutionState; endState?: EndState; eventLogCursor: number;
 };
 
 export type PlayerView = {
