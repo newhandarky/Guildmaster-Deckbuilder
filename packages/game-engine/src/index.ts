@@ -1,6 +1,7 @@
 export * from './engine/create-game.js';
 export * from './engine/dispatch.js';
 export * from './engine/snapshot.js';
+export * from './engine/post-command-pipeline.js';
 export * from './effects/executor.js';
 export * from './effects/movement.js';
 export * from './effects/lifecycle-dispatcher.js';
