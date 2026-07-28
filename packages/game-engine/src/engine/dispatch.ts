@@ -7,7 +7,7 @@ import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice } from '../effects/executor.js';
-import { resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+import { dispatchLifecycle, resumeLifecycleChoice, type LifecycleDispatchResult } from '../effects/lifecycle-dispatcher.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}) });
@@ -187,6 +187,28 @@ function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerS
   return result.status === 'failed' || result.status === 'unsupported' ? { code: 'INVALID_COMMAND', message } : undefined;
 }
 
+function lifecycleFailure(result: LifecycleDispatchResult, boundary: string, allowSuspend: boolean): EngineError | undefined {
+  if (result.status === 'completed' || (allowSuspend && result.status === 'suspended')) return undefined;
+  if (result.status === 'suspended') return { code: 'INVALID_COMMAND', message: `${boundary} lifecycle 不能在原 command 執行前暫停。` };
+  return { code: 'INVALID_COMMAND', message: result.error ?? result.reason ?? `${boundary} lifecycle failed.` };
+}
+
+function dispatchCommandLifecycle(state: GameState, ruleset: Ruleset, point: 'command-before' | 'command-after', envelope: CommandEnvelope, events: DomainEvent[], allowSuspend: boolean): EngineError | undefined {
+  const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId: envelope.actorId, commandType: envelope.command.type, phase: state.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
+  const error = lifecycleFailure(result, point, allowSuspend); if (!error) events.push(...result.events); return error;
+}
+
+function dispatchEventLifecycle(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, facts: readonly DomainEvent[], events: DomainEvent[]): EngineError | undefined {
+  for (const fact of facts) {
+    for (const point of ['event-before', 'event-after'] as const) {
+      const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId: envelope.actorId, eventType: fact.type, phase: state.phase, metadata: { commandId: envelope.commandId, eventId: fact.eventId } }, { controllerId: envelope.actorId });
+      const error = lifecycleFailure(result, `${point}:${fact.type}`, false); if (error) return error;
+      events.push(...result.events);
+    }
+  }
+  return undefined;
+}
+
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
@@ -197,6 +219,8 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   const player = getPlayer(nextState, envelope.actorId);
   const events: DomainEvent[] = [];
   let error: EngineError | undefined;
+  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchCommandLifecycle(nextState, ruleset, 'command-before', envelope, events, false);
+  if (error) return { state, events: [], error };
   switch (envelope.command.type) {
     case 'PLAY_ADVENTURER': error = playAdventurer(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
     case 'EQUIP_ITEM': error = equipItem(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
@@ -206,6 +230,10 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
     case 'RESOLVE_EFFECT_CHOICE': error = resolveEffectChoice(nextState, ruleset, player, envelope.command, events); break;
     case 'END_PHASE': error = endPhase(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
   }
+  if (error) return { state, events: [], error };
+  const facts = [...events];
+  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchEventLifecycle(nextState, ruleset, envelope, facts, events);
+  if (!error && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchCommandLifecycle(nextState, ruleset, 'command-after', envelope, events, true);
   if (error) return { state, events: [], error };
   nextState.revision += 1;
   nextState.eventLogCursor += events.length;

@@ -5,6 +5,7 @@ export type PlayerZoneName = 'drawPile' | 'hand' | 'discardPile' | 'playArea';
 export type EffectCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: PlayerZoneName } | { kind: 'party'; player: EffectPlayerRef; position: number } | { kind: 'equipment'; player: EffectPlayerRef; partyPosition: number } | { kind: 'shared-zone'; zoneId: string } | { kind: 'removed' };
 export type EffectCondition = { kind: 'always'; value: boolean } | { kind: 'has-card-at'; card: EffectCardRef; location: EffectCardLocation };
 export type EffectValueTarget = { kind: 'turn-purchase-bonus'; player: EffectPlayerRef } | { kind: 'turn-combat-bonus'; player: EffectPlayerRef } | { kind: 'player-counter'; player: EffectPlayerRef; resourceId: string };
+export type CombatReward = { kind: 'draw'; count: number } | { kind: 'purchase-bonus'; amount: number } | { kind: 'combat-bonus'; amount: number } | { kind: 'counter'; resourceId: string; amount: number };
 export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
@@ -14,7 +15,8 @@ export type EffectNode =
   | { kind: 'draw'; player: EffectPlayerRef; count: number }
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'remove-from-game'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
-  | { kind: 'modify-value'; target: EffectValueTarget; amount: number };
+  | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
+  | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
 export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };
@@ -52,6 +54,7 @@ export function validateEffectDefinition(effect: EffectDefinition): string[] {
     if (node.kind === 'move-card') { location(node.from, `${path}.from`); location(node.to, `${path}.to`); }
     if (node.kind === 'discard-card' || node.kind === 'remove-from-game') location(node.from, `${path}.from`);
     if (node.kind === 'draw' && (!Number.isInteger(node.count) || node.count < 0)) errors.push(`${path} draw count must be a non-negative integer.`); seen.delete(node);
+    if (node.kind === 'grant-combat-reward') { if (!node.rewards.length) errors.push(`${path} requires rewards.`); node.rewards.forEach((reward, index) => { if ((reward.kind === 'draw' && (!Number.isInteger(reward.count) || reward.count < 0)) || ((reward.kind === 'purchase-bonus' || reward.kind === 'combat-bonus' || reward.kind === 'counter') && !Number.isFinite(reward.amount)) || (reward.kind === 'counter' && !reward.resourceId.trim())) errors.push(`${path}.rewards[${index}] is invalid.`); }); }
   };
   if (effect.schemaVersion !== 1 || !effect.effectId.trim()) errors.push('Effect definition requires schema version 1 and an effect ID.'); walk(effect.body, 'body'); return errors;
 }

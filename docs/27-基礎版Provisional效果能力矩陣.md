@@ -19,7 +19,7 @@
 | --- | ---: | ---: | ---: | ---: |
 | 卡片／遊戲區移動 | 3 | 0 | 0 | 0 |
 | 供應 | 0 | 2 | 2 | 0 |
-| 討伐 | 1 | 2 | 0 | 0 |
+| 討伐 | 2 | 1 | 0 | 0 |
 | 隊伍、裝備與道具 | 2 | 1 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
@@ -32,6 +32,7 @@
 - 個人抽牌只在「仍需繼續抽」時重建牌庫；展示牌庫頂不洗牌。
 - 基礎版固定公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件；供應列本身尚未泛用化。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
+- reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch 與 Snapshot resume；continuous 目前只提供 evaluation boundary。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
@@ -49,7 +50,7 @@
 - **供應組成：** 28 種物資與 14 種魔物的逐種份數未知；因此無法合法建立正確 public supply decks。
 - **供應耗盡後續：** 現行 `pendingOfficialRuling` 是凍結 command 的保守安全行為，不是官方基礎版規則。收到官方裁定前，不能改為自動結束、補牌或繼續。
 
-目前仍未實作正式／provisional 卡牌內容、討伐獎勵、裝備資格或供應列泛用設定。物資／魔物逐種份數與供應耗盡 official ruling 持續標為 `blocked-by-rule-exception`。
+目前仍未實作正式／provisional 卡牌內容、卡牌專屬討伐獎勵 policy、裝備資格或供應列泛用設定；只有不含卡牌資料的 reward primitive 已就位。物資／魔物逐種份數與供應耗盡 official ruling 持續標為 `blocked-by-rule-exception`。
 
 ## 驗收條件
 
