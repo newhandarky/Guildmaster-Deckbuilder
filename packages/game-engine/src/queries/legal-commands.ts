@@ -24,6 +24,8 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
   if (state.activePlayerId !== actorId) return [];
+  const pending = state.effectState.pendingChoice;
+  if (pending) return pending.actorId === actorId ? pending.options.map((option) => ({ type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: option.id })) : [];
   const player = getPlayer(state, actorId);
   const commands: GameCommand[] = [];
   if (state.phase === 'action1' || state.phase === 'action2') {

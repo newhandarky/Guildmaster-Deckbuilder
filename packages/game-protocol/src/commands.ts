@@ -6,6 +6,7 @@ export type GameCommand =
   | { type: 'USE_ITEM'; cardId: string }
   | { type: 'ATTACK_TARGET'; targetId: string }
   | { type: 'BUY_CARD'; cardId: string }
+  | { type: 'RESOLVE_EFFECT_CHOICE'; executionId: string; choiceId: string; optionId: string }
   | { type: 'END_PHASE'; phase: Phase };
 
 export type CommandEnvelope = { protocolVersion: 1; gameId: string; commandId: string; actorId: string; expectedRevision: number; command: GameCommand };
