@@ -1,5 +1,5 @@
 export type StarterCandidateStatus = 'needs-human-confirmation' | 'todo';
-export type StarterCandidateField = 'name' | 'cardType' | 'copies' | 'purchasePower' | 'combat' | 'cost' | 'honor' | 'effect';
+export type StarterCandidateField = 'name' | 'cardType' | 'copies' | 'purchasePower' | 'combat' | 'cost' | 'honor' | 'effect' | 'effectTiming' | 'equipmentEligibility' | 'restrictions';
 export type UserProvidedVisualEvidence = {
   evidenceId: string;
   officialUrl: string;
@@ -10,7 +10,8 @@ export type UserProvidedVisualEvidence = {
   reviewedOn: string;
   repositoryAsset: 'not-committed';
 };
-export type StarterCandidateFieldEvidence = { field: StarterCandidateField; status: StarterCandidateStatus; candidateValue?: string | number; evidenceIds: readonly string[]; gapReason?: string };
+/** Candidate-only evidence. sourceLocation is the field-level coordinate within its non-committed evidence file. */
+export type StarterCandidateFieldEvidence = { field: StarterCandidateField; status: StarterCandidateStatus; candidateValue?: string | number | boolean; evidenceIds: readonly string[]; sourceLocation: string; requiresContentOwnerConfirmation: boolean; gapReason?: string };
 export type StarterCandidate = { candidateId: string; category: 'adventurer' | 'starter-resource'; activation: 'disabled'; runtimeLoadable: false; fields: readonly StarterCandidateFieldEvidence[] };
 export type BaseStarterCandidateCatalog = { catalogVersion: 1; evidence: readonly UserProvidedVisualEvidence[]; candidates: readonly StarterCandidate[] };
 
@@ -32,7 +33,9 @@ export function validateBaseStarterCandidateCatalog(catalog: BaseStarterCandidat
     for (const field of candidate.fields) {
       for (const evidenceId of field.evidenceIds) if (!evidenceIds.has(evidenceId)) errors.push(`Unknown candidate evidence ${evidenceId} on ${candidate.candidateId}.${field.field}.`);
       if (field.status !== 'needs-human-confirmation' && field.status !== 'todo') errors.push(`Starter candidate field ${candidate.candidateId}.${field.field} has an invalid non-candidate status.`);
-      if (field.status === 'needs-human-confirmation' && (field.candidateValue === undefined || field.evidenceIds.length === 0)) errors.push(`Candidate field ${candidate.candidateId}.${field.field} requires a value and visual evidence.`);
+      if (typeof field.sourceLocation !== 'string' || !field.sourceLocation.trim()) errors.push(`Candidate field ${candidate.candidateId}.${field.field} requires a source location.`);
+      if (typeof field.requiresContentOwnerConfirmation !== 'boolean') errors.push(`Candidate field ${candidate.candidateId}.${field.field} must declare whether content-owner confirmation is required.`);
+      if (field.status === 'needs-human-confirmation' && (field.candidateValue === undefined || field.evidenceIds.length === 0 || !field.requiresContentOwnerConfirmation)) errors.push(`Candidate field ${candidate.candidateId}.${field.field} requires a value, visual evidence, and content-owner confirmation.`);
       if (field.status === 'todo' && !field.gapReason?.trim()) errors.push(`TODO candidate field ${candidate.candidateId}.${field.field} requires a gap reason.`);
     }
   }
