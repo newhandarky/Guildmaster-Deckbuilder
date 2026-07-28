@@ -2,6 +2,56 @@ import type { CommandEnvelope, GameCommand, GameState } from '@guildmaster/game-
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
+import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+
+const maxAttackPreviewDepth = 32;
+const maxAttackPreviewBranches = 256;
+type AttackPreviewResult = { states: GameState[]; indeterminate: boolean };
+
+function expandAttackChoicePreviews(state: GameState, ruleset: Ruleset, actorId: string, depth: number, budget: { remaining: number }): AttackPreviewResult {
+  const choice = state.effectState.pendingChoice;
+  if (!choice || choice.actorId !== actorId) return { states: [], indeterminate: false };
+  if (depth >= maxAttackPreviewDepth) return { states: [], indeterminate: true };
+  const completed: GameState[] = [];
+  let indeterminate = false;
+  for (const option of choice.options) {
+    if (budget.remaining <= 0) { indeterminate = true; break; }
+    budget.remaining -= 1;
+    const branch = structuredClone(state);
+    const result = resumeLifecycleChoice(branch, ruleset, actorId, choice.executionId, choice.choiceId, option.id);
+    if (result.status === 'completed') completed.push(branch);
+    else if (result.status === 'suspended') {
+      const nested = expandAttackChoicePreviews(branch, ruleset, actorId, depth + 1, budget);
+      completed.push(...nested.states); indeterminate ||= nested.indeterminate;
+    }
+  }
+  return { states: completed, indeterminate };
+}
+
+function resumeAttackChoicePreview(state: GameState, ruleset: Ruleset, actorId: string, optionId: string): AttackPreviewResult {
+  const choice = state.effectState.pendingChoice;
+  if (!choice || choice.actorId !== actorId) return { states: [], indeterminate: false };
+  const branch = structuredClone(state);
+  const result = resumeLifecycleChoice(branch, ruleset, actorId, choice.executionId, choice.choiceId, optionId);
+  if (result.status === 'completed') return { states: [branch], indeterminate: false };
+  return result.status === 'suspended' ? expandAttackChoicePreviews(branch, ruleset, actorId, 1, { remaining: maxAttackPreviewBranches }) : { states: [], indeterminate: false };
+}
+
+function previewAttackCommandBefore(state: GameState, ruleset: Ruleset, actorId: string): AttackPreviewResult {
+  const preview = structuredClone(state);
+  const result = dispatchLifecycle(preview, ruleset, { schemaVersion: 1, point: 'command-before', actorId, commandType: 'ATTACK_TARGET', phase: preview.phase, metadata: { commandId: `legal-preview-${state.revision + 1}` } }, { controllerId: actorId });
+  if (result.status === 'completed') return { states: [preview], indeterminate: false };
+  return result.status === 'suspended' ? expandAttackChoicePreviews(preview, ruleset, actorId, 0, { remaining: maxAttackPreviewBranches }) : { states: [], indeterminate: false };
+}
+
+function attackIsLegalInAnyPreview(preview: AttackPreviewResult, ruleset: Ruleset, actorId: string, targetId: string): boolean {
+  if (preview.indeterminate) return true;
+  return preview.states.some((state) => {
+    const result = evaluateCombat(state, ruleset, actorId, targetId);
+    return result.status === 'ready' && result.evaluation.eligible && getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
+  });
+}
 
 export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: string): number {
   const player = getPlayer(state, playerId);
@@ -23,9 +73,16 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
-  if (state.activePlayerId !== actorId) return [];
   const pending = state.effectState.pendingChoice;
-  if (pending) return pending.actorId === actorId ? pending.options.map((option) => ({ type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: option.id })) : [];
+  if (pending) {
+    if (pending.actorId !== actorId) return [];
+    const pendingAttack = state.effectState.pendingCommand?.envelope.command;
+    const options = pendingAttack?.type === 'ATTACK_TARGET'
+      ? pending.options.filter((option) => attackIsLegalInAnyPreview(resumeAttackChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingAttack.targetId))
+      : pending.options;
+    return options.map((option) => ({ type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: option.id }));
+  }
+  if (state.activePlayerId !== actorId) return [];
   const player = getPlayer(state, actorId);
   const commands: GameCommand[] = [];
   if (state.phase === 'action1' || state.phase === 'action2') {
@@ -37,10 +94,10 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     }
   }
   if (state.phase === 'combat') {
+    const preview = previewAttackCommandBefore(state, ruleset, actorId);
     for (const target of Object.values(state.enemyTargets)) {
       if (target.status !== 'available') continue;
-      const required = getDefinition(ruleset.registry, state, target.cardInstanceId).combat ?? Number.POSITIVE_INFINITY;
-      if (getCombatPrefix(state, ruleset, actorId, required)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
+      if (attackIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
     }
   }
   if (state.phase === 'purchase') {

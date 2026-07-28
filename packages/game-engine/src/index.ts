@@ -9,4 +9,5 @@ export * from './queries/legal-commands.js';
 export * from './queries/player-view.js';
 export * from './queries/scoring.js';
 export * from './rules/base-rules.js';
+export * from './rules/combat-evaluator.js';
 export * from './rules/ruleset.js';
