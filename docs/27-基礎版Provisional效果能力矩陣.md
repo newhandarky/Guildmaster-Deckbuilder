@@ -22,7 +22,7 @@
 | 討伐 | 1 | 2 | 0 | 0 |
 | 隊伍、裝備與道具 | 2 | 1 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
-| 時序與效果 | 2 | 1 | 0 | 0 |
+| 時序與效果 | 3 | 1 | 0 | 0 |
 | 羈絆、終局與計分 | 1 | 1 | 0 | 1 |
 
 詳細 capability ID、引擎證據、候選 mechanics ID、限制與下一步均由矩陣資料提供並受測試驗證。
@@ -33,20 +33,23 @@
 - 基礎版固定公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件；供應列本身尚未泛用化。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
+- 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch 與 Snapshot resume；continuous 目前只提供 evaluation boundary。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
 
 ## 缺口與建議優先順序
 
 1. **P0：解除資料阻擋前不可開完整對局。** 取得物資與魔物「逐種」份數的可稽核官方資料。這不是引擎工作；不得反推或建立非官方供應組成 policy。
-2. **P1：Effect AST 與原子卡片移動。** 先做 `moveCard`、`discardCard`、`removeCard`、selector、`sequence`、`conditional` 與 effect queue；所有資料與 continuation 必須可序列化。
+2. **已完成基礎：Effect AST 與 lifecycle dispatch。** 原子 card movement、choice、deterministic random、Rules Module lifecycle registry、pending queue、Snapshot resume 與 transaction rollback 已有 contract tests；不代表任何 provisional 卡牌已載入。
 3. **P1：討伐／供應／裝備的泛用 extensions。** 接上獎勵、戰力修正、公開列刷新、裝備資格與隊伍溢出 policy；不可在 reducer 以單一卡名分支。
-4. **P2：trigger、replacement、選擇與骰子。** 等前述 AST 可驗證後，加入 lifecycle hook、pending choice、注入式亂數與替代效果。
+4. **P2：continuous 與內容接線。** 在官方資料與個別時序確認後，才把卡牌內容接到已存在的 lifecycle boundary；不得把 provisional catalog 當 production content 載入。
 5. **P3：Vol.1 專屬能力。** HP、同分排名、協助者、究極魔神多部位，全部保持獨立 Rules Module，不滲入基礎 MVP。
 
 ## 被官方例外阻擋的項目
 
 - **供應組成：** 28 種物資與 14 種魔物的逐種份數未知；因此無法合法建立正確 public supply decks。
 - **供應耗盡後續：** 現行 `pendingOfficialRuling` 是凍結 command 的保守安全行為，不是官方基礎版規則。收到官方裁定前，不能改為自動結束、補牌或繼續。
+
+目前仍未實作正式／provisional 卡牌內容、討伐獎勵、裝備資格或供應列泛用設定。物資／魔物逐種份數與供應耗盡 official ruling 持續標為 `blocked-by-rule-exception`。
 
 ## 驗收條件
 

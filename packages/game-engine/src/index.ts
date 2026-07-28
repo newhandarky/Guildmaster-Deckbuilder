@@ -3,6 +3,7 @@ export * from './engine/dispatch.js';
 export * from './engine/snapshot.js';
 export * from './effects/executor.js';
 export * from './effects/movement.js';
+export * from './effects/lifecycle-dispatcher.js';
 export * from './queries/legal-commands.js';
 export * from './queries/player-view.js';
 export * from './queries/scoring.js';

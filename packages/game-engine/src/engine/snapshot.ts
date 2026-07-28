@@ -1,4 +1,4 @@
-import { SnapshotEnvelopeSchema, type GameState, type VersionedSnapshot } from '@guildmaster/game-protocol';
+import { GameStateSchema, SnapshotEnvelopeSchema, type GameState, type VersionedSnapshot } from '@guildmaster/game-protocol';
 import { baseZoneIds } from '../model/zones.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
@@ -12,4 +12,15 @@ function migrateV1(snapshot: Record<string, unknown>): unknown {
   const migratedState: Record<string, unknown> = { ...state, schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', players, zones, enemyTargets, enemyEncounters }; delete migratedState.sharedZones;
   return { schemaVersion: 2, engineVersion: migratedState.engineVersion, rulesetVersion: migratedState.rulesetVersion, contentPacks: migratedState.contentPacks, rulesModules: migratedState.rulesModules, state: migratedState };
 }
-export function restoreSnapshot(snapshot: unknown): GameState { const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : raw; const envelope = SnapshotEnvelopeSchema.parse(migrated); if (envelope.contentPacks.some((pack, index) => pack.hash !== envelope.state.contentPacks[index]?.hash)) throw new Error('Snapshot content manifest mismatch.'); const state = structuredClone(envelope.state) as GameState; state.effectState ??= {}; return state; }
+export function restoreSnapshot(snapshot: unknown): GameState {
+  const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : raw; const envelope = SnapshotEnvelopeSchema.parse(migrated);
+  if (envelope.contentPacks.some((pack, index) => pack.hash !== envelope.state.contentPacks[index]?.hash)) throw new Error('Snapshot content manifest mismatch.');
+  const state = structuredClone(envelope.state) as GameState; state.effectState ??= {};
+  const pending = state.effectState.pendingLifecycle;
+  if (pending) {
+    const rollbackState = GameStateSchema.parse(pending.rollbackState) as GameState;
+    if (rollbackState.gameId !== state.gameId || rollbackState.rulesetVersion !== pending.registry.rulesetVersion || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingLifecycle) throw new Error('Invalid lifecycle rollback checkpoint.');
+    pending.rollbackState = structuredClone(rollbackState);
+  }
+  return state;
+}
