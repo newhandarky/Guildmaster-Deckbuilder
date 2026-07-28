@@ -18,7 +18,7 @@
 | 類別 | supported | missing | blocked | not in MVP |
 | --- | ---: | ---: | ---: | ---: |
 | 卡片／遊戲區移動 | 2 | 1 | 0 | 0 |
-| 供應 | 1 | 1 | 2 | 0 |
+| 供應 | 0 | 2 | 2 | 0 |
 | 討伐 | 1 | 2 | 0 | 0 |
 | 隊伍、裝備與道具 | 2 | 1 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
@@ -30,7 +30,7 @@
 ## 已有 coverage
 
 - 個人抽牌只在「仍需繼續抽」時重建牌庫；展示牌庫頂不洗牌。
-- 公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件。
+- 基礎版固定公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件；供應列本身尚未泛用化。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
