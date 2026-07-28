@@ -35,6 +35,7 @@
 - reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch 與 Snapshot resume；continuous 目前只提供 evaluation boundary。
+- command-before choice continuation 可安全恢復原 command；不代表任何正式或 provisional 卡牌內容已載入。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
 
 ## 缺口與建議優先順序

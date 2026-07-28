@@ -219,8 +219,34 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   const player = getPlayer(nextState, envelope.actorId);
   const events: DomainEvent[] = [];
   let error: EngineError | undefined;
-  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchCommandLifecycle(nextState, ruleset, 'command-before', envelope, events, false);
+  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') {
+    const before = dispatchLifecycle(nextState, ruleset, { schemaVersion: 1, point: 'command-before', actorId: envelope.actorId, commandType: envelope.command.type, phase: nextState.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
+    if (before.status === 'suspended') { nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope) }; events.push(...before.events); return { state: nextState, events }; }
+    error = lifecycleFailure(before, 'command-before', false); if (!error) events.push(...before.events);
+  }
   if (error) return { state, events: [], error };
+  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand) {
+    const continuation = nextState.effectState.pendingCommand; const pending = nextState.effectState.pendingLifecycle; const rollback = pending?.rollbackState;
+    if (!pending || continuation.envelope.actorId !== envelope.actorId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
+    const resumed = resumeLifecycleChoice(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+    if (resumed.status === 'failed' || resumed.status === 'unsupported') return fail(state, 'INVALID_COMMAND', resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。');
+    events.push(...resumed.events);
+    if (resumed.status === 'suspended') return { state: nextState, events };
+    delete nextState.effectState.pendingCommand;
+    const original = continuation.envelope; const originalPlayer = getPlayer(nextState, original.actorId);
+    switch (original.command.type) {
+      case 'PLAY_ADVENTURER': error = playAdventurer(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'EQUIP_ITEM': error = equipItem(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'USE_ITEM': error = applyItem(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'ATTACK_TARGET': error = attackTarget(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'BUY_CARD': error = buyCard(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'END_PHASE': error = endPhase(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
+      case 'RESOLVE_EFFECT_CHOICE': error = { code: 'INVALID_COMMAND', message: 'Command continuation cannot resolve another choice.' }; break;
+    }
+    if (!error) { const facts = events.filter((entry) => entry.type !== 'EFFECT_STARTED' && entry.type !== 'EFFECT_COMPLETED' && entry.type !== 'EFFECT_SUSPENDED'); error = dispatchEventLifecycle(nextState, ruleset, original, facts, events); if (!error) error = dispatchCommandLifecycle(nextState, ruleset, 'command-after', original, events, true); }
+    if (error) return { state: rollback ? structuredClone(rollback) : state, events: [], error };
+    nextState.revision += 1; nextState.eventLogCursor += events.length; return { state: nextState, events };
+  }
   switch (envelope.command.type) {
     case 'PLAY_ADVENTURER': error = playAdventurer(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
     case 'EQUIP_ITEM': error = equipItem(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
