@@ -55,4 +55,11 @@ describe('serializable effect primitives', () => {
     const result = moveCard(state, { cardInstanceId: cardId, from: { kind: 'shared-zone', zoneId: 'test:hidden' }, to: discard, actorId: 'p1', context: { controllerId: 'p1' }, registry: testRuleset.registry });
     expect(result).toMatchObject({ ok: false, code: 'HIDDEN_INFORMATION' }); expect(state.zones['test:hidden']!.cardIds).toEqual([cardId]);
   });
+
+  it('rolls back an entire effect sequence when a later movement is illegal', () => {
+    const state = makeGame(); const cardId = state.players[0]!.hand[0]!; const before = structuredClone(state);
+    const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/rollback', body: { kind: 'sequence', effects: [{ kind: 'move-card', card: { kind: 'context-card', key: 'card' }, from: hand, to: discard }, { kind: 'move-card', card: { kind: 'context-card', key: 'card' }, from: hand, to: { kind: 'removed' } }] } };
+    expect(executeEffect(state, testRuleset, effect, { controllerId: 'p1', cardRefs: { card: cardId } }, 'rollback-1')).toMatchObject({ status: 'failed' });
+    expect(state).toEqual(before);
+  });
 });

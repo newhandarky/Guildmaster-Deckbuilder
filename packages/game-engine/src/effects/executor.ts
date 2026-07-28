@@ -17,6 +17,7 @@ export function resolveEffectOrder(entries: readonly { id: string; priority?: nu
 export type EffectExecutionResult = { status: 'completed' | 'suspended' | 'failed' | 'unsupported'; events: DomainEvent[]; error?: string };
 const domainEvent = (state: GameState, events: DomainEvent[], type: string, message: string) => events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message });
 const playerId = (ref: import('@guildmaster/game-protocol').EffectPlayerRef, context: EffectContext) => ref.kind === 'controller' ? context.controllerId : ref.kind === 'player-id' ? ref.playerId : context.playerRefs?.[ref.key];
+function commitState(target: GameState, source: GameState): void { Object.assign(target, source); }
 
 function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode[], context: EffectContext, executionId: string, events: DomainEvent[]): EffectExecutionResult {
   for (let index = 0; index < nodes.length; index += 1) {
@@ -34,10 +35,10 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
   }
   return { status: 'completed', events };
 }
-export function executeEffect(state: GameState, ruleset: Ruleset, effect: EffectDefinition, context: EffectContext, executionId: string): EffectExecutionResult { const events: DomainEvent[] = []; if (state.effectState.pendingChoice) return { status: 'failed', events, error: 'Another effect choice is pending.' }; domainEvent(state, events, 'EFFECT_STARTED', `Effect ${effect.effectId} started.`); const result = runNodes(state, ruleset, [effect.body], context, executionId, events); if (result.status === 'completed') domainEvent(state, events, 'EFFECT_COMPLETED', `Effect ${effect.effectId} completed.`); return result; }
+export function executeEffect(state: GameState, ruleset: Ruleset, effect: EffectDefinition, context: EffectContext, executionId: string): EffectExecutionResult { const next = structuredClone(state); const events: DomainEvent[] = []; if (next.effectState.pendingChoice) return { status: 'failed', events, error: 'Another effect choice is pending.' }; domainEvent(next, events, 'EFFECT_STARTED', `Effect ${effect.effectId} started.`); const result = runNodes(next, ruleset, [effect.body], context, executionId, events); if (result.status === 'completed') domainEvent(next, events, 'EFFECT_COMPLETED', `Effect ${effect.effectId} completed.`); if (result.status === 'completed' || result.status === 'suspended') commitState(state, next); return result; }
 export function resumeEffectChoice(state: GameState, ruleset: Ruleset, actorId: string, executionId: string, choiceId: string, optionId: string): EffectExecutionResult {
-  const events: DomainEvent[] = []; const pending = state.effectState.pendingChoice;
+  const next = structuredClone(state); const events: DomainEvent[] = []; const pending = next.effectState.pendingChoice;
   if (!pending || pending.executionId !== executionId || pending.choiceId !== choiceId || pending.actorId !== actorId) return { status: 'failed', events, error: 'No matching pending effect choice.' };
   const option = pending.options.find((entry) => entry.id === optionId); if (!option) return { status: 'failed', events, error: 'Invalid pending effect choice option.' };
-  delete state.effectState.pendingChoice; const result = runNodes(state, ruleset, [option.effect, ...pending.remaining], pending.context, executionId, events); if (result.status === 'completed') domainEvent(state, events, 'EFFECT_COMPLETED', `Effect choice ${choiceId} completed.`); return result;
+  delete next.effectState.pendingChoice; const result = runNodes(next, ruleset, [option.effect, ...pending.remaining], pending.context, executionId, events); if (result.status === 'completed') domainEvent(next, events, 'EFFECT_COMPLETED', `Effect choice ${choiceId} completed.`); if (result.status === 'completed' || result.status === 'suspended') commitState(state, next); return result;
 }
