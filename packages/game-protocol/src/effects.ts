@@ -36,9 +36,24 @@ export type PendingLifecycleDispatch = {
   registry: LifecycleRegistrySnapshot;
   rollbackState: import('./state.js').GameState;
 };
-/** Original command held while its command-before lifecycle choice is unresolved. */
-export type PendingCommandContinuation = { schemaVersion: 1; envelope: import('./commands.js').CommandEnvelope };
-export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch; pendingCommand?: PendingCommandContinuation };
+/** Original command and uncommitted lifecycle events held while command-before is unresolved. */
+export type PendingCommandContinuation = { schemaVersion: 1; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[] };
+/** Serializable cursor for a command whose reducer has completed but post-command lifecycle work is pending. */
+export type PendingPostCommandContinuation = {
+  schemaVersion: 1;
+  continuationId: string;
+  envelope: import('./commands.js').CommandEnvelope;
+  rollbackState: import('./state.js').GameState;
+  facts: readonly import('./commands.js').DomainEvent[];
+  factIndex: number;
+  boundary: 'event-before' | 'event-after' | 'command-after';
+  step: 'dispatch-boundary' | 'resume-boundary';
+  events: readonly import('./commands.js').DomainEvent[];
+  payload: import('./lifecycle.js').LifecyclePayload;
+  context: EffectContext;
+  registry: LifecycleRegistrySnapshot;
+};
+export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch; pendingCommand?: PendingCommandContinuation; pendingPostCommand?: PendingPostCommandContinuation };
 /** Registry skeleton: card content is not registered in this PR. */
 export type EffectTrigger = { schemaVersion: 1; triggerId: string; eventType: string; effect: EffectDefinition; priority?: number };
 export type ContinuousEffect = { schemaVersion: 1; continuousId: string; source: EffectCardRef; duration: 'while-source-present' | 'until-rest' | 'this-turn' | 'this-combat'; effect: EffectDefinition };

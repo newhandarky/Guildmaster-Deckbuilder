@@ -7,7 +7,8 @@ import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice } from '../effects/executor.js';
-import { dispatchLifecycle, resumeLifecycleChoice, type LifecycleDispatchResult } from '../effects/lifecycle-dispatcher.js';
+import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}) });
@@ -176,6 +177,19 @@ function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, comma
   return undefined;
 }
 
+function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
+  const player = getPlayer(state, envelope.actorId);
+  switch (envelope.command.type) {
+    case 'PLAY_ADVENTURER': return playAdventurer(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'EQUIP_ITEM': return equipItem(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'USE_ITEM': return applyItem(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'END_PHASE': return endPhase(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'RESOLVE_EFFECT_CHOICE': return { code: 'INVALID_COMMAND', message: 'A choice command cannot be used as an original command continuation.' };
+  }
+}
+
 function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'RESOLVE_EFFECT_CHOICE' }>, events: DomainEvent[]): EngineError | undefined {
   const result = state.effectState.pendingLifecycle
     ? resumeLifecycleChoice(state, ruleset, player.id, command.executionId, command.choiceId, command.optionId)
@@ -187,81 +201,59 @@ function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerS
   return result.status === 'failed' || result.status === 'unsupported' ? { code: 'INVALID_COMMAND', message } : undefined;
 }
 
-function lifecycleFailure(result: LifecycleDispatchResult, boundary: string, allowSuspend: boolean): EngineError | undefined {
-  if (result.status === 'completed' || (allowSuspend && result.status === 'suspended')) return undefined;
-  if (result.status === 'suspended') return { code: 'INVALID_COMMAND', message: `${boundary} lifecycle 不能在原 command 執行前暫停。` };
-  return { code: 'INVALID_COMMAND', message: result.error ?? result.reason ?? `${boundary} lifecycle failed.` };
-}
-
-function dispatchCommandLifecycle(state: GameState, ruleset: Ruleset, point: 'command-before' | 'command-after', envelope: CommandEnvelope, events: DomainEvent[], allowSuspend: boolean): EngineError | undefined {
-  const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId: envelope.actorId, commandType: envelope.command.type, phase: state.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
-  const error = lifecycleFailure(result, point, allowSuspend); if (!error) events.push(...result.events); return error;
-}
-
-function dispatchEventLifecycle(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, facts: readonly DomainEvent[], events: DomainEvent[]): EngineError | undefined {
-  for (const fact of facts) {
-    for (const point of ['event-before', 'event-after'] as const) {
-      const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId: envelope.actorId, eventType: fact.type, phase: state.phase, metadata: { commandId: envelope.commandId, eventId: fact.eventId } }, { controllerId: envelope.actorId });
-      const error = lifecycleFailure(result, `${point}:${fact.type}`, false); if (error) return error;
-      events.push(...result.events);
-    }
-  }
-  return undefined;
-}
-
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
   if (envelope.actorId !== state.activePlayerId) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
-  if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
+  if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
   const nextState = structuredClone(state);
-  const player = getPlayer(nextState, envelope.actorId);
-  const events: DomainEvent[] = [];
-  let error: EngineError | undefined;
-  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') {
-    const before = dispatchLifecycle(nextState, ruleset, { schemaVersion: 1, point: 'command-before', actorId: envelope.actorId, commandType: envelope.command.type, phase: nextState.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
-    if (before.status === 'suspended') { nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope) }; events.push(...before.events); return { state: nextState, events }; }
-    error = lifecycleFailure(before, 'command-before', false); if (!error) events.push(...before.events);
+  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingPostCommand) {
+    const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
+    const result = resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+    if (result.status === 'failed' || result.status === 'unsupported') return result.rollback === 'command' ? { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: result.error ?? '無法恢復 post-command lifecycle。' } } : fail(state, 'INVALID_COMMAND', result.error ?? '無法恢復 post-command lifecycle。');
+    if (result.status === 'suspended') return { state: nextState, events: result.events };
+    nextState.revision += 1;
+    nextState.eventLogCursor += result.events.length;
+    return { state: nextState, events: result.events };
   }
-  if (error) return { state, events: [], error };
   if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand) {
-    const continuation = nextState.effectState.pendingCommand; const pending = nextState.effectState.pendingLifecycle; const rollback = pending?.rollbackState;
+    const resolution = envelope.command;
+    const continuation = structuredClone(nextState.effectState.pendingCommand); const pending = nextState.effectState.pendingLifecycle; const rollback = pending?.rollbackState;
     if (!pending || continuation.envelope.actorId !== envelope.actorId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
+    const choice = nextState.effectState.pendingChoice;
+    if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.');
     const resumed = resumeLifecycleChoice(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
-    if (resumed.status === 'failed' || resumed.status === 'unsupported') return fail(state, 'INVALID_COMMAND', resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。');
-    events.push(...resumed.events);
-    if (resumed.status === 'suspended') return { state: nextState, events };
+    if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。' } };
+    const events = [...continuation.events, ...resumed.events];
+    if (resumed.status === 'suspended') { nextState.effectState.pendingCommand!.events = structuredClone(events); return { state: nextState, events }; }
     delete nextState.effectState.pendingCommand;
-    const original = continuation.envelope; const originalPlayer = getPlayer(nextState, original.actorId);
-    switch (original.command.type) {
-      case 'PLAY_ADVENTURER': error = playAdventurer(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'EQUIP_ITEM': error = equipItem(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'USE_ITEM': error = applyItem(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'ATTACK_TARGET': error = attackTarget(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'BUY_CARD': error = buyCard(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'END_PHASE': error = endPhase(nextState, ruleset, originalPlayer, original.command, events, original.commandId); break;
-      case 'RESOLVE_EFFECT_CHOICE': error = { code: 'INVALID_COMMAND', message: 'Command continuation cannot resolve another choice.' }; break;
-    }
-    if (!error) { const facts = events.filter((entry) => entry.type !== 'EFFECT_STARTED' && entry.type !== 'EFFECT_COMPLETED' && entry.type !== 'EFFECT_SUSPENDED'); error = dispatchEventLifecycle(nextState, ruleset, original, facts, events); if (!error) error = dispatchCommandLifecycle(nextState, ruleset, 'command-after', original, events, true); }
+    const factStart = events.length;
+    const error = reduceCommand(nextState, ruleset, continuation.envelope, events);
     if (error) return { state: rollback ? structuredClone(rollback) : state, events: [], error };
+    const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, rollback ? structuredClone(rollback) : structuredClone(state), events.slice(factStart), events);
+    if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+    if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
+    nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+  }
+  const events: DomainEvent[] = [];
+  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE') {
+    const error = resolveEffectChoice(nextState, ruleset, getPlayer(nextState, envelope.actorId), envelope.command, events);
+    if (error) return { state, events: [], error };
     nextState.revision += 1; nextState.eventLogCursor += events.length; return { state: nextState, events };
   }
-  switch (envelope.command.type) {
-    case 'PLAY_ADVENTURER': error = playAdventurer(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-    case 'EQUIP_ITEM': error = equipItem(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-    case 'USE_ITEM': error = applyItem(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-    case 'ATTACK_TARGET': error = attackTarget(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-    case 'BUY_CARD': error = buyCard(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-    case 'RESOLVE_EFFECT_CHOICE': error = resolveEffectChoice(nextState, ruleset, player, envelope.command, events); break;
-    case 'END_PHASE': error = endPhase(nextState, ruleset, player, envelope.command, events, envelope.commandId); break;
-  }
+  const rollback = structuredClone(state);
+  const before = dispatchLifecycle(nextState, ruleset, { schemaVersion: 1, point: 'command-before', actorId: envelope.actorId, commandType: envelope.command.type, phase: nextState.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
+  events.push(...before.events);
+  if (before.status === 'suspended') { nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope), events: structuredClone(events) }; return { state: nextState, events }; }
+  if (before.status === 'failed' || before.status === 'unsupported') return { state, events: [], error: { code: 'INVALID_COMMAND', message: before.error ?? before.reason ?? 'command-before lifecycle failed.' } };
+  const factStart = events.length;
+  const error = reduceCommand(nextState, ruleset, envelope, events);
   if (error) return { state, events: [], error };
-  const facts = [...events];
-  if (envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchEventLifecycle(nextState, ruleset, envelope, facts, events);
-  if (!error && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') error = dispatchCommandLifecycle(nextState, ruleset, 'command-after', envelope, events, true);
-  if (error) return { state, events: [], error };
+  const pipeline = beginPostCommandPipeline(nextState, ruleset, envelope, rollback, events.slice(factStart), events);
+  if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+  if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
   nextState.revision += 1;
-  nextState.eventLogCursor += events.length;
-  return { state: nextState, events };
+  nextState.eventLogCursor += pipeline.events.length;
+  return { state: nextState, events: pipeline.events };
 }
