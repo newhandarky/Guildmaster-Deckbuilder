@@ -1,0 +1,66 @@
+export type ProvisionalAuditStatus = 'verified' | 'provisional' | 'exception' | 'disabled';
+export type ProvisionalFieldName = 'sourceName' | 'cardType' | 'profession' | 'copies' | 'cost' | 'combat' | 'purchasePower' | 'honor' | 'effect' | 'effectTiming' | 'equipmentEligibility' | 'restrictions' | 'setup';
+
+export type VisualSource = {
+  sourceId: string;
+  officialUrl: string;
+  documentName: string;
+  providedFileName: string;
+  printedPage?: string;
+  region: string;
+  reviewedOn: string;
+  repositoryAsset: 'not-committed';
+};
+
+/** Names and text in this catalog are source metadata, never player-facing presentation. */
+export type ProvisionalField = {
+  field: ProvisionalFieldName;
+  candidateValue?: string | number | boolean;
+  status: ProvisionalAuditStatus;
+  confidence: 'high' | 'medium' | 'low';
+  sourceIds: readonly string[];
+  sourceLocation: string;
+  exceptionReason?: string;
+};
+
+export type ProvisionalCardCandidate = {
+  definitionId: string;
+  category: 'starter' | 'adventurer' | 'resource' | 'monster' | 'boss' | 'bond' | 'helper';
+  runtimeLoadable: false;
+  activation: 'disabled';
+  fields: readonly ProvisionalField[];
+};
+
+export type ProvisionalBaseContentCatalog = {
+  catalogVersion: 1;
+  evidence: readonly VisualSource[];
+  candidates: readonly ProvisionalCardCandidate[];
+};
+
+const idPattern = /^[a-z0-9-]+:[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
+const allowedHosts = new Set(['paintcanfarm.com', 'www.paintcanfarm.com']);
+const officialUrl = (url: string) => { try { const parsed = new URL(url); return parsed.protocol === 'https:' && allowedHosts.has(parsed.hostname); } catch { return false; } };
+
+export function validateProvisionalBaseContentCatalog(catalog: ProvisionalBaseContentCatalog): string[] {
+  const errors: string[] = []; const sourceIds = new Set<string>(); const definitionIds = new Set<string>();
+  for (const source of catalog.evidence) {
+    if (sourceIds.has(source.sourceId)) errors.push(`Duplicate visual source: ${source.sourceId}.`);
+    sourceIds.add(source.sourceId);
+    if (!officialUrl(source.officialUrl) || !source.documentName.trim() || !source.providedFileName.trim() || !source.region.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(source.reviewedOn)) errors.push(`Source ${source.sourceId} requires official URL, document, local filename, locator, and date.`);
+    if (source.repositoryAsset !== 'not-committed') errors.push(`Source ${source.sourceId} must not be committed as an asset.`);
+  }
+  for (const candidate of catalog.candidates) {
+    if (!idPattern.test(candidate.definitionId) || definitionIds.has(candidate.definitionId)) errors.push(`Candidate has invalid or duplicate neutral mechanics ID: ${candidate.definitionId}.`);
+    definitionIds.add(candidate.definitionId);
+    if (candidate.runtimeLoadable || candidate.activation !== 'disabled') errors.push(`Provisional candidate ${candidate.definitionId} must remain disabled outside runtime.`);
+    if (!candidate.fields.length) errors.push(`Provisional candidate ${candidate.definitionId} requires fields.`);
+    for (const field of candidate.fields) {
+      if (!field.sourceIds.length || !field.sourceLocation.trim()) errors.push(`Field ${candidate.definitionId}.${field.field} requires source IDs and an exact locator.`);
+      for (const sourceId of field.sourceIds) if (!sourceIds.has(sourceId)) errors.push(`Unknown source ${sourceId} on ${candidate.definitionId}.${field.field}.`);
+      if (field.status === 'exception' && !field.exceptionReason?.trim()) errors.push(`Exception ${candidate.definitionId}.${field.field} requires a reason.`);
+      if (field.status === 'provisional' && field.candidateValue === undefined) errors.push(`Provisional ${candidate.definitionId}.${field.field} requires a candidate value.`);
+      if (field.status === 'verified' && field.candidateValue === undefined) errors.push(`Verified ${candidate.definitionId}.${field.field} requires a value.`);
+    }
+  }
+  return errors;
+}

@@ -2,19 +2,18 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../docs/18-內容驗證審核流程.md', import.meta.url), 'utf8');
 const required = [
-  '## 角色與責任',
-  '## 每張卡的最小核對欄位',
-  '## 可稽核確認紀錄格式',
-  '| candidateId / definitionId | 欄位 | 候選值 | 官方 URL／文件版本 | 頁碼／區域 | 內容負責人 | reviewer | 確認日期 | 結果 | 備註／缺口 |',
-  '## 狀態轉換與啟用門檻',
-  '## 模糊、衝突與退回',
-  '## 顯示文字與素材隔離',
-  '## 批次確認清單',
-  'image-only 視覺資料、OCR 結果、示範資料或推測',
-  '不得將任何卡牌欄位標成 `verified`／`enabled`',
-  '視覺來源只可輔助定位，不能單獨支援正式 `verified`。',
-  '任意 | `todo` + `disabled`',
-  '不提交、嵌入或在前端載入官方圖片、掃描、卡面或美術。'
+  '# Content Verification：AI-first、例外人工確認',
+  'AI-first',
+  '`verified`',
+  '`provisional`',
+  '`exception`',
+  '`disabled`',
+  '每一個候選欄位必須保存：候選讀值、`status`、`confidence`、來源 ID、來源檔名、印刷頁碼或卡表區域、例外理由',
+  '所有目前的 `baseProvisionalContentCatalog` 候選均為 `activation: disabled`、`runtimeLoadable: false`。',
+  '不清楚的資料不猜測。',
+  '## 素材與呈現隔離',
+  '不提交或顯示官方圖片、掃描、卡面、美術或商標。',
+  '仍不能自動把候選載入正式 production Content Pack。'
 ];
 const missing = required.filter((fragment) => !workflow.includes(fragment));
 if (missing.length > 0) throw new Error(`Content verification workflow is missing required contract text: ${missing.join(', ')}`);

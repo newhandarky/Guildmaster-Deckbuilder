@@ -13,8 +13,10 @@ export type RulesModule = {
   getScoreContributions?: (state: GameState, registry: ContentRegistry) => readonly ScoreContribution[];
 };
 export type Ruleset = { registry: ContentRegistry; modules: readonly RulesModule[] };
+export type ContentRegistryOptions = { allowProvisionalPlaytest?: boolean };
 
-export function createContentRegistry(packs: readonly ContentPack[]): ContentRegistry {
+export function createContentRegistry(packs: readonly ContentPack[], options: ContentRegistryOptions = {}): ContentRegistry {
+  if (!options.allowProvisionalPlaytest && packs.some((pack) => pack.manifest.contentStatus === 'provisional-playtest')) throw new Error('Provisional playtest Content Packs require explicit allowProvisionalPlaytest.');
   const manifests = packs.map((pack) => pack.manifest);
   const ids = new Set(manifests.map((manifest) => manifest.id));
   for (const manifest of manifests) {
@@ -44,10 +46,10 @@ export function createContentRegistry(packs: readonly ContentPack[]): ContentReg
   if (!base.starter || !base.bonds) throw new Error('The base Content Pack must define starter cards and bonds.');
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
-export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[]): Ruleset {
+export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
   const moduleIds = new Set<string>();
   for (const module of modules) { if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`); moduleIds.add(module.id); }
-  return { registry: createContentRegistry(packs), modules };
+  return { registry: createContentRegistry(packs, options), modules };
 }
 export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { return Math.max(0, ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER)); }
 export function getEndCondition(ruleset: Ruleset, state: GameState): string | undefined {
