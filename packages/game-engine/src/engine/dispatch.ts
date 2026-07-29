@@ -11,6 +11,7 @@ import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-d
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
+import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
@@ -38,14 +39,18 @@ function resolveItem(player: PlayerState, effect: string | undefined): void {
   if (effect === 'combat+2') player.turnCombatBonus += 2;
 }
 
-function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Ruleset, events: DomainEvent[], commandId: string): void {
+function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Ruleset, events: DomainEvent[], commandId: string): EngineError | undefined {
   for (const bond of player.bonds) {
+    if (bond.completed) continue;
     const definition = ruleset.registry.bonds.find((candidate) => candidate.id === bond.bondId);
-    if (!bond.completed && definition && player.history.defeatedBosses >= definition.requiredBosses) {
+    const evaluation = evaluateBondCondition(state, ruleset, player.id, bond.bondId);
+    if (evaluation.status !== 'ready') return { code: 'INVALID_COMMAND', message: evaluation.error };
+    if (definition && evaluation.evaluation.satisfied) {
       bond.completed = true;
       event(state, events, 'BOND_COMPLETED', `${player.name} 完成羈絆：${definition.name}。`, commandId);
     }
   }
+  return undefined;
 }
 
 function checkEnd(state: GameState, ruleset: Ruleset, events: DomainEvent[], commandId: string): void {
@@ -140,7 +145,8 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   player.discardPile.push(target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
-  maybeCompleteBonds(state, player, ruleset, events, commandId);
+  const bondError = maybeCompleteBonds(state, player, ruleset, events, commandId);
+  if (bondError) return bondError;
   event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}（投入 ${prefix.slotCount} 位冒險者）。`, commandId);
   checkEnd(state, ruleset, events, commandId);
   return undefined;
