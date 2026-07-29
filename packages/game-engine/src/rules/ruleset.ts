@@ -1,5 +1,6 @@
 import { validateCombatRule, validateContinuousRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
+import { evaluateContinuousEffects } from './continuous-evaluator.js';
 
 export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
 export type EndCondition = { id: string; priority?: number; evaluate: (state: GameState) => boolean };
@@ -68,7 +69,7 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
   }
   return { registry: createContentRegistry(packs, options), modules };
 }
-export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { return Math.max(0, ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER)); }
+export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { const base = ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER); const continuous = evaluateContinuousEffects(state, ruleset); return Math.max(0, base + (continuous.status === 'ready' ? continuous.evaluation.active.filter((effect) => effect.target === 'team-capacity').reduce((sum, effect) => sum + effect.amount, 0) : 0)); }
 export function getEndCondition(ruleset: Ruleset, state: GameState): string | undefined {
   return ruleset.modules.flatMap((module) => module.endConditions ?? []).sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)).find((condition) => condition.evaluate(state))?.id;
 }
