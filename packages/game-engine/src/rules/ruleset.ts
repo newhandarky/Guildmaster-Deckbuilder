@@ -1,4 +1,4 @@
-import { validateCombatRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateTeamOverflowPolicy, type CombatRule, type ContentPack, type ContentRegistry, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { validateCombatRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateTeamOverflowPolicy, type CombatRule, type ContentPack, type ContentRegistry, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 
 export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
@@ -13,6 +13,7 @@ export type RulesModule = {
   combatRules?: readonly CombatRule[];
   equipmentEligibilityRules?: readonly EquipmentEligibilityRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
+  supplyRowConfigurations?: readonly SupplyRowConfiguration[];
   endConditions?: readonly EndCondition[];
   getScoreContributions?: (state: GameState, registry: ContentRegistry) => readonly ScoreContribution[];
 };
@@ -51,7 +52,7 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>();
+  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>();
   for (const module of modules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
@@ -59,6 +60,7 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const rule of module.combatRules ?? []) { const errors = validateCombatRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (combatRefs.has(ref)) errors.push(`Duplicate combat rule: ${module.id}/${rule.ruleId}.`); combatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.equipmentEligibilityRules ?? []) { const errors = validateEquipmentEligibilityRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentRefs.has(ref)) errors.push(`Duplicate equipment eligibility rule: ${module.id}/${rule.ruleId}.`); equipmentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamOverflowPolicies ?? []) { const errors = validateTeamOverflowPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (overflowRefs.has(ref)) errors.push(`Duplicate team overflow policy: ${module.id}/${policy.policyId}.`); overflowRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const config of module.supplyRowConfigurations ?? []) { const errors = validateSupplyRowConfiguration(config, module.id); const ref = `${module.id}\u0000${config.configurationId}`; const pair = `${config.sourceDeckZoneId}\u0000${config.targetRowZoneId}`; if (supplyRefs.has(ref)) errors.push(`Duplicate supply configuration: ${module.id}/${config.configurationId}.`); if (supplyPairs.has(pair)) errors.push(`Duplicate supply deck/row configuration: ${pair}.`); supplyRefs.add(ref); supplyPairs.add(pair); if (errors.length) throw new Error(errors.join(' ')); }
   }
   return { registry: createContentRegistry(packs, options), modules };
 }

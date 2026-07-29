@@ -4,7 +4,7 @@ import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js'
 import { getEndCondition, type Ruleset } from '../rules/ruleset.js';
 import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
-import { refillSupply } from './supply.js';
+import { refillConfiguredSupplyRows } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
@@ -169,10 +169,7 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
   player.turnPurchaseBonus = 0;
   player.turnPurchaseSpent = 0;
   player.turnCombatBonus = 0;
-  refillSupply(state, ruleset, 'adventurer', events);
-  refillSupply(state, ruleset, 'item', events);
-  refillSupply(state, ruleset, 'monster', events);
-  refillSupply(state, ruleset, 'boss', events);
+  refillConfiguredSupplyRows(state, ruleset, events);
   attachTargets(state);
   drawCards(state, player.id, 5, events);
   event(state, events, 'REST_FINISHED', `${player.name} 完成休息。`, commandId);

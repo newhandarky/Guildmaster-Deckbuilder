@@ -12,6 +12,12 @@ export const baseRulesModule: RulesModule = {
   ],
   getPartyLimit: (_state, _player, currentLimit) => Math.min(currentLimit, 5),
   teamOverflowPolicies: [{ schemaVersion: 1, policyId: 'base:discard-oldest', moduleId: 'base:rules', priority: 1, teamScope: 'player-party', mode: 'discard-oldest', reasonCode: 'TEAM_CAPACITY_OVERFLOW' }],
+  supplyRowConfigurations: [
+    { schemaVersion: 1, configurationId: 'base:adventurer-row', moduleId: 'base:rules', priority: 1, supply: 'adventurer', sourceDeckZoneId: baseZoneIds.adventurerDeck, targetRowZoneId: baseZoneIds.adventurerRow, targetSize: 3, mode: 'refill-to-target' },
+    { schemaVersion: 1, configurationId: 'base:item-row', moduleId: 'base:rules', priority: 1, supply: 'item', sourceDeckZoneId: baseZoneIds.itemDeck, targetRowZoneId: baseZoneIds.itemRow, targetSize: 3, mode: 'refill-to-target' },
+    { schemaVersion: 1, configurationId: 'base:monster-row', moduleId: 'base:rules', priority: 1, supply: 'monster', sourceDeckZoneId: baseZoneIds.monsterDeck, targetRowZoneId: baseZoneIds.monsterRow, targetSize: 3, mode: 'refill-to-target' },
+    { schemaVersion: 1, configurationId: 'base:boss-row', moduleId: 'base:rules', priority: 1, supply: 'boss', sourceDeckZoneId: baseZoneIds.bossDeck, targetRowZoneId: baseZoneIds.bossRow, targetSize: 1, mode: 'refill-to-target' }
+  ],
   endConditions: [
     { id: 'base:all-bosses-defeated', evaluate: (state) => state.zones[baseZoneIds.bossDeck]!.cardIds.length === 0 && state.zones[baseZoneIds.bossRow]!.cardIds.length === 0 && Object.values(state.enemyTargets).filter((target) => target.kind === 'boss').some((target) => target.status === 'defeated') && Object.values(state.enemyTargets).filter((target) => target.kind === 'boss').every((target) => target.status === 'defeated') },
     { id: 'base:all-bonds-completed', evaluate: (state) => state.players.some((player) => player.bonds.every((bond) => bond.completed)) }
