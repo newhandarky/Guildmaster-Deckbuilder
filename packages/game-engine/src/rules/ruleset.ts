@@ -1,4 +1,4 @@
-import { validateLifecycleHook, type ContentPack, type ContentRegistry, type GameState, type LifecycleHook, type PlayerState } from '@guildmaster/game-protocol';
+import { validateCombatRule, validateLifecycleHook, type CombatRule, type ContentPack, type ContentRegistry, type GameState, type LifecycleHook, type PlayerState } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 
 export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
@@ -10,6 +10,7 @@ export type RulesModule = {
   getPartyLimit: (state: GameState, player: PlayerState, currentLimit: number) => number;
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
   lifecycleHooks?: readonly LifecycleHook[];
+  combatRules?: readonly CombatRule[];
   endConditions?: readonly EndCondition[];
   getScoreContributions?: (state: GameState, registry: ContentRegistry) => readonly ScoreContribution[];
 };
@@ -48,8 +49,13 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>();
-  for (const module of modules) { if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`); moduleIds.add(module.id); for (const hook of module.lifecycleHooks ?? []) { const errors = validateLifecycleHook(hook, module.id); const ref = `${module.id}\u0000${hook.hookId}`; if (hookRefs.has(ref)) errors.push(`Duplicate lifecycle hook: ${module.id}/${hook.hookId}.`); hookRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); } }
+  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>();
+  for (const module of modules) {
+    if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
+    moduleIds.add(module.id);
+    for (const hook of module.lifecycleHooks ?? []) { const errors = validateLifecycleHook(hook, module.id); const ref = `${module.id}\u0000${hook.hookId}`; if (hookRefs.has(ref)) errors.push(`Duplicate lifecycle hook: ${module.id}/${hook.hookId}.`); hookRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const rule of module.combatRules ?? []) { const errors = validateCombatRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (combatRefs.has(ref)) errors.push(`Duplicate combat rule: ${module.id}/${rule.ruleId}.`); combatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+  }
   return { registry: createContentRegistry(packs, options), modules };
 }
 export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { return Math.max(0, ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER)); }

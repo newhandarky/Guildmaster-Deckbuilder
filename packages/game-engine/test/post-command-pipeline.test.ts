@@ -82,6 +82,16 @@ describe('resumable post-command pipeline', () => {
     expect(completed.events.filter(({ type }) => type === 'FACT_ONE')).toHaveLength(1); expect(completed.events.filter(({ type }) => type === 'FACT_TWO')).toHaveLength(1);
   });
 
+  it('normalizes helper-generated reducer facts and resumes after a rest command changes active player', () => {
+    const ruleset = rules(module('test:draw-choice', [hook('test:draw-choice', 'draw', 'event-after', 1, choose(), 'CARD_DRAWN')]));
+    const state = game(ruleset); state.phase = 'rest'; const player = state.players[0]!; const onlyCard = player.hand[0] ?? player.drawPile[0]!; player.hand = []; player.playArea = []; player.discardPile = []; player.drawPile = [onlyCard];
+    const command = envelope(state, 'p1', { type: 'END_PHASE', phase: 'rest' }, 'finish-rest'); const suspended = dispatch(state, ruleset, command);
+    expect(suspended.error).toBeUndefined(); expect(suspended.state.activePlayerId).toBe('p2'); expect(suspended.state.revision).toBe(0);
+    expect(suspended.state.effectState.pendingPostCommand?.facts.find(({ type }) => type === 'CARD_DRAWN')?.causedByCommandId).toBe('finish-rest');
+    const restored = roundTrip(suspended.state); expect(getLegalCommands(restored, ruleset, 'p1')).toHaveLength(2); expect(getLegalCommands(restored, ruleset, 'p2')).toEqual([]);
+    const completed = resolve(restored, ruleset); expect(completed.error).toBeUndefined(); expect(completed.state.activePlayerId).toBe('p2'); expect(completed.state.revision).toBe(1); expect(completed.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(1);
+  });
+
   it.each(['event-before', 'event-after', 'command-after'] as const)('rolls the entire command back when a later %s hook fails', (point) => {
     const eventType = point === 'command-after' ? undefined : 'PHASE_ENDED';
     const bad: EffectDefinition['body'] = { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } };

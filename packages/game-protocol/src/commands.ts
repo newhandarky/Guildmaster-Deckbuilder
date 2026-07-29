@@ -11,7 +11,8 @@ export type GameCommand =
 
 export type CommandEnvelope = { protocolVersion: 1; gameId: string; commandId: string; actorId: string; expectedRevision: number; command: GameCommand };
 
-export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string };
+export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation };
+export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string; payload?: DomainEventPayload };
 
 export type EngineErrorCode = 'STALE_REVISION' | 'NOT_AUTHORIZED' | 'INVALID_COMMAND' | 'RULE_CLARIFICATION_REQUIRED' | 'GAME_FINISHED';
 export type EngineError = { code: EngineErrorCode; message: string };

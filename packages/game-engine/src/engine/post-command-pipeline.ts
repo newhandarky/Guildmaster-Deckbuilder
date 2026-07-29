@@ -71,7 +71,7 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (!lifecycle || !choice || state.effectState.pendingCommand) return 'Post-command continuation requires exactly one pending lifecycle choice.';
   if (outer.schemaVersion !== 1 || outer.step !== 'resume-boundary' || outer.continuationId !== `post-command:${outer.envelope.commandId}`) return 'Malformed post-command continuation identity or step.';
   if (outer.envelope.command.type === 'RESOLVE_EFFECT_CHOICE') return 'Post-command continuation cannot contain a choice command.';
-  if (outer.envelope.gameId !== state.gameId || outer.envelope.actorId !== state.activePlayerId || outer.envelope.expectedRevision !== state.revision) return 'Post-command command envelope is incompatible with current state.';
+  if (outer.envelope.gameId !== state.gameId || outer.envelope.expectedRevision !== state.revision) return 'Post-command command envelope is incompatible with current state.';
   if (choice.actorId !== outer.envelope.actorId || lifecycle.context.controllerId !== outer.envelope.actorId || !same(choice.context, lifecycle.context)) return 'Post-command actor or effect context mismatch.';
   const expectedExecutionId = `${lifecycle.dispatchId}:${lifecycle.currentHook.moduleId}:${lifecycle.currentHook.hookId}`;
   if (choice.executionId !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
@@ -81,7 +81,18 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (!cleanCheckpoint(outer.rollbackState) || !compatibleCheckpoint(outer.rollbackState, state)) return 'Invalid or recursive post-command rollback checkpoint.';
   if (outer.rollbackState.revision !== outer.envelope.expectedRevision || outer.rollbackState.eventLogCursor !== state.eventLogCursor) return 'Post-command rollback revision or event cursor mismatch.';
   if (!cleanCheckpoint(lifecycle.rollbackState) || !compatibleCheckpoint(lifecycle.rollbackState, state)) return 'Invalid or recursive lifecycle rollback checkpoint.';
-  if (outer.facts.some((fact) => fact.revision !== outer.envelope.expectedRevision + 1 || outer.events.filter((event) => event.eventId === fact.eventId).length !== 1)) return 'Post-command facts are missing, duplicated, or use an invalid revision.';
+  if (new Set(outer.events.map(({ eventId }) => eventId)).size !== outer.events.length) return 'Post-command transaction event IDs must be unique.';
+  if (new Set(outer.facts.map(({ eventId }) => eventId)).size !== outer.facts.length) return 'Post-command fact IDs must be unique.';
+  const commandFacts = outer.events.filter(({ causedByCommandId }) => causedByCommandId === outer.envelope.commandId);
+  if (!same(outer.facts, commandFacts)) return 'Post-command facts must equal the complete ordered reducer fact segment.';
+  if (outer.facts.some((fact) => { const matches = outer.events.filter((event) => event.eventId === fact.eventId); return fact.revision !== outer.envelope.expectedRevision + 1 || matches.length !== 1 || !same(matches[0], fact); })) return 'Post-command facts are missing, duplicated, modified, or use an invalid revision.';
+  const factPositions = outer.facts.map((fact) => outer.events.findIndex((event) => event.eventId === fact.eventId));
+  if (factPositions.some((position, index) => position < 0 || (index > 0 && position !== factPositions[index - 1]! + 1))) return 'Post-command facts must preserve their original contiguous transaction order.';
+  for (const transactionEvent of outer.events) {
+    const combatPayload = transactionEvent.payload?.kind === 'combat-evaluation' ? transactionEvent.payload : undefined;
+    if ((transactionEvent.type === 'COMBAT_EVALUATED') !== Boolean(combatPayload)) return 'Post-command combat fact type and payload are inconsistent.';
+    if (combatPayload && !same(combatPayload.evaluation.registry, outer.registry)) return 'Post-command combat evaluation registry mismatch.';
+  }
   if (outer.boundary === 'command-after') {
     if (outer.factIndex !== outer.facts.length || outer.payload.eventType !== undefined || outer.payload.commandType !== outer.envelope.command.type) return 'Command-after cursor still has unprocessed facts or an invalid payload.';
   } else {
@@ -151,7 +162,8 @@ export function continuePostCommandPipeline(state: GameState, ruleset: Ruleset, 
 
 /** Starts post-command processing with reducer facts fixed exactly once. */
 export function beginPostCommandPipeline(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, rollbackState: GameState, facts: readonly DomainEvent[], events: readonly DomainEvent[]): PostCommandPipelineResult {
-  const normalizedEvents = events.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${envelope.commandId}:${index + 1}` }));
+  const factStart = events.length - facts.length;
+  const normalizedEvents = events.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${envelope.commandId}:${index + 1}`, ...(index >= factStart ? { causedByCommandId: envelope.commandId } : {}) }));
   const normalizedFacts = normalizedEvents.slice(normalizedEvents.length - facts.length);
   const cursor: PostCommandPipelineCursor = {
     continuationId: `post-command:${envelope.commandId}`,

@@ -9,9 +9,10 @@ import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
+import { evaluateCombat } from '../rules/combat-evaluator.js';
 
-function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string): void {
-  events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}) });
+function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
+  events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
 }
 
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult {
@@ -105,16 +106,26 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   if (phaseError) return phaseError;
   const target = state.enemyTargets[command.targetId];
   if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: '該敵方目標不可討伐。' };
+  const combat = evaluateCombat(state, ruleset, player.id, command.targetId);
+  if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
+  if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
-  const prefix = getCombatPrefix(state, ruleset, player.id, definition.combat ?? Number.POSITIVE_INFINITY);
+  const prefix = getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat);
   if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
   const participants = player.party.splice(0, prefix.slotCount);
   for (const slot of participants) {
     player.discardPile.push(slot.adventurerId);
     if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
   }
-  target.status = 'defeated';
+  event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
   if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
+  if (combat.evaluation.outcome.kind === 'remove-target') {
+    target.status = 'removed';
+    state.removedCards.push(target.cardInstanceId);
+    event(state, events, 'ENEMY_REMOVED', `${definition.name} 的討伐結果被替代為移出遊戲。`, commandId);
+    return undefined;
+  }
+  target.status = 'defeated';
   player.discardPile.push(target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
@@ -205,7 +216,7 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
-  if (envelope.actorId !== state.activePlayerId) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
+  if (envelope.actorId !== (state.effectState.pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
   if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
   const nextState = structuredClone(state);
   if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingPostCommand) {
