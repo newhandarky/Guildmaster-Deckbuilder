@@ -54,7 +54,7 @@
 - **供應組成：** 28 種物資與 14 種魔物的逐種份數未知；因此無法合法建立正確 public supply decks。
 - **供應耗盡後續：** 現行 `pendingOfficialRuling` 是凍結 command 的保守安全行為，不是官方基礎版規則。收到官方裁定前，不能改為自動結束、補牌或繼續。
 
-泛用 team capacity／overflow evaluation boundary 已實作，query 與 dispatch 共用判定；未設定任何官方容量或官方預設處理，亦未載入卡牌內容。卡牌專屬獎勵、特定裝備效果、泛用供應列及 continuous 卡牌效果仍未實作；物資／魔物逐種份數與供應耗盡 official ruling 持續為 `blocked-by-rule-exception`。
+泛用 team capacity／overflow evaluation boundary 已實作，automatic 與 player-choice policy 都可由 query／dispatch 共用判定，choice 可跨 Snapshot 恢復完整 command transaction；未設定任何官方容量或官方預設處理，亦未載入卡牌內容。卡牌專屬獎勵、特定裝備效果、泛用供應列及 continuous 卡牌效果仍未實作；物資／魔物逐種份數與供應耗盡 official ruling 持續為 `blocked-by-rule-exception`。
 
 ## 驗收條件
 

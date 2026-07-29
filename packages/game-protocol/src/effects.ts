@@ -37,7 +37,9 @@ export type PendingLifecycleDispatch = {
   rollbackState: import('./state.js').GameState;
 };
 /** Original command and uncommitted lifecycle events held while command-before is unresolved. */
-export type PendingCommandContinuation = { schemaVersion: 1; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[] };
+export type PendingCommandContinuation =
+  | { schemaVersion: 1; kind?: 'command-before-lifecycle'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[] }
+  | { schemaVersion: 1; kind: 'team-overflow'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; policy: { moduleId: string; policyId: string }; candidateIds: readonly string[]; requiredSelectionCount: number; optionCandidates: Readonly<Record<string, readonly string[]>>; registry: LifecycleRegistrySnapshot };
 /** Serializable cursor for a command whose reducer has completed but post-command lifecycle work is pending. */
 export type PendingPostCommandContinuation = {
   schemaVersion: 1;

@@ -27,6 +27,7 @@ function removeFrom<T>(items: T[], item: T): boolean {
   items.splice(index, 1);
   return true;
 }
+function combinations(ids: readonly string[], count: number, start = 0, prefix: string[] = []): string[][] { if (prefix.length === count) return [prefix]; return ids.slice(start).flatMap((id, offset) => combinations(ids, count, start + offset + 1, [...prefix, id])); }
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
   return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` };
@@ -58,20 +59,25 @@ function checkEnd(state: GameState, ruleset: Ruleset, events: DomainEvent[], com
   event(state, events, 'FINAL_ROUND_TRIGGERED', '已觸發遊戲結束，將完成目前輪次。', commandId);
 }
 
-function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'PLAY_ADVENTURER' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
+function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'PLAY_ADVENTURER' }>, events: DomainEvent[], commandId: string, fixedCandidates?: readonly string[]): EngineError | undefined {
   const phaseError = requirePhase(state, ['action1', 'action2']);
   if (phaseError) return phaseError;
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該卡不在手牌中。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
   if (definition.type !== 'adventurer') return { code: 'INVALID_COMMAND', message: '只有冒險者可加入隊伍。' };
-  const overflow = evaluateTeamOverflow(state, ruleset, { schemaVersion: 1, playerId: player.id, incomingMemberId: command.cardId });
-  if (overflow.status !== 'ready') return { code: 'INVALID_COMMAND', message: overflow.error };
-  if (overflow.evaluation.status === 'overflow-required') {
-    const displaced = player.party.shift();
-    if (displaced) {
-      player.discardPile.push(displaced.adventurerId);
-      if (displaced.equipmentId) player.discardPile.push(displaced.equipmentId);
-      event(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 的隊伍已滿，最左側冒險者離隊。`, commandId);
+  const overflow = fixedCandidates ? undefined : evaluateTeamOverflow(state, ruleset, { schemaVersion: 1, playerId: player.id, incomingMemberId: command.cardId });
+  if (overflow && overflow.status !== 'ready') return { code: 'INVALID_COMMAND', message: overflow.error };
+  if (fixedCandidates || overflow?.evaluation.status === 'overflow-required') {
+    const candidates = fixedCandidates ?? overflow?.evaluation.candidateIds ?? [];
+    const expectedCount = fixedCandidates ? fixedCandidates.length : overflow!.evaluation.overflowCount;
+    if (!expectedCount || candidates.length !== expectedCount || new Set(candidates).size !== candidates.length) return { code: 'INVALID_COMMAND', message: 'Team overflow candidates are invalid.' };
+    const displaced = candidates.map((id) => player.party.find((slot) => slot.adventurerId === id));
+    if (displaced.some((slot) => !slot)) return { code: 'INVALID_COMMAND', message: 'Team overflow candidate is not in the party.' };
+    for (const slot of displaced) {
+      const index = player.party.indexOf(slot!); player.party.splice(index, 1);
+      player.discardPile.push(slot!.adventurerId);
+      if (slot!.equipmentId) player.discardPile.push(slot!.equipmentId);
+      event(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 的隊伍容量 policy 移出成員。`, commandId, { schemaVersion: 1, kind: 'team-overflow', policy: fixedCandidates ? undefined : overflow!.evaluation.policy, candidateIds: [...candidates] } as DomainEvent['payload']);
     }
   }
   player.party.push({ adventurerId: command.cardId });
@@ -236,6 +242,19 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand) {
     const resolution = envelope.command;
     const continuation = structuredClone(nextState.effectState.pendingCommand); const pending = nextState.effectState.pendingLifecycle; const rollback = pending?.rollbackState;
+    if (continuation.kind === 'team-overflow') {
+      const choice = nextState.effectState.pendingChoice; const selected = continuation.optionCandidates[resolution.optionId];
+      if (!choice || !selected || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision || continuation.envelope.actorId !== envelope.actorId || selected.length !== continuation.requiredSelectionCount || new Set(selected).size !== selected.length) return fail(state, 'INVALID_COMMAND', 'No matching pending team overflow choice.');
+      const player = getPlayer(nextState, envelope.actorId); if (selected.some((id) => !player.party.some((slot) => slot.adventurerId === id))) return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow candidate is no longer in the party.' } };
+      delete nextState.effectState.pendingChoice; delete nextState.effectState.pendingCommand;
+      const events = [...continuation.events]; const factStart = events.length;
+      const error = playAdventurer(nextState, ruleset, player, continuation.envelope.command as Extract<GameCommand, { type: 'PLAY_ADVENTURER' }>, events, continuation.envelope.commandId, selected);
+      if (error) return { state: structuredClone(continuation.rollbackState), events: [], error };
+      const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, structuredClone(continuation.rollbackState), events.slice(factStart), events);
+      if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+      if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
+      nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+    }
     if (!pending || continuation.envelope.actorId !== envelope.actorId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
     const choice = nextState.effectState.pendingChoice;
     if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.');
@@ -263,6 +282,17 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   events.push(...before.events);
   if (before.status === 'suspended') { nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope), events: structuredClone(events) }; return { state: nextState, events }; }
   if (before.status === 'failed' || before.status === 'unsupported') return { state, events: [], error: { code: 'INVALID_COMMAND', message: before.error ?? before.reason ?? 'command-before lifecycle failed.' } };
+  if (envelope.command.type === 'PLAY_ADVENTURER') {
+    const overflow = evaluateTeamOverflow(nextState, ruleset, { schemaVersion: 1, playerId: envelope.actorId, incomingMemberId: envelope.command.cardId });
+    if (overflow.status !== 'ready') return { state, events: [], error: { code: 'INVALID_COMMAND', message: overflow.error } };
+    if (overflow.evaluation.status === 'overflow-required' && overflow.evaluation.policy?.mode === 'player-choice') {
+      const candidateIds = overflow.evaluation.candidateIds; const count = overflow.evaluation.overflowCount; const sets = combinations(candidateIds, count); if (!sets.length) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow has insufficient candidates.' } };
+      const optionCandidates = Object.fromEntries(sets.map((set, index) => [`overflow-${index + 1}`, set])); const choiceId = `team-overflow:${overflow.evaluation.policy.policyId}`; const executionId = `team-overflow:${envelope.commandId}`;
+      nextState.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId, actorId: envelope.actorId, options: Object.keys(optionCandidates).map((id) => ({ id, effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } })), remaining: [], context: { controllerId: envelope.actorId } };
+      nextState.effectState.pendingCommand = { schemaVersion: 1, kind: 'team-overflow', envelope: structuredClone(envelope), events: structuredClone(events), rollbackState: structuredClone(rollback), policy: { moduleId: overflow.evaluation.policy.moduleId, policyId: overflow.evaluation.policy.policyId }, candidateIds: structuredClone(candidateIds), requiredSelectionCount: count, optionCandidates: structuredClone(optionCandidates), registry: structuredClone(overflow.evaluation.registry) };
+      return { state: nextState, events };
+    }
+  }
   const factStart = events.length;
   const error = reduceCommand(nextState, ruleset, envelope, events);
   if (error) return { state, events: [], error };
