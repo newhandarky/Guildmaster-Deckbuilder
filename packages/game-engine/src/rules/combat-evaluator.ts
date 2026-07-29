@@ -1,6 +1,7 @@
 import type { CombatCondition, CombatEvaluation, CombatRule, GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
+import { evaluateContinuousEffects } from './continuous-evaluator.js';
 
 export type CombatEvaluationResult =
   | { status: 'ready'; evaluation: CombatEvaluation }
@@ -39,6 +40,7 @@ function order(rules: readonly CombatRule[]): readonly CombatRule[] | undefined 
 
 /** Pure, deterministic combat evaluation shared by queries and authoritative dispatch. */
 export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: string, targetId: string): CombatEvaluationResult {
+  const continuous = evaluateContinuousEffects(state, ruleset); if (continuous.status !== 'ready') return { status: continuous.status, reason: continuous.reason as 'ORDER_POLICY_REQUIRED', error: continuous.error } as CombatEvaluationResult;
   const mismatch = registryError(state, ruleset);
   if (mismatch) return mismatch;
   const target = state.enemyTargets[targetId];
@@ -48,7 +50,7 @@ export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: str
   if (!ordered) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active combat rules require distinct explicit priorities.' };
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (definition.combat === undefined || !Number.isFinite(definition.combat)) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Combat target ${targetId} has no finite combat requirement.` };
-  let requiredCombat = definition.combat;
+  let requiredCombat = definition.combat + continuous.evaluation.active.filter((effect) => effect.target === 'combat-modifier').reduce((sum, effect) => sum + effect.amount, 0);
   const restrictions: string[] = [];
   let outcome: CombatEvaluation['outcome'] = { kind: 'defeat-target' };
   for (const rule of ordered) {

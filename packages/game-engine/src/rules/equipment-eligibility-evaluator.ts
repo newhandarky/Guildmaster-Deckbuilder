@@ -1,6 +1,7 @@
 import { EquipmentEligibilityInputSchema, type EquipmentEligibilityCondition, type EquipmentEligibilityEvaluation, type EquipmentEligibilityInput, type EquipmentEligibilityRule, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
+import { evaluateContinuousEffects } from './continuous-evaluator.js';
 
 export type EquipmentEligibilityEvaluationResult =
   | { status: 'ready'; evaluation: EquipmentEligibilityEvaluation }
@@ -41,11 +42,13 @@ function order(rules: readonly EquipmentEligibilityRule[]): readonly EquipmentEl
 
 /** Pure, deterministic equipment eligibility evaluation shared by queries and dispatch. */
 export function evaluateEquipmentEligibility(state: GameState, ruleset: Ruleset, input: EquipmentEligibilityInput): EquipmentEligibilityEvaluationResult {
+  const continuous = evaluateContinuousEffects(state, ruleset); if (continuous.status !== 'ready') return { status: continuous.status, reason: continuous.reason as 'ORDER_POLICY_REQUIRED', error: continuous.error } as EquipmentEligibilityEvaluationResult;
   if (!EquipmentEligibilityInputSchema.safeParse(input).success) return { status: 'failed', reason: 'INVALID_INPUT', error: 'Equipment eligibility input has an unsupported schema or invalid IDs.' };
   const mismatch = registryError(state, ruleset); if (mismatch) return mismatch;
   const player = state.players.find(({ id }) => id === input.playerId); const equipment = state.cards[input.equipmentCardId]; const adventurer = state.cards[input.adventurerId];
   if (!player || !equipment || !adventurer || !player.party.some((slot) => slot.adventurerId === input.adventurerId) || !player.hand.includes(input.equipmentCardId) || getDefinition(ruleset.registry, state, input.equipmentCardId).type !== 'equipment') return { status: 'failed', reason: 'INVALID_INPUT', error: 'Equipment eligibility input does not name an equippable hand card and party adventurer.' };
   const active = ruleset.modules.flatMap((module) => module.equipmentEligibilityRules ?? []).filter((rule) => matches(rule.when, state, input));
   const ordered = order(active); if (!ordered) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active equipment eligibility rules require distinct explicit priorities.' };
-  return { status: 'ready', evaluation: { schemaVersion: 1, eligible: ordered.length === 0, rejectionReasonCodes: ordered.map((rule) => rule.reasonCode), appliedRules: ordered.map((rule) => ({ moduleId: rule.moduleId, ruleId: rule.ruleId })), registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } } };
+  const continuousRestrictions = continuous.evaluation.active.filter((effect) => effect.target === 'equipment-restriction' && effect.amount !== 0);
+  return { status: 'ready', evaluation: { schemaVersion: 1, eligible: ordered.length === 0 && !continuousRestrictions.length, rejectionReasonCodes: [...ordered.map((rule) => rule.reasonCode), ...continuousRestrictions.map((effect) => `CONTINUOUS:${effect.effectId}`)], appliedRules: ordered.map((rule) => ({ moduleId: rule.moduleId, ruleId: rule.ruleId })), registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } } };
 }
