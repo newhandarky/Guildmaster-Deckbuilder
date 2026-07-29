@@ -18,9 +18,9 @@
 | 類別 | supported | missing | blocked | not in MVP |
 | --- | ---: | ---: | ---: | ---: |
 | 卡片／遊戲區移動 | 3 | 0 | 0 | 0 |
-| 供應 | 0 | 2 | 2 | 0 |
+| 供應 | 2 | 0 | 2 | 0 |
 | 討伐 | 3 | 1 | 0 | 0 |
-| 隊伍、裝備與道具 | 3 | 0 | 0 | 0 |
+| 隊伍、裝備與道具 | 4 | 0 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
 | 羈絆、終局與計分 | 2 | 0 | 0 | 1 |
@@ -30,11 +30,12 @@
 ## 已有 coverage
 
 - 個人抽牌只在「仍需繼續抽」時重建牌庫；展示牌庫頂不洗牌。
-- 基礎版固定公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件；供應列本身尚未泛用化。
+- Rules Module JSON-only supply configuration/refill 與 refresh policy/effect 已 supported；未設定官方供應組成或 base 預設 refresh policy。
 - Supply deck／公開列配對與 refill-to-target evaluation 已移至 Rules Module JSON-only configuration；未推測官方組成或耗盡後續。
 - generic supply row refresh policy/evaluator/Effect AST 已實作；destination 與 ordering 必須由 JSON policy 明確提供，未設定官方或 base 預設 refresh policy。
 - generic continuous evaluation/runtime 已實作；未載入正式或 provisional continuous 卡牌效果，官方物資／魔物份數與供應耗盡裁定持續為 blocked-by-rule-exception。
 - generic BondCondition evaluator 與 authoritative completion 已實作；只接受 Rules Module 的 JSON-only 條件，並與 query 共用相同判定。舊 `requiredBosses` fixture 維持明確相容，未載入任何正式或 provisional 羈絆卡條件。
+- generic CombatRewardPolicy runtime 與 choice continuation 已實作；preview 與 authoritative defeat 共用 evaluation，reward transaction 可跨 Snapshot 從 policy cursor 恢復，且不重複 reducer、events 或 RNG。未載入任何正式或 provisional 獎勵 policy。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - JSON-only combat conditions、戰力 modifier、target restriction 與 defeat/remove-target replacement 已由 query／dispatch 共用的確定性 evaluator 支援；尚未載入卡牌 policy。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
@@ -58,7 +59,7 @@
 - **供應組成：** 28 種物資與 14 種魔物的逐種份數未知；因此無法合法建立正確 public supply decks。
 - **供應耗盡後續：** 現行 `pendingOfficialRuling` 是凍結 command 的保守安全行為，不是官方基礎版規則。收到官方裁定前，不能改為自動結束、補牌或繼續。
 
-泛用 team capacity／overflow evaluation boundary 已實作，automatic 與 player-choice policy 都可由 query／dispatch 共用判定，choice 可跨 Snapshot 恢復完整 command transaction；未設定任何官方容量或官方預設處理，亦未載入卡牌內容。卡牌專屬獎勵、特定裝備效果、泛用供應列及 continuous 卡牌效果仍未實作；物資／魔物逐種份數與供應耗盡 official ruling 持續為 `blocked-by-rule-exception`。
+泛用 team capacity／overflow evaluation boundary 已實作，automatic 與 player-choice policy 都可由 query／dispatch 共用判定，choice 可跨 Snapshot 恢復完整 command transaction；未設定任何官方容量或官方預設處理，亦未載入卡牌內容。特定裝備效果與任何正式／provisional卡牌 reward／continuous內容仍未實作；物資／魔物逐種份數與供應耗盡 official ruling 持續為 `blocked-by-rule-exception`。
 
 ## 驗收條件
 

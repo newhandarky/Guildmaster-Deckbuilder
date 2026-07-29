@@ -78,7 +78,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   if (pending) {
     if (pending.actorId !== actorId) return [];
     const pendingAttack = state.effectState.pendingCommand?.envelope.command;
-    const options = pendingAttack?.type === 'ATTACK_TARGET'
+    const options = pendingAttack?.type === 'ATTACK_TARGET' && state.effectState.pendingCommand?.kind !== 'combat-reward'
       ? pending.options.filter((option) => attackIsLegalInAnyPreview(resumeAttackChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingAttack.targetId))
       : pending.options;
     return options.map((option) => ({ type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: option.id }));

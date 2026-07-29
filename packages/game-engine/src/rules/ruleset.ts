@@ -1,4 +1,4 @@
-import { validateBondConditionRule, validateCombatRule, validateContinuousRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type BondConditionRule, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { validateBondConditionRule, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 
@@ -12,6 +12,7 @@ export type RulesModule = {
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
   lifecycleHooks?: readonly LifecycleHook[];
   combatRules?: readonly CombatRule[];
+  combatRewardPolicies?: readonly CombatRewardPolicy[];
   equipmentEligibilityRules?: readonly EquipmentEligibilityRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
   supplyRowConfigurations?: readonly SupplyRowConfiguration[];
@@ -56,12 +57,13 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>();
+  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const rewardRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>();
   for (const module of modules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
     for (const hook of module.lifecycleHooks ?? []) { const errors = validateLifecycleHook(hook, module.id); const ref = `${module.id}\u0000${hook.hookId}`; if (hookRefs.has(ref)) errors.push(`Duplicate lifecycle hook: ${module.id}/${hook.hookId}.`); hookRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.combatRules ?? []) { const errors = validateCombatRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (combatRefs.has(ref)) errors.push(`Duplicate combat rule: ${module.id}/${rule.ruleId}.`); combatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.combatRewardPolicies ?? []) { const errors = validateCombatRewardPolicy(policy, module.id); if (rewardRefs.has(policy.rewardPolicyId)) errors.push(`Duplicate combat reward policy: ${policy.rewardPolicyId}.`); rewardRefs.add(policy.rewardPolicyId); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.equipmentEligibilityRules ?? []) { const errors = validateEquipmentEligibilityRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentRefs.has(ref)) errors.push(`Duplicate equipment eligibility rule: ${module.id}/${rule.ruleId}.`); equipmentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamOverflowPolicies ?? []) { const errors = validateTeamOverflowPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (overflowRefs.has(ref)) errors.push(`Duplicate team overflow policy: ${module.id}/${policy.policyId}.`); overflowRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const config of module.supplyRowConfigurations ?? []) { const errors = validateSupplyRowConfiguration(config, module.id); const ref = `${module.id}\u0000${config.configurationId}`; const pair = `${config.sourceDeckZoneId}\u0000${config.targetRowZoneId}`; if (supplyRefs.has(ref)) errors.push(`Duplicate supply configuration: ${module.id}/${config.configurationId}.`); if (supplyPairs.has(pair)) errors.push(`Duplicate supply deck/row configuration: ${pair}.`); supplyRefs.add(ref); supplyPairs.add(pair); if (errors.length) throw new Error(errors.join(' ')); }
