@@ -30,6 +30,12 @@ export function restoreSnapshot(snapshot: unknown): GameState {
   const command = state.effectState.pendingCommand;
   if (command) {
     const choice = state.effectState.pendingChoice;
+    if (command.kind === 'team-overflow') {
+      const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
+      const optionSets = Object.values(command.optionCandidates);
+      if (!choice || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'PLAY_ADVENTURER' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `team-overflow:${command.envelope.commandId}` || choice.choiceId !== `team-overflow:${command.policy.policyId}` || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.candidateIds).size !== command.candidateIds.length || !command.candidateIds.every((id) => rollbackState.players.find(({ id: playerId }) => playerId === command.envelope.actorId)?.party.some((slot) => slot.adventurerId === id)) || !optionSets.every((set) => set.length === command.requiredSelectionCount && new Set(set).size === set.length && set.every((id) => command.candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidates[option.id])) throw new Error('Invalid team overflow continuation.');
+      command.rollbackState = structuredClone(rollbackState); return state;
+    }
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
     if (!pending || !choice || state.effectState.pendingPostCommand || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || pending.payload.point !== 'command-before' || pending.context.controllerId !== command.envelope.actorId || choice.actorId !== command.envelope.actorId || choice.executionId !== executionId || JSON.stringify(choice.context) !== JSON.stringify(pending.context)) throw new Error('Invalid command-before continuation.');
   }

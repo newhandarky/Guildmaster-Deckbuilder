@@ -11,4 +11,5 @@ export * from './queries/scoring.js';
 export * from './rules/base-rules.js';
 export * from './rules/combat-evaluator.js';
 export * from './rules/equipment-eligibility-evaluator.js';
+export * from './rules/team-overflow-evaluator.js';
 export * from './rules/ruleset.js';
