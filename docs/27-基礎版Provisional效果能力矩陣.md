@@ -23,7 +23,7 @@
 | 隊伍、裝備與道具 | 3 | 0 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
-| 羈絆、終局與計分 | 1 | 1 | 0 | 1 |
+| 羈絆、終局與計分 | 2 | 0 | 0 | 1 |
 
 詳細 capability ID、引擎證據、候選 mechanics ID、限制與下一步均由矩陣資料提供並受測試驗證。
 
@@ -34,6 +34,7 @@
 - Supply deck／公開列配對與 refill-to-target evaluation 已移至 Rules Module JSON-only configuration；未推測官方組成或耗盡後續。
 - generic supply row refresh policy/evaluator/Effect AST 已實作；destination 與 ordering 必須由 JSON policy 明確提供，未設定官方或 base 預設 refresh policy。
 - generic continuous evaluation/runtime 已實作；未載入正式或 provisional continuous 卡牌效果，官方物資／魔物份數與供應耗盡裁定持續為 blocked-by-rule-exception。
+- generic BondCondition evaluator 與 authoritative completion 已實作；只接受 Rules Module 的 JSON-only 條件，並與 query 共用相同判定。舊 `requiredBosses` fixture 維持明確相容，未載入任何正式或 provisional 羈絆卡條件。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - JSON-only combat conditions、戰力 modifier、target restriction 與 defeat/remove-target replacement 已由 query／dispatch 共用的確定性 evaluator 支援；尚未載入卡牌 policy。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
