@@ -10,9 +10,11 @@ import { resumeEffectChoice } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { combatRewardPoliciesFor, evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
+import { executeEffect } from '../effects/executor.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -145,6 +147,14 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   player.discardPile.push(target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
+  const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
+  if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
+  for (const policy of combatRewardPoliciesFor(ruleset, rewards.evaluation)) {
+    const result = executeEffect(state, ruleset, policy.reward, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } }, `combat-reward:${commandId}:${policy.moduleId}:${policy.rewardPolicyId}`);
+    if (result.status !== 'completed') return { code: 'INVALID_COMMAND', message: result.error ?? 'Combat reward policy must complete without an unresolved choice in this command boundary.' };
+    events.push(...result.events);
+    event(state, events, 'COMBAT_REWARD_POLICY_EXECUTED', `Executed combat reward policy ${policy.rewardPolicyId}.`, commandId, { schemaVersion: 1, kind: 'combat-reward-evaluation', evaluation: structuredClone(rewards.evaluation), executedPolicy: { moduleId: policy.moduleId, rewardPolicyId: policy.rewardPolicyId } } as DomainEvent['payload']);
+  }
   const bondError = maybeCompleteBonds(state, player, ruleset, events, commandId);
   if (bondError) return bondError;
   event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}（投入 ${prefix.slotCount} 位冒險者）。`, commandId);

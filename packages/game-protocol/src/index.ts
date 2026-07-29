@@ -1,5 +1,6 @@
 export * from './cards.js';
 export * from './combat.js';
+export * from './combat-reward.js';
 export * from './equipment.js';
 export * from './team-overflow.js';
 export * from './supply.js';

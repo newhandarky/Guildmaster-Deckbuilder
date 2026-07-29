@@ -11,7 +11,7 @@ export type GameCommand =
 
 export type CommandEnvelope = { protocolVersion: 1; gameId: string; commandId: string; actorId: string; expectedRevision: number; command: GameCommand };
 
-export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] };
+export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] };
 export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string; payload?: DomainEventPayload };
 
 export type EngineErrorCode = 'STALE_REVISION' | 'NOT_AUTHORIZED' | 'INVALID_COMMAND' | 'RULE_CLARIFICATION_REQUIRED' | 'GAME_FINISHED';
