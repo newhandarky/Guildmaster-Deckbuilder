@@ -10,11 +10,11 @@ import { resumeEffectChoice } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
-import { combatRewardPoliciesFor, evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
+import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
-import { executeEffect } from '../effects/executor.js';
+import { beginCombatRewardPipeline, resumeCombatRewardPipeline } from './combat-reward-pipeline.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -53,6 +53,14 @@ function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Rule
     }
   }
   return undefined;
+}
+
+function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
+  const player = getPlayer(state, envelope.actorId); const target = state.enemyTargets[(envelope.command as Extract<GameCommand, { type: 'ATTACK_TARGET' }>).targetId];
+  if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
+  const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
+  const bondError = maybeCompleteBonds(state, player, ruleset, events, envelope.commandId); if (bondError) return bondError;
+  event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEnd(state, ruleset, events, envelope.commandId); return undefined;
 }
 
 function checkEnd(state: GameState, ruleset: Ruleset, events: DomainEvent[], commandId: string): void {
@@ -149,17 +157,10 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   else player.history.defeatedMonsters += 1;
   const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
   if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
-  for (const policy of combatRewardPoliciesFor(ruleset, rewards.evaluation)) {
-    const result = executeEffect(state, ruleset, policy.reward, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } }, `combat-reward:${commandId}:${policy.moduleId}:${policy.rewardPolicyId}`);
-    if (result.status !== 'completed') return { code: 'INVALID_COMMAND', message: result.error ?? 'Combat reward policy must complete without an unresolved choice in this command boundary.' };
-    events.push(...result.events);
-    event(state, events, 'COMBAT_REWARD_POLICY_EXECUTED', `Executed combat reward policy ${policy.rewardPolicyId}.`, commandId, { schemaVersion: 1, kind: 'combat-reward-evaluation', evaluation: structuredClone(rewards.evaluation), executedPolicy: { moduleId: policy.moduleId, rewardPolicyId: policy.rewardPolicyId } } as DomainEvent['payload']);
-  }
-  const bondError = maybeCompleteBonds(state, player, ruleset, events, commandId);
-  if (bondError) return bondError;
-  event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}（投入 ${prefix.slotCount} 位冒險者）。`, commandId);
-  checkEnd(state, ruleset, events, commandId);
-  return undefined;
+  const pipeline = beginCombatRewardPipeline(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, structuredClone(state), events, 0, rewards.evaluation, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } });
+  if (pipeline.status === 'suspended') return undefined;
+  if (pipeline.status !== 'completed') return { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Combat reward policy failed.' };
+  return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
 }
 
 function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'BUY_CARD' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
@@ -243,6 +244,15 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   if (envelope.actorId !== (state.effectState.pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
   if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
   const nextState = structuredClone(state);
+  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand?.kind === 'combat-reward') {
+    const pending = nextState.effectState.pendingCommand; const resumed = resumeCombatRewardPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+    if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? 'Combat reward choice failed.' } };
+    if (resumed.status === 'suspended') return { state: nextState, events: resumed.events };
+    const tail = finishAttackAfterRewards(nextState, ruleset, pending.envelope, resumed.events); if (tail) return { state: structuredClone(pending.rollbackState), events: [], error: tail };
+    const pipeline = beginPostCommandPipeline(nextState, ruleset, pending.envelope, structuredClone(pending.rollbackState), resumed.events.slice(pending.factStart), resumed.events);
+    if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+    if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events }; nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+  }
   if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingPostCommand) {
     const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
     const result = resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
@@ -309,6 +319,7 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   const factStart = events.length;
   const error = reduceCommand(nextState, ruleset, envelope, events);
   if (error) return { state, events: [], error };
+  if (nextState.effectState.pendingCommand?.kind === 'combat-reward') { nextState.effectState.pendingCommand.rollbackState = structuredClone(rollback); nextState.effectState.pendingCommand.factStart = factStart; return { state: nextState, events }; }
   const pipeline = beginPostCommandPipeline(nextState, ruleset, envelope, rollback, events.slice(factStart), events);
   if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
   if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };

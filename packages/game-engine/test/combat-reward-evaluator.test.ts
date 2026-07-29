@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RulesModule } from '../src/rules/ruleset.js';
 import type { CombatRewardPolicy, EffectDefinition } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, evaluateCombatRewards } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, evaluateCombatRewards, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import { testPack } from './fixtures.js';
 
@@ -37,5 +37,13 @@ describe('generic combat reward policy evaluation', () => {
     expect(removed.events.some((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toBe(false);
     const bad = createRuleset([testPack], [baseRulesModule, module([reward('bad', { kind: 'always', value: true }, 1, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } })])]); const failing = game(bad); const before = structuredClone(failing);
     expect(dispatch(failing, bad, envelope(failing, 'p1', { type: 'ATTACK_TARGET', targetId: monster(failing) })).error?.code).toBe('INVALID_COMMAND'); expect(failing).toEqual(before);
+  });
+
+  it('resumes a reward choice from a Snapshot without repeating the defeated target or reward policy', () => {
+    const choice: EffectDefinition['body'] = { kind: 'choice', choiceId: 'reward-choice', actor: { kind: 'controller' }, options: [{ id: 'accept', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 4 } }] };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module([reward('choice', { kind: 'always', value: true }, 1, choice), reward('after', { kind: 'always', value: true }, 2, { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 1 })])]); const state = game(ruleset); const targetId = monster(state);
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })); expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingCommand?.kind).toBe('combat-reward');
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', command));
+    expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(4); expect(completed.state.players[0]!.turnCombatBonus).toBe(1); expect(completed.events.filter((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(2); expect(completed.events.filter((event) => event.type === 'ENEMY_DEFEATED')).toHaveLength(1);
   });
 });
