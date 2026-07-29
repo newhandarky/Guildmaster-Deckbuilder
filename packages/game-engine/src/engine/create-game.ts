@@ -3,7 +3,7 @@ import { createCard } from '../model/factories.js';
 import { baseZoneIds } from '../model/zones.js';
 import { shuffle } from '../ports/random.js';
 import type { Ruleset } from '../rules/ruleset.js';
-import { refillSupply } from './supply.js';
+import { refillConfiguredSupplyRows } from './supply.js';
 export type GamePlayerConfig = { id: string; name: string; kind: PlayerKind };
 export type CreateGameConfig = { gameId: string; seed: number; players: readonly GamePlayerConfig[]; startingPlayerId?: string };
 function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState {
@@ -22,7 +22,7 @@ export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameStat
   if ('partyDefinitionIds' in starter) partyDefinitionIds = starter.partyDefinitionIds;
   else partyDefinitionIds = Array.from({ length: 5 }, () => starter.adventurerDefinitionId);
   for (const player of state.players) { for (const definitionId of partyDefinitionIds) player.party.push({ adventurerId: createCard(state, definitionId, player.id).id }); for (let count = 0; count < 4; count += 1) player.hand.push(createCard(state, ruleset.registry.starter.summonStoneDefinitionId, player.id).id); player.hand.push(createCard(state, ruleset.registry.starter.crystalDefinitionId, player.id).id); }
-  refillSupply(state, ruleset, 'adventurer', events); refillSupply(state, ruleset, 'item', events); refillSupply(state, ruleset, 'monster', events); refillSupply(state, ruleset, 'boss', events); attachTargets(state); return state;
+  refillConfiguredSupplyRows(state, ruleset, events); attachTargets(state); return state;
 }
 export function attachTargets(state: GameState): void {
   const encounter = state.enemyEncounters[0]!;

@@ -2,6 +2,7 @@ export * from './cards.js';
 export * from './combat.js';
 export * from './equipment.js';
 export * from './team-overflow.js';
+export * from './supply.js';
 export * from './commands.js';
 export * from './effects.js';
 export * from './lifecycle.js';
