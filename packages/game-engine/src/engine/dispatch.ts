@@ -10,6 +10,7 @@ import { resumeEffectChoice } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -79,8 +80,10 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
 function equipItem(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'EQUIP_ITEM' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
   const phaseError = requirePhase(state, ['action1', 'action2']);
   if (phaseError) return phaseError;
+  const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: player.id, equipmentCardId: command.cardId, adventurerId: command.adventurerId });
+  if (eligibility.status !== 'ready') return { code: 'INVALID_COMMAND', message: eligibility.error };
+  if (!eligibility.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該裝備不符合資格限制：${eligibility.evaluation.rejectionReasonCodes.join(', ')}。` };
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該物資不在手牌中。' };
-  if (getDefinition(ruleset.registry, state, command.cardId).type !== 'equipment') return { code: 'INVALID_COMMAND', message: '只有裝備可配戴。' };
   const slot = player.party.find((candidate) => candidate.adventurerId === command.adventurerId);
   if (!slot) return { code: 'INVALID_COMMAND', message: '找不到指定的隊伍冒險者。' };
   if (slot.equipmentId) player.discardPile.push(slot.equipmentId);

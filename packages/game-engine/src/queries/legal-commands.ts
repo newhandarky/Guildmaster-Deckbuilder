@@ -3,6 +3,7 @@ import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 
 const maxAttackPreviewDepth = 32;
@@ -90,7 +91,10 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
       const definition = getDefinition(ruleset.registry, state, cardId);
       if (definition.type === 'adventurer') commands.push({ type: 'PLAY_ADVENTURER', cardId });
       if (definition.type === 'item') commands.push({ type: 'USE_ITEM', cardId });
-      if (definition.type === 'equipment') for (const slot of player.party) commands.push({ type: 'EQUIP_ITEM', cardId, adventurerId: slot.adventurerId });
+      if (definition.type === 'equipment') for (const slot of player.party) {
+        const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: cardId, adventurerId: slot.adventurerId });
+        if (eligibility.status === 'ready' && eligibility.evaluation.eligible) commands.push({ type: 'EQUIP_ITEM', cardId, adventurerId: slot.adventurerId });
+      }
     }
   }
   if (state.phase === 'combat') {
