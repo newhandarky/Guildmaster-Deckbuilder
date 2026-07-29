@@ -16,7 +16,8 @@ export type EffectNode =
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'remove-from-game'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
-  | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] };
+  | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] }
+  | { kind: 'refresh-supply-row'; refreshPolicyId: string };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
 export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };

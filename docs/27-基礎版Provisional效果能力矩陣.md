@@ -32,6 +32,7 @@
 - 個人抽牌只在「仍需繼續抽」時重建牌庫；展示牌庫頂不洗牌。
 - 基礎版固定公共供應列補牌與 `SUPPLY_DECK_DEPLETED` 正式事件；供應列本身尚未泛用化。
 - Supply deck／公開列配對與 refill-to-target evaluation 已移至 Rules Module JSON-only configuration；未推測官方組成或耗盡後續。
+- generic supply row refresh policy/evaluator/Effect AST 已實作；destination 與 ordering 必須由 JSON policy 明確提供，未設定官方或 base 預設 refresh policy。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - JSON-only combat conditions、戰力 modifier、target restriction 與 defeat/remove-target replacement 已由 query／dispatch 共用的確定性 evaluator 支援；尚未載入卡牌 policy。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
