@@ -1,7 +1,7 @@
 import type { CommandEnvelope, DomainEvent, EngineError, EngineResult, GameCommand, GameState, Phase, PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
-import { getEndCondition, getPartyLimit, type Ruleset } from '../rules/ruleset.js';
+import { getEndCondition, type Ruleset } from '../rules/ruleset.js';
 import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
@@ -11,6 +11,7 @@ import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-d
 import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
+import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -63,8 +64,9 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該卡不在手牌中。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
   if (definition.type !== 'adventurer') return { code: 'INVALID_COMMAND', message: '只有冒險者可加入隊伍。' };
-  const limit = getPartyLimit(ruleset, state, player);
-  if (player.party.length >= limit) {
+  const overflow = evaluateTeamOverflow(state, ruleset, { schemaVersion: 1, playerId: player.id, incomingMemberId: command.cardId });
+  if (overflow.status !== 'ready') return { code: 'INVALID_COMMAND', message: overflow.error };
+  if (overflow.evaluation.status === 'overflow-required') {
     const displaced = player.party.shift();
     if (displaced) {
       player.discardPile.push(displaced.adventurerId);

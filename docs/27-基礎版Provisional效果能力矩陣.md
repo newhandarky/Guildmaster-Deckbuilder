@@ -45,7 +45,7 @@
 
 1. **P0：解除資料阻擋前不可開完整對局。** 取得物資與魔物「逐種」份數的可稽核官方資料。這不是引擎工作；不得反推或建立非官方供應組成 policy。
 2. **已完成基礎：Effect AST 與 lifecycle dispatch。** 原子 card movement、choice、deterministic random、Rules Module lifecycle registry、pending queue、command-before/post-command 精確 cursor resume 與 command 起點 transaction rollback 已有 contract tests；不代表任何 provisional 卡牌已載入。
-3. **P1：供應／裝備的泛用 extensions。** generic combat 與 equipment eligibility evaluation 已完成；下一步是公開列刷新與隊伍溢出 policy，不可在 reducer 以單一卡名分支。
+3. **P1：供應／裝備的泛用 extensions。** generic combat、equipment eligibility 與 team overflow evaluation 已完成；下一步是公開列刷新，不可在 reducer 以單一卡名分支。
 4. **P2：continuous 與內容接線。** 在官方資料與個別時序確認後，才把卡牌內容接到已存在的 lifecycle boundary；不得把 provisional catalog 當 production content 載入。
 5. **P3：Vol.1 專屬能力。** HP、同分排名、協助者、究極魔神多部位，全部保持獨立 Rules Module，不滲入基礎 MVP。
 
@@ -54,7 +54,7 @@
 - **供應組成：** 28 種物資與 14 種魔物的逐種份數未知；因此無法合法建立正確 public supply decks。
 - **供應耗盡後續：** 現行 `pendingOfficialRuling` 是凍結 command 的保守安全行為，不是官方基礎版規則。收到官方裁定前，不能改為自動結束、補牌或繼續。
 
-目前仍未實作正式／provisional 卡牌內容、卡牌專屬討伐獎勵 policy、特定裝備效果、泛用供應列或 continuous 卡牌效果；generic combat/equipment eligibility evaluation、reward primitive 與 lifecycle continuation 基礎已就位，但沒有載入任何卡牌 rule records。物資／魔物逐種份數與供應耗盡 official ruling 持續標為 `blocked-by-rule-exception`。
+泛用 team capacity／overflow evaluation boundary 已實作，query 與 dispatch 共用判定；未設定任何官方容量或官方預設處理，亦未載入卡牌內容。卡牌專屬獎勵、特定裝備效果、泛用供應列及 continuous 卡牌效果仍未實作；物資／魔物逐種份數與供應耗盡 official ruling 持續為 `blocked-by-rule-exception`。
 
 ## 驗收條件
 

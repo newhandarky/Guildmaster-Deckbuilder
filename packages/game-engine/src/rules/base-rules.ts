@@ -11,6 +11,7 @@ export const baseRulesModule: RulesModule = {
     { zoneId: baseZoneIds.bossDeck, kind: 'orderedDeck', visibility: 'public', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.bossRow, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'base:rules' }
   ],
   getPartyLimit: (_state, _player, currentLimit) => Math.min(currentLimit, 5),
+  teamOverflowPolicies: [{ schemaVersion: 1, policyId: 'base:discard-oldest', moduleId: 'base:rules', priority: 1, teamScope: 'player-party', mode: 'discard-oldest', reasonCode: 'TEAM_CAPACITY_OVERFLOW' }],
   endConditions: [
     { id: 'base:all-bosses-defeated', evaluate: (state) => state.zones[baseZoneIds.bossDeck]!.cardIds.length === 0 && state.zones[baseZoneIds.bossRow]!.cardIds.length === 0 && Object.values(state.enemyTargets).filter((target) => target.kind === 'boss').some((target) => target.status === 'defeated') && Object.values(state.enemyTargets).filter((target) => target.kind === 'boss').every((target) => target.status === 'defeated') },
     { id: 'base:all-bonds-completed', evaluate: (state) => state.players.some((player) => player.bonds.every((bond) => bond.completed)) }

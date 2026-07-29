@@ -1,0 +1,9 @@
+import { z } from 'zod';
+
+/** JSON-only policy data; the engine, never a Rules Module callback, resolves overflow. */
+export type TeamOverflowPolicy = { schemaVersion: 1; policyId: string; moduleId: string; priority?: number; teamScope: 'player-party'; mode: 'discard-oldest' | 'discard-newest'; reasonCode: string };
+export type TeamOverflowInput = { schemaVersion: 1; playerId: string; incomingMemberId: string };
+export type TeamOverflowEvaluation = { schemaVersion: 1; status: 'allowed' | 'overflow-required'; capacity: number; overflowCount: number; candidateIds: readonly string[]; policy?: { moduleId: string; policyId: string; mode: TeamOverflowPolicy['mode']; reasonCode: string }; registry: { rulesetVersion: string; modules: readonly { id: string; version: string }[] } };
+export const TeamOverflowPolicySchema = z.object({ schemaVersion: z.literal(1), policyId: z.string().trim().min(1), moduleId: z.string().trim().min(1), priority: z.number().finite().optional(), teamScope: z.literal('player-party'), mode: z.enum(['discard-oldest', 'discard-newest']), reasonCode: z.string().trim().min(1) }).strict();
+export const TeamOverflowInputSchema = z.object({ schemaVersion: z.literal(1), playerId: z.string().trim().min(1), incomingMemberId: z.string().trim().min(1) }).strict();
+export function validateTeamOverflowPolicy(policy: TeamOverflowPolicy, moduleId: string): string[] { const parsed = TeamOverflowPolicySchema.safeParse(policy); const label = typeof (policy as { policyId?: unknown }).policyId === 'string' ? (policy as { policyId: string }).policyId : '<invalid>'; const errors = parsed.success ? [] : parsed.error.issues.map((issue) => `Team overflow policy ${label} has invalid runtime data at ${issue.path.join('.') || '<root>'}: ${issue.message}`); if (parsed.success && parsed.data.moduleId !== moduleId) errors.push(`Team overflow policy ${label} must belong to module ${moduleId}.`); return errors; }
