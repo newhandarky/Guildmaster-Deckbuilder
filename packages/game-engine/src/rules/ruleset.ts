@@ -1,4 +1,4 @@
-import { validateCombatRule, validateLifecycleHook, type CombatRule, type ContentPack, type ContentRegistry, type GameState, type LifecycleHook, type PlayerState } from '@guildmaster/game-protocol';
+import { validateCombatRule, validateEquipmentEligibilityRule, validateLifecycleHook, type CombatRule, type ContentPack, type ContentRegistry, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 
 export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
@@ -11,6 +11,7 @@ export type RulesModule = {
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
   lifecycleHooks?: readonly LifecycleHook[];
   combatRules?: readonly CombatRule[];
+  equipmentEligibilityRules?: readonly EquipmentEligibilityRule[];
   endConditions?: readonly EndCondition[];
   getScoreContributions?: (state: GameState, registry: ContentRegistry) => readonly ScoreContribution[];
 };
@@ -49,12 +50,13 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>();
+  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const equipmentRefs = new Set<string>();
   for (const module of modules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
     for (const hook of module.lifecycleHooks ?? []) { const errors = validateLifecycleHook(hook, module.id); const ref = `${module.id}\u0000${hook.hookId}`; if (hookRefs.has(ref)) errors.push(`Duplicate lifecycle hook: ${module.id}/${hook.hookId}.`); hookRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.combatRules ?? []) { const errors = validateCombatRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (combatRefs.has(ref)) errors.push(`Duplicate combat rule: ${module.id}/${rule.ruleId}.`); combatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const rule of module.equipmentEligibilityRules ?? []) { const errors = validateEquipmentEligibilityRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentRefs.has(ref)) errors.push(`Duplicate equipment eligibility rule: ${module.id}/${rule.ruleId}.`); equipmentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
   }
   return { registry: createContentRegistry(packs, options), modules };
 }
