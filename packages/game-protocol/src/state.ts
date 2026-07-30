@@ -20,7 +20,7 @@ export type PlayerState = {
 export type ZoneKind = 'orderedDeck' | 'faceUpRow' | 'singleSlot' | 'moduleArea';
 export type ZoneState = { zoneId: ZoneId; kind: ZoneKind; cardIds: string[]; visibility: 'public' | 'ownerOnly'; ownerId?: string; rulesModuleId?: string; metadata?: Record<string, unknown> };
 export type EnemyTargetState = { targetId: string; cardInstanceId: string; kind: string; status: 'available' | 'engaged' | 'defeated' | 'removed'; parentEncounterId?: string; partKey?: string; zoneId?: ZoneId; health?: { current: number; max: number }; attachments: string[]; moduleState: Record<string, unknown> };
-export type EnemyEncounterState = { encounterId: string; targetIds: string[]; kind: string; status: 'active' | 'finished'; rulesModuleId?: string; state: Record<string, unknown> };
+export type EnemyEncounterState = { encounterId: string; targetIds: string[]; kind: string; status: 'active' | 'finished'; rulesModuleId?: string; resolutionPolicy?: { moduleId: string; policyId: string }; state: Record<string, unknown> };
 export type EndState = { conditionId: string; finalRoundEndPlayerId: string; triggeredAtRevision: number };
 
 export type GameState = {

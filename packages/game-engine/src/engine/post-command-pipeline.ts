@@ -8,7 +8,7 @@ import type {
   PendingPostCommandContinuation
 } from '@guildmaster/game-protocol';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
-import type { Ruleset } from '../rules/ruleset.js';
+import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 
 export type PostCommandBoundary = 'event-before' | 'event-after' | 'command-after';
 export type PostCommandPipelineResult = {
@@ -92,6 +92,10 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
     const combatPayload = transactionEvent.payload?.kind === 'combat-evaluation' ? transactionEvent.payload : undefined;
     if ((transactionEvent.type === 'COMBAT_EVALUATED') !== Boolean(combatPayload)) return 'Post-command combat fact type and payload are inconsistent.';
     if (combatPayload && !same(combatPayload.evaluation.registry, outer.registry)) return 'Post-command combat evaluation registry mismatch.';
+    const encounterPayload = transactionEvent.payload?.kind === 'encounter-resolution' ? transactionEvent.payload : undefined;
+    const encounterTypes = new Set(['ENCOUNTER_CREATED', 'ENEMY_TARGET_CREATED', 'ENEMY_ATTACHMENT_ADDED', 'ENEMY_TARGET_DAMAGED', 'ENEMY_TARGET_DEFEATED', 'ENEMY_TARGET_REMOVED', 'ENCOUNTER_COMPLETED']);
+    if (encounterTypes.has(transactionEvent.type) !== Boolean(encounterPayload)) return 'Post-command encounter fact type and payload are inconsistent.';
+    if (encounterPayload && !same(encounterPayload.registry, outer.registry)) return 'Post-command encounter evaluation registry mismatch.';
   }
   if (outer.boundary === 'command-after') {
     if (outer.factIndex !== outer.facts.length || outer.payload.eventType !== undefined || outer.payload.commandType !== outer.envelope.command.type) return 'Command-after cursor still has unprocessed facts or an invalid payload.';
@@ -100,7 +104,11 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
     if (!fact || outer.factIndex < 0 || outer.payload.eventType !== fact.type || outer.payload.metadata?.eventId !== fact.eventId) return 'Post-command fact cursor is out of range or mismatched.';
   }
   if (outer.payload.point !== outer.boundary || outer.payload.actorId !== outer.envelope.actorId || outer.payload.metadata?.commandId !== outer.envelope.commandId) return 'Post-command boundary payload does not match its cursor.';
-  if (ruleset && !same(outer.registry, registryFor(state, ruleset))) return 'Post-command Rules Module registry mismatch.';
+  if (ruleset) {
+    const compatibilityError = validateRulesetStateCompatibility(state, ruleset);
+    if (compatibilityError) return compatibilityError;
+    if (!same(outer.registry, registryFor(state, ruleset))) return 'Post-command Rules Module registry mismatch.';
+  }
   return undefined;
 }
 

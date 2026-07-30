@@ -1,7 +1,7 @@
-import type { CommandEnvelope, DomainEvent, EngineError, EngineResult, GameCommand, GameState, Phase, PlayerState } from '@guildmaster/game-protocol';
+import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type EngineError, type EngineResult, type GameCommand, type GameState, type Phase, type PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
-import { getEndCondition, type Ruleset } from '../rules/ruleset.js';
+import { getEndCondition, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
 import { refillConfiguredSupplyRows } from './supply.js';
@@ -15,6 +15,8 @@ import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-eva
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline } from './combat-reward-pipeline.js';
+import { defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
+import { validateGameStateInvariants } from './state-invariants.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -30,7 +32,8 @@ function removeFrom<T>(items: T[], item: T): boolean {
   items.splice(index, 1);
   return true;
 }
-function combinations(ids: readonly string[], count: number, start = 0, prefix: string[] = []): string[][] { if (prefix.length === count) return [prefix]; return ids.slice(start).flatMap((id, offset) => combinations(ids, count, start + offset + 1, [...prefix, id])); }
+const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand;
+function combinations(ids: readonly string[], count: number, limit = 257): string[][] { const results: string[][] = []; const visit = (start: number, prefix: string[]): void => { if (results.length >= limit) return; if (prefix.length === count) { results.push(prefix); return; } for (let index = start; index < ids.length && results.length < limit; index += 1) visit(index + 1, [...prefix, ids[index]!]); }; visit(0, []); return results; }
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
   return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` };
@@ -132,6 +135,12 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   if (phaseError) return phaseError;
   const target = state.enemyTargets[command.targetId];
   if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: '該敵方目標不可討伐。' };
+  const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
+  if (encounter?.status === 'finished') return { code: 'INVALID_COMMAND', message: '該敵方 encounter 已完成。' };
+  // EncounterResolutionPolicy governs terminal disposition/completion only.  Until a
+  // separate, versioned attack-damage policy exists, ATTACK_TARGET must not silently
+  // turn a health target into a one-shot defeat.
+  if (target.health) return { code: 'INVALID_COMMAND', message: '具生命值的敵方目標需要明確的 attack-resolution policy。' };
   const combat = evaluateCombat(state, ruleset, player.id, command.targetId);
   if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
   if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
@@ -144,6 +153,22 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
   }
   event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
+  if (encounter?.resolutionPolicy) {
+    const policy = encounter.resolutionPolicy;
+    const resolution = combat.evaluation.outcome.kind === 'remove-target'
+      ? removeEnemyTarget(state, ruleset, { kind: 'remove-enemy-target', targetId: target.targetId, policy }, events)
+      : defeatEnemyTarget(state, ruleset, { kind: 'defeat-enemy-target', targetId: target.targetId, policy }, events);
+    if (!resolution.ok) return { code: 'INVALID_COMMAND', message: resolution.error };
+    if (combat.evaluation.outcome.kind === 'remove-target') return undefined;
+    if (target.kind === 'boss') player.history.defeatedBosses += 1;
+    else player.history.defeatedMonsters += 1;
+    const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
+    if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
+    const pipeline = beginCombatRewardPipeline(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, structuredClone(state), events, 0, rewards.evaluation, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } });
+    if (pipeline.status === 'suspended') return undefined;
+    if (pipeline.status !== 'completed') return { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Combat reward policy failed.' };
+    return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
+  }
   if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
   if (combat.evaluation.outcome.kind === 'remove-target') {
     target.status = 'removed';
@@ -237,7 +262,12 @@ function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerS
   return result.status === 'failed' || result.status === 'unsupported' ? { code: 'INVALID_COMMAND', message } : undefined;
 }
 
-export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
+function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
+  const parsedEnvelope = CommandEnvelopeSchema.safeParse(envelope);
+  if (!parsedEnvelope.success) return fail(state, 'INVALID_COMMAND', `Malformed command envelope: ${parsedEnvelope.error.issues[0]?.message ?? 'invalid input'}.`);
+  envelope = parsedEnvelope.data;
+  const stateErrors = validateGameStateInvariants(state); if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
+  const registryError = validateRulesetStateCompatibility(state, ruleset); if (registryError) return fail(state, 'INVALID_COMMAND', registryError);
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
@@ -289,6 +319,12 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
     const factStart = events.length;
     const error = reduceCommand(nextState, ruleset, continuation.envelope, events);
     if (error) return { state: rollback ? structuredClone(rollback) : state, events: [], error };
+    const reducerContinuation = pendingCommandFor(nextState);
+    if (reducerContinuation?.kind === 'combat-reward') {
+      reducerContinuation.rollbackState = rollback ? structuredClone(rollback) : structuredClone(state);
+      reducerContinuation.factStart = factStart;
+      return { state: nextState, events };
+    }
     const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, rollback ? structuredClone(rollback) : structuredClone(state), events.slice(factStart), events);
     if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
@@ -309,7 +345,7 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
     const overflow = evaluateTeamOverflow(nextState, ruleset, { schemaVersion: 1, playerId: envelope.actorId, incomingMemberId: envelope.command.cardId });
     if (overflow.status !== 'ready') return { state, events: [], error: { code: 'INVALID_COMMAND', message: overflow.error } };
     if (overflow.evaluation.status === 'overflow-required' && overflow.evaluation.policy?.mode === 'player-choice') {
-      const candidateIds = overflow.evaluation.candidateIds; const count = overflow.evaluation.overflowCount; const sets = combinations(candidateIds, count); if (!sets.length) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow has insufficient candidates.' } };
+      const candidateIds = overflow.evaluation.candidateIds; const count = overflow.evaluation.overflowCount; const sets = combinations(candidateIds, count); if (!sets.length) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow has insufficient candidates.' } }; if (sets.length > 256) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow choice exceeds the supported option budget.' } };
       const optionCandidates = Object.fromEntries(sets.map((set, index) => [`overflow-${index + 1}`, set])); const choiceId = `team-overflow:${overflow.evaluation.policy.policyId}`; const executionId = `team-overflow:${envelope.commandId}`;
       nextState.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId, actorId: envelope.actorId, options: Object.keys(optionCandidates).map((id) => ({ id, effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } })), remaining: [], context: { controllerId: envelope.actorId } };
       nextState.effectState.pendingCommand = { schemaVersion: 1, kind: 'team-overflow', envelope: structuredClone(envelope), events: structuredClone(events), rollbackState: structuredClone(rollback), policy: { moduleId: overflow.evaluation.policy.moduleId, policyId: overflow.evaluation.policy.policyId }, candidateIds: structuredClone(candidateIds), requiredSelectionCount: count, optionCandidates: structuredClone(optionCandidates), registry: structuredClone(overflow.evaluation.registry) };
@@ -326,4 +362,12 @@ export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEn
   nextState.revision += 1;
   nextState.eventLogCursor += pipeline.events.length;
   return { state: nextState, events: pipeline.events };
+}
+
+export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
+  const result = dispatchInternal(state, ruleset, envelope);
+  if (result.error) return result;
+  const errors = validateGameStateInvariants(result.state); const registryError = validateRulesetStateCompatibility(result.state, ruleset);
+  if (errors.length || registryError) return fail(state, 'INVALID_COMMAND', `Command produced invalid state: ${[...errors, ...(registryError ? [registryError] : [])].join(' ')}`);
+  return result;
 }

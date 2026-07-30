@@ -1,4 +1,5 @@
 import type { Phase } from './state.js';
+import { z } from 'zod';
 
 export type GameCommand =
   | { type: 'PLAY_ADVENTURER'; cardId: string }
@@ -11,7 +12,26 @@ export type GameCommand =
 
 export type CommandEnvelope = { protocolVersion: 1; gameId: string; commandId: string; actorId: string; expectedRevision: number; command: GameCommand };
 
-export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] };
+const nonEmptyId = z.string().trim().min(1);
+export const GameCommandSchema: z.ZodType<GameCommand> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('PLAY_ADVENTURER'), cardId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('EQUIP_ITEM'), cardId: nonEmptyId, adventurerId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('USE_ITEM'), cardId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('BUY_CARD'), cardId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('RESOLVE_EFFECT_CHOICE'), executionId: nonEmptyId, choiceId: nonEmptyId, optionId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('END_PHASE'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict()
+]);
+export const CommandEnvelopeSchema: z.ZodType<CommandEnvelope> = z.object({
+  protocolVersion: z.literal(1),
+  gameId: nonEmptyId,
+  commandId: nonEmptyId,
+  actorId: nonEmptyId,
+  expectedRevision: z.number().finite().int().nonnegative(),
+  command: GameCommandSchema
+}).strict();
+
+export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] } | import('./encounter.js').EncounterEventPayload;
 export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string; payload?: DomainEventPayload };
 
 export type EngineErrorCode = 'STALE_REVISION' | 'NOT_AUTHORIZED' | 'INVALID_COMMAND' | 'RULE_CLARIFICATION_REQUIRED' | 'GAME_FINISHED';

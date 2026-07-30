@@ -65,6 +65,14 @@ describe('Rules Module lifecycle dispatcher', () => {
     for (const entry of cases) { const state = structuredClone(suspended); entry.mutate(state); const before = structuredClone(state); const result = resumeLifecycleChoice(state, ruleset, 'p1', pendingChoice.executionId, pendingChoice.choiceId, 'accept'); expect(result.reason).toBe(entry.expected); expect(state).toEqual(before); }
   });
 
+  it('rejects tampered executable choices and non-canonical hook queues on resume', () => {
+    const ruleset = createRuleset([testPack], [baseRulesModule, module('test:choice', [hook('test:choice', 'choice', 'turn-start', 1, choiceBody())])]); const suspended = gameFor(ruleset); dispatchLifecycle(suspended, ruleset, { schemaVersion: 1, point: 'turn-start' }, { controllerId: 'p1' }); const pending = suspended.effectState.pendingChoice!;
+    const alteredEffect = structuredClone(suspended); (alteredEffect.effectState.pendingChoice!.options[0]!.effect as Extract<EffectDefinition['body'], { kind: 'modify-value' }>).amount = 999; const effectBefore = structuredClone(alteredEffect);
+    expect(resumeLifecycleChoice(alteredEffect, ruleset, 'p1', pending.executionId, pending.choiceId, 'accept')).toMatchObject({ status: 'failed' }); expect(alteredEffect).toEqual(effectBefore);
+    const alteredQueue = structuredClone(suspended); alteredQueue.effectState.pendingLifecycle!.remainingHooks = [...alteredQueue.effectState.pendingLifecycle!.remainingHooks, { ...alteredQueue.effectState.pendingLifecycle!.currentHook }]; const queueBefore = structuredClone(alteredQueue);
+    expect(resumeLifecycleChoice(alteredQueue, ruleset, 'p1', pending.executionId, pending.choiceId, 'accept')).toMatchObject({ status: 'failed' }); expect(alteredQueue).toEqual(queueBefore);
+  });
+
   it('evaluates continuous boundaries without applying their card effect', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:continuous', [hook('test:continuous', 'aura', 'phase-start', 1, modify(99), 'continuous')])]); const state = gameFor(ruleset);
     expect(dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'phase-start', phase: 'action1' }, { controllerId: 'p1' })).toMatchObject({ status: 'completed', hookIds: [], evaluatedContinuousHookIds: ['aura'] }); expect(state.players[0]!.turnPurchaseBonus).toBe(0);

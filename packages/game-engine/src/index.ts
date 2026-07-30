@@ -1,6 +1,7 @@
 export * from './engine/create-game.js';
 export * from './engine/dispatch.js';
 export * from './engine/snapshot.js';
+export * from './engine/state-invariants.js';
 export * from './engine/post-command-pipeline.js';
 export * from './effects/executor.js';
 export * from './effects/movement.js';
@@ -11,7 +12,9 @@ export * from './queries/scoring.js';
 export * from './rules/base-rules.js';
 export * from './rules/combat-evaluator.js';
 export * from './rules/combat-reward-evaluator.js';
+export * from './rules/encounter-resolution-evaluator.js';
 export * from './engine/combat-reward-pipeline.js';
+export * from './engine/encounter-resolution.js';
 export * from './rules/equipment-eligibility-evaluator.js';
 export * from './rules/team-overflow-evaluator.js';
 export * from './rules/supply-row-evaluator.js';
