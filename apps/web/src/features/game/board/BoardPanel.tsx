@@ -9,16 +9,16 @@ function definitionFor(cards: Props['cards'], definitions: Props['definitions'],
 export function BoardPanel({ zones, targets, definitions, cards, presentation, attackableTargetIds, buyableCardIds, onAttack, onBuy }: Props) {
   const cardsIn = (zoneId: string) => zones[zoneId]?.cardIds ?? [];
   const targetFor = (cardId: string) => Object.values(targets).find((target) => target.cardInstanceId === cardId && target.status === 'available');
-  const renderRow = (title: string, ids: string[], action: 'attack' | 'buy') => <section><h2>{title}</h2><div className="card-row">{ids.map((id) => {
+  const renderRow = (title: string, ids: string[], action: 'attack' | 'buy', actionLabel: string) => <section><h2>{title}</h2><div className="card-row">{ids.map((id) => {
     const target = targetFor(id);
     const enabled = action === 'attack' ? Boolean(target && attackableTargetIds.has(target.targetId)) : buyableCardIds.has(id);
     const definition = definitionFor(cards, definitions, id);
-    return <Card key={id} instance={cards[id]} definition={definition} presentation={presentation.resolve(definition?.id ?? cards[id]?.definitionId ?? '')} onClick={enabled ? () => action === 'attack' && target ? onAttack(target.targetId) : onBuy(id) : undefined} />;
+    return <Card key={id} instance={cards[id]} definition={definition} presentation={presentation.resolve(definition?.id ?? cards[id]?.definitionId ?? '')} actionLabel={enabled ? actionLabel : undefined} onClick={enabled ? () => action === 'attack' && target ? onAttack(target.targetId) : onBuy(id) : undefined} />;
   })}</div></section>;
   return <div className="board-grid">
-    {renderRow(`招募區（牌庫 ${cardsIn('base:adventurer-deck').length}）`, cardsIn('base:adventurer-row'), 'buy')}
-    {renderRow(`商店（牌庫 ${cardsIn('base:item-deck').length}）`, cardsIn('base:item-row'), 'buy')}
-    {renderRow(`魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack')}
-    {renderRow(`魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack')}
+    {renderRow(`招募區（牌庫 ${cardsIn('base:adventurer-deck').length}）`, cardsIn('base:adventurer-row'), 'buy', '招募')}
+    {renderRow(`商店（牌庫 ${cardsIn('base:item-deck').length}）`, cardsIn('base:item-row'), 'buy', '購買')}
+    {renderRow(`魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack', '討伐')}
+    {renderRow(`魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack', '討伐')}
   </div>;
 }

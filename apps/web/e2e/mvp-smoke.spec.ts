@@ -51,6 +51,8 @@ test('replay runner reports malformed JSON without changing the live game', asyn
   await page.getByLabel('Replay JSON').fill('{not-json');
   await page.getByTestId('run-replay').click();
   await expect(page.getByTestId('replay-report')).toContainText('Replay JSON 無法解析');
+  await expect(page.getByTestId('replay-report')).toHaveAttribute('role', 'status');
+  await expect(page.getByTestId('interaction-hint')).toHaveAttribute('aria-live', 'polite');
   await expect(page.getByTestId('end-phase')).toBeEnabled();
 });
 
@@ -166,4 +168,67 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await expect(rows.nth(1)).toContainText('#2');
   await expect(rows.filter({ hasText: '你' })).toContainText('5 榮譽');
   await expect(rows.filter({ hasText: '你' })).toContainText('魔王 1／魔物 0');
+});
+
+test('keyboard reaches a legal target, submits it with Space, and retains a useful focus target', async ({ page }) => {
+  await page.goto('/');
+  const endPhase = page.getByTestId('end-phase');
+
+  await page.keyboard.press('Tab');
+  await expect(endPhase).toBeFocused();
+  await expect(endPhase).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator(':focus')).toHaveAttribute('aria-label', /討伐：/);
+  await page.keyboard.press('Space');
+  await expect(page.locator('.log')).toContainText('討伐了');
+  await expect(endPhase).toBeFocused();
+});
+
+const viewports = [
+  { name: 'desktop', size: { width: 1280, height: 800 } },
+  { name: 'tablet', size: { width: 1024, height: 768 } },
+  { name: 'mobile landscape', size: { width: 667, height: 375 } },
+  { name: 'narrow fallback', size: { width: 320, height: 640 } }
+] as const;
+
+for (const { name, size } of viewports) {
+  test(`${name} viewport avoids page-level horizontal overflow`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await page.goto('/');
+    if (size.width === 320) await page.addStyleTag({ content: 'html { font-size: 150%; }' });
+    expect(await page.locator('body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
+  });
+}
+
+for (const { name, size } of viewports.filter(({ size }) => size.width === 1024 || size.width === 667)) {
+  test(`${name} viewport completes a legal attack and phase advance`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await page.goto('/');
+    await page.getByTestId('end-phase').click();
+    const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+    await monsterRow.locator('button:not([disabled])').first().click();
+    await expect(page.locator('.log')).toContainText('討伐了');
+    await page.getByTestId('end-phase').click();
+    await expect(page.getByText(/第 \d+ 輪 · 行動二階段/)).toBeVisible();
+    expect(await page.locator('body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
+  });
+}
+
+test('mobile landscape scoreboard and new expedition controls remain usable', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto('/?e2eScenario=all-bosses-endgame');
+  await page.getByTestId('end-phase').click();
+  const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
+  await bossRow.locator('button:not([disabled])').first().click();
+  await finishTriggeredFinalRound(page);
+
+  const newExpedition = page.getByRole('button', { name: '開啟新遠征' });
+  await expect(newExpedition).toBeFocused();
+  await newExpedition.click();
+  await expect(page.getByTestId('game-app')).toBeVisible();
+  await expect(page.getByTestId('end-phase')).toBeFocused();
+  expect(await page.locator('body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
 });

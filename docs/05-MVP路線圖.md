@@ -127,8 +127,8 @@ M3 完整基礎內容仍被可稽核官方資料阻擋；物資／魔物逐種�
 - 基礎版官方規則／FAQ／勘誤回歸矩陣
 - 已建立 deterministic Playwright full-game journey：真人合法討伐、招募、休息、AI 回合、v3 local save reload 與恢復後繼續合法操作；它只覆蓋原創示範內容與既有 runtime contracts。
 - 已建立 e2e-mode 的 typed、validated 原創示範 scenario registry；它透過一般 `LocalGameSession`、合法 Commands 與 Rules Module 觸發「全魔王擊敗」及「全羈絆完成」兩種已註冊終局，覆蓋 final round、單次結算、scoreboard 與重新開局的空白 replay history。這是 runtime／測試能力，不表示正式基礎卡表或其全部終局觸發資料已完成。
-- 無障礙鍵盤操作、色彩與文字替代
-- 效能與手機橫向基本檢查
+- 核心 MVP 流程已驗證鍵盤 Tab/Enter/Space、操作後焦點交接、可理解的卡牌動作名稱與狀態／錯誤／Replay announcements；1280×800、1024×768、667×375 與 320px（150% 文字）已驗證沒有整頁水平溢位。這是 accessibility/responsive hardening，不宣稱完整 WCAG 合規。
+- M6 release gate 尚需正式基礎規則／FAQ／勘誤回歸矩陣、可稽核內容資料、跨瀏覽器與手動 accessibility audit，以及 P0/P1 RC readiness review。
 - 內容與素材授權清單
 
 驗收：MVP 成功標準全部達成，沒有已知 P0/P1 缺陷；沒有為基礎版繞過最終架構 contracts。
