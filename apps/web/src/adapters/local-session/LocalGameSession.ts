@@ -3,7 +3,7 @@ import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerVie
 import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayDiagnostic, ReplayInitialConfig } from '@guildmaster/game-protocol';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
-export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; replayHistoryComplete: boolean; error?: EngineError; scoreboard?: ScoreRow[] };
+export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; replayHistoryComplete: boolean; error?: EngineError | undefined; scoreboard?: ScoreRow[] | undefined };
 export type ReplayDiagnosticExport = { json?: string; error?: string };
 export type ReplayRunnerReport = { status: 'completed'; message: string; commandCount: number; eventCount: number; revision: number } | { status: 'failed'; message: string; reasonCode?: ReplayDiagnostic['reasonCode'] | undefined; commandIndex?: number | undefined; commandId?: string | undefined; expectedRevision?: number | undefined; actualRevision?: number | undefined; engineErrorCode?: string | undefined; divergence?: { path: string; expected: unknown; actual: unknown } | undefined };
 
@@ -108,8 +108,8 @@ export class LocalGameSession {
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
-    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, replayHistoryComplete: this.replayHistoryComplete, ...(error ? { error } : {}) };
-    return this.state.status === 'finished' ? { ...update, scoreboard: getScoreboard(this.state, this.ruleset) } : update;
+    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, replayHistoryComplete: this.replayHistoryComplete, error };
+    return { ...update, scoreboard: this.state.status === 'finished' ? getScoreboard(this.state, this.ruleset) : undefined };
   }
 
   private recordAccepted(envelope: CommandEnvelope, events: readonly DomainEvent[]): void {

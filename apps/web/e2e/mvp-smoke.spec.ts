@@ -105,3 +105,65 @@ test('deterministic full-game journey defeats, recruits, rests, restores v3 save
   await endPhase.click();
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
 });
+
+async function finishTriggeredFinalRound(page: import('@playwright/test').Page): Promise<void> {
+  const endPhase = page.getByTestId('end-phase');
+  for (let phase = 0; phase < 4; phase += 1) await endPhase.click();
+  await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
+}
+
+test('deterministic all-bosses journey reaches the scoreboard once and restarts with a fresh replay', async ({ page }) => {
+  await page.goto('/?e2eScenario=all-bosses-endgame');
+  const endPhase = page.getByTestId('end-phase');
+
+  await endPhase.click();
+  const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
+  const legalBoss = bossRow.locator('button:not([disabled])').first();
+  await expect(legalBoss).toBeEnabled();
+  await legalBoss.click();
+
+  await expect(page.getByTestId('final-round-notice')).toBeVisible();
+  await expect(page.getByTestId('game-app')).toBeVisible();
+  await finishTriggeredFinalRound(page);
+  await expect(page.getByText('base:all-bosses-defeated')).toBeVisible();
+
+  const rows = page.locator('.scoreboard .score-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('#1 你');
+  await expect(rows.nth(0)).toContainText('5 榮譽');
+  await expect(rows.nth(0)).toContainText('魔王 1／魔物 0');
+  await expect(rows.nth(1)).toContainText('#2');
+  await expect(rows.nth(1)).toContainText(/\d+ 榮譽/);
+  await expect(rows.nth(1)).toContainText('魔王 0');
+
+  await page.getByRole('button', { name: '開啟新遠征' }).click();
+  await expect(page.getByTestId('game-app')).toBeVisible();
+  await expect(page.getByText('版本 0')).toBeVisible();
+  await expect(page.locator('.log')).toContainText('等待你的第一個行動。');
+  await expect(endPhase).toBeEnabled();
+  await page.getByRole('button', { name: '載入目前 Replay' }).click();
+  await page.getByTestId('run-replay').click();
+  await expect(page.getByTestId('replay-report')).toContainText('commands 0 · events 0 · revision 0');
+});
+
+test('deterministic all-bonds journey triggers the registered bond end condition through UI play', async ({ page }) => {
+  await page.goto('/?e2eScenario=all-bonds-endgame');
+  const endPhase = page.getByTestId('end-phase');
+
+  await endPhase.click();
+  const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
+  const legalBoss = bossRow.locator('button:not([disabled])').first();
+  await expect(legalBoss).toBeEnabled();
+  await legalBoss.click();
+
+  await expect(page.getByTestId('final-round-notice')).toBeVisible();
+  await finishTriggeredFinalRound(page);
+  await expect(page.getByText('base:all-bonds-completed')).toBeVisible();
+
+  const rows = page.locator('.scoreboard .score-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('#1');
+  await expect(rows.nth(1)).toContainText('#2');
+  await expect(rows.filter({ hasText: '你' })).toContainText('5 榮譽');
+  await expect(rows.filter({ hasText: '你' })).toContainText('魔王 1／魔物 0');
+});
