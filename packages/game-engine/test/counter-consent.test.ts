@@ -79,7 +79,11 @@ describe('generic counter consent lifecycle', () => {
       { ...consentCommand(suspended, 'p2', { type: 'RESPOND_COUNTER_CONSENT', requestId: 'share-request', response: 'accept' }, 'stale'), expectedRevision: suspended.revision + 1 },
       end(suspended, 'p1', 'bypass')
     ];
-    for (const attempt of attempts) expect(dispatch(suspended, ruleset, attempt).error).toBeDefined();
+    for (const attempt of attempts) {
+      const rejected = dispatch(suspended, ruleset, attempt);
+      expect(rejected.error).toBeDefined();
+      expect(rejected.state).toEqual(before);
+    }
     expect(suspended).toEqual(before);
   });
 
@@ -115,6 +119,10 @@ describe('generic counter consent lifecycle', () => {
     const ruleset = rules([hook('command-before', request())]); const state = game(ruleset, 2); const suspended = dispatch(state, ruleset, end(state)).state;
     const malformed = JSON.parse(JSON.stringify(serializeSnapshot(suspended))); malformed.state.effectState.pendingCounterConsent.acceptedActorIds = ['missing'];
     expect(() => restoreSnapshot(malformed, ruleset)).toThrow(/counter consent|invalid/i);
+    const falselyPending = JSON.parse(JSON.stringify(serializeSnapshot(suspended))); falselyPending.state.effectState.pendingCounterConsent.acceptedActorIds = ['p2'];
+    expect(() => restoreSnapshot(falselyPending, ruleset)).toThrow(/counter consent|invalid/i);
+    const noResponders = JSON.parse(JSON.stringify(serializeSnapshot(suspended))); noResponders.state.effectState.pendingCounterConsent.requiredActorIds = [];
+    expect(() => restoreSnapshot(noResponders, ruleset)).toThrow(/counter consent|invalid/i);
     const unknown = structuredClone(suspended); unknown.effectState.pendingCounterConsent!.policy.policyId = 'missing';
     expect(() => restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(unknown))), ruleset)).toThrow(/Unknown counter consent policy/);
     const mismatched = structuredClone(suspended); mismatched.effectState.pendingCounterConsent!.registry.modules[1]!.version = 'wrong';

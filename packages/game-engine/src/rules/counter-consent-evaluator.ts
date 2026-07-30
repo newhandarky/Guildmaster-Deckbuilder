@@ -91,6 +91,12 @@ export function validatePendingCounterConsentState(state: GameState, ruleset: Ru
   const counter = owner.counters.find(({ resourceId }) => resourceId === policy.resourceId);
   if (!counter || counter.visibility !== 'allPlayersByConsent') return 'Counter consent target is missing or no longer consent-gated.';
   const expectedActors = state.players.map(({ id }) => id).filter((id) => id !== pending.requesterId);
-  if (!same(pending.requiredActorIds, expectedActors) || new Set(pending.acceptedActorIds).size !== pending.acceptedActorIds.length || pending.acceptedActorIds.some((id) => !pending.requiredActorIds.includes(id))) return 'Counter consent responder set is invalid.';
+  if (
+    !pending.requiredActorIds.length
+    || !same(pending.requiredActorIds, expectedActors)
+    || new Set(pending.acceptedActorIds).size !== pending.acceptedActorIds.length
+    || pending.acceptedActorIds.some((id) => !pending.requiredActorIds.includes(id))
+    || pending.requiredActorIds.every((id) => pending.acceptedActorIds.includes(id))
+  ) return 'Counter consent responder set is invalid.';
   return undefined;
 }

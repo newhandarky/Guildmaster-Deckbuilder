@@ -17,6 +17,7 @@ import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
 import { validateGameStateInvariants } from './state-invariants.js';
+import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -281,6 +282,16 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   if (pendingConsent ? !state.players.some(({ id }) => id === envelope.actorId) : envelope.actorId !== (pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家可執行的指令。');
   const hasContinuation = pendingChoice || pendingConsent || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand;
   if (hasContinuation && ((pendingChoice && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') || (pendingConsent && !isCounterConsentCommand(envelope.command)) || (!pendingChoice && !pendingConsent))) return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果暫停。');
+  if (pendingConsent && isCounterConsentCommand(envelope.command)) {
+    const evaluation = evaluateCounterConsent(state, ruleset, {
+      schemaVersion: 1,
+      action: counterConsentAction(envelope.command),
+      actorId: envelope.actorId,
+      requestId: envelope.command.requestId,
+      registry: structuredClone(pendingConsent.registry)
+    });
+    if (evaluation.status === 'failed') return fail(state, 'INVALID_COMMAND', `${evaluation.reason}: ${evaluation.error}`);
+  }
   const nextState = structuredClone(state);
   if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand?.kind === 'combat-reward') {
     const pending = nextState.effectState.pendingCommand; const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumeCombatRewardPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumeCombatRewardCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));

@@ -51,7 +51,7 @@ export function validateGameStateInvariants(state: GameState): string[] {
   if (consent) {
     if (state.effectState.pendingChoice) errors.push('Counter consent and effect choice cannot be pending together.');
     if (!playerIds.includes(consent.counterOwnerId) || consent.requesterId !== consent.counterOwnerId || consent.context.controllerId !== consent.requesterId) errors.push('Pending counter consent has an invalid owner, requester, or context.');
-    if (duplicates(consent.requiredActorIds).length || duplicates(consent.acceptedActorIds).length || consent.requiredActorIds.includes(consent.requesterId) || consent.acceptedActorIds.some((id) => !consent.requiredActorIds.includes(id)) || consent.requiredActorIds.some((id) => !playerIds.includes(id))) errors.push('Pending counter consent responder sets are invalid.');
+    if (!consent.requiredActorIds.length || duplicates(consent.requiredActorIds).length || duplicates(consent.acceptedActorIds).length || consent.requiredActorIds.includes(consent.requesterId) || consent.acceptedActorIds.some((id) => !consent.requiredActorIds.includes(id)) || consent.requiredActorIds.some((id) => !playerIds.includes(id)) || consent.requiredActorIds.every((id) => consent.acceptedActorIds.includes(id))) errors.push('Pending counter consent responder sets are invalid.');
   }
   if (duplicates(state.removedCards).length) errors.push('Removed cards contains duplicate IDs.');
   for (const cardId of state.removedCards) addLocation(cardId, 'removed');
