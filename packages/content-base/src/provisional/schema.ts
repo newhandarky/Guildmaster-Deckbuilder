@@ -54,12 +54,16 @@ export function validateProvisionalBaseContentCatalog(catalog: ProvisionalBaseCo
     definitionIds.add(candidate.definitionId);
     if (candidate.runtimeLoadable || candidate.activation !== 'disabled') errors.push(`Provisional candidate ${candidate.definitionId} must remain disabled outside runtime.`);
     if (!candidate.fields.length) errors.push(`Provisional candidate ${candidate.definitionId} requires fields.`);
+    const fieldNames = new Set<ProvisionalFieldName>();
     for (const field of candidate.fields) {
+      if (fieldNames.has(field.field)) errors.push(`Duplicate field ${candidate.definitionId}.${field.field}.`); fieldNames.add(field.field);
       if (!field.sourceIds.length || !field.sourceLocation.trim()) errors.push(`Field ${candidate.definitionId}.${field.field} requires source IDs and an exact locator.`);
       for (const sourceId of field.sourceIds) if (!sourceIds.has(sourceId)) errors.push(`Unknown source ${sourceId} on ${candidate.definitionId}.${field.field}.`);
       if (field.status === 'exception' && !field.exceptionReason?.trim()) errors.push(`Exception ${candidate.definitionId}.${field.field} requires a reason.`);
       if (field.status === 'provisional' && field.candidateValue === undefined) errors.push(`Provisional ${candidate.definitionId}.${field.field} requires a candidate value.`);
       if (field.status === 'verified' && field.candidateValue === undefined) errors.push(`Verified ${candidate.definitionId}.${field.field} requires a value.`);
+      if (['copies', 'cost', 'combat', 'purchasePower', 'honor'].includes(field.field) && field.candidateValue !== undefined && (typeof field.candidateValue !== 'number' || !Number.isFinite(field.candidateValue) || !Number.isInteger(field.candidateValue) || field.candidateValue < 0 || (field.field === 'copies' && field.candidateValue < 1))) errors.push(`Field ${candidate.definitionId}.${field.field} requires a finite non-negative integer${field.field === 'copies' ? ' greater than zero' : ''}.`);
+      if (['sourceName', 'cardType', 'effect', 'effectTiming', 'equipmentEligibility', 'restrictions', 'setup', 'profession'].includes(field.field) && field.candidateValue !== undefined && (typeof field.candidateValue !== 'string' || !field.candidateValue.trim())) errors.push(`Field ${candidate.definitionId}.${field.field} requires a non-empty string value.`);
     }
   }
   return errors;
