@@ -1,9 +1,10 @@
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { create } from 'zustand';
 import { LocalGameSession, type ReplayRunnerReport, type SessionUpdate } from '../adapters/local-session/LocalGameSession.js';
-import { ruleset } from '../app/ruleset.js';
+import { resolveE2EScenario } from '../app/e2e-scenarios.js';
+import { createWebRuleset } from '../app/ruleset.js';
 
-const session = new LocalGameSession(ruleset);
+const session = new LocalGameSession(createWebRuleset(resolveE2EScenario(window.location.search)));
 
 type GameStore = SessionUpdate & { replayReport: ReplayRunnerReport | undefined; submit: (command: GameCommand) => void; restart: () => void; loadCurrentReplay: () => string | undefined; runReplay: (source: string) => void; clearReplayReport: () => void };
 
