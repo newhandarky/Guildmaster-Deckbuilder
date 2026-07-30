@@ -14,6 +14,7 @@ export type EffectNode =
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
   | { kind: 'choice'; choiceId: string; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
+  | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'move-card'; card: EffectCardRef; from: EffectCardLocation; to: EffectCardLocation; position?: 'top' | 'bottom' | number; permission?: 'controller-only' | 'system'; transferOwnership?: boolean }
   | { kind: 'draw'; player: EffectPlayerRef; count: number }
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
@@ -114,6 +115,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
   z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
+  z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),
   z.object({ kind: z.literal('move-card'), card: cardRefSchema, from: locationSchema, to: locationSchema, position: z.union([z.enum(['top', 'bottom']), z.number().finite().int().nonnegative()]).optional(), permission: z.enum(['controller-only', 'system']).optional(), transferOwnership: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('draw'), player: playerRefSchema, count: z.number().finite().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('discard-card'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),

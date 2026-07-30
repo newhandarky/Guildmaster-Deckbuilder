@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { baseProvisionalEffectCapabilityMatrix, capabilityStatuses, validateEffectCapabilityMatrix } from '../src/capabilities/index.js';
 
 describe('base provisional effect capability matrix', () => {
-  it('is a valid, auditable, complete-status gap analysis', () => {
+  it('is a valid, auditable gap analysis without requiring artificial unresolved gaps', () => {
     expect(validateEffectCapabilityMatrix(baseProvisionalEffectCapabilityMatrix)).toEqual([]);
     const statuses = new Set(baseProvisionalEffectCapabilityMatrix.capabilities.map((capability) => capability.status));
-    for (const status of capabilityStatuses) expect(statuses).toContain(status);
+    for (const status of statuses) expect(capabilityStatuses).toContain(status);
+    expect(statuses).toContain('supported'); expect(statuses).toContain('blocked-by-rule-exception'); expect(statuses).toContain('not-in-MVP-yet');
+    expect(statuses).not.toContain('missing-generic-capability');
   });
   it('keeps all confirmed supply-copy gaps blocked and never invents a composition policy', () => {
     const copies = baseProvisionalEffectCapabilityMatrix.capabilities.find((capability) => capability.id === 'supply/base-composition-by-copy-count')!;

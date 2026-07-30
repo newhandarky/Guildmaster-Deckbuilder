@@ -21,7 +21,7 @@
 | 供應 | 2 | 0 | 2 | 0 |
 | 討伐 | 4 | 0 | 0 | 0 |
 | 隊伍、裝備與道具 | 4 | 0 | 0 | 0 |
-| 隨機與資訊 | 2 | 1 | 0 | 1 |
+| 隨機與資訊 | 3 | 0 | 0 | 1 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
 | 羈絆、終局與計分 | 2 | 0 | 0 | 1 |
 
@@ -43,6 +43,7 @@
 - reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch、continuous runtime、supply refresh、multi-target encounter、Snapshot resume 與 versioned Command Replay diagnostic export 均已 supported；不代表任何正式或 provisional 卡牌內容已載入。
+- generic dice roll runtime 已 supported：Rules Module 只註冊 JSON-only sides，Effect AST 以明確 face outcome 執行；DIE_ROLLED payload、Snapshot 與 choice resume 可重播且不重擲。未載入任何卡牌骰子內容。
 - command-before 與 post-command lifecycle choice continuation 均已實作；command transaction 可跨 Snapshot 從精確 fact/boundary cursor 恢復，且 reducer、facts、hooks、events 與 RNG 不重複，後段失敗回到 command 起點。
 - continuation 能力不代表任何正式或 provisional 卡牌內容已載入。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
