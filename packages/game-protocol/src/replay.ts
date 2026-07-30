@@ -16,6 +16,7 @@ const moduleFingerprint = z.object({ id, version: id, configFingerprint: z.strin
 export type ReplayRulesModuleFingerprint = { id: string; version: string; configFingerprint: string };
 export type ReplayRegistryFingerprint = { engineVersion: string; rulesetVersion: string; contentPacks: readonly { id: string; version: string; hash: string }[]; rulesModules: readonly ReplayRulesModuleFingerprint[] };
 export type ReplayInitialConfig = { gameId: string; seed: number; players: readonly { id: string; name: string; kind: PlayerKind }[]; startingPlayerId: string };
+export type ReplayDivergence = { path: string; expected: unknown; actual: unknown };
 export type ReplayDiagnostic = {
   reasonCode: 'MALFORMED_BUNDLE' | 'UNKNOWN_REPLAY_VERSION' | 'REGISTRY_MISMATCH' | 'CREATE_GAME_FAILED' | 'COMMAND_REJECTED' | 'EXPECTED_EVENTS_MISMATCH' | 'EXPECTED_FINAL_SNAPSHOT_MISMATCH';
   message: string;
@@ -26,6 +27,7 @@ export type ReplayDiagnostic = {
   expected?: unknown;
   actual?: unknown;
   engineErrorCode?: string;
+  divergence?: ReplayDivergence;
 };
 export type ReplayBundle = {
   schemaVersion: 1;

@@ -1,10 +1,11 @@
 import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
-import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
-import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayInitialConfig } from '@guildmaster/game-protocol';
+import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
+import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayDiagnostic, ReplayInitialConfig } from '@guildmaster/game-protocol';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
 export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; replayHistoryComplete: boolean; error?: EngineError; scoreboard?: ScoreRow[] };
 export type ReplayDiagnosticExport = { json?: string; error?: string };
+export type ReplayRunnerReport = { status: 'completed'; message: string; commandCount: number; eventCount: number; revision: number } | { status: 'failed'; message: string; reasonCode?: ReplayDiagnostic['reasonCode'] | undefined; commandIndex?: number | undefined; commandId?: string | undefined; expectedRevision?: number | undefined; actualRevision?: number | undefined; engineErrorCode?: string | undefined; divergence?: { path: string; expected: unknown; actual: unknown } | undefined };
 
 export class LocalGameSession {
   private state: GameState;
@@ -124,5 +125,16 @@ export class LocalGameSession {
     if (!this.replayHistoryComplete) return { error: '此舊存檔只保存 Snapshot，沒有完整 Command Replay history。' };
     try { return { json: JSON.stringify(this.replayBundle(), null, 2) }; }
     catch { return { error: 'Replay diagnostic 匯出失敗；目前對局與本機存檔未受影響。' }; }
+  }
+
+  /** Runs an imported audit bundle without mutating the live game, save, or command log. */
+  runReplayDiagnosticJson(source: string): ReplayRunnerReport {
+    let bundle: unknown;
+    try { bundle = JSON.parse(source); }
+    catch { return { status: 'failed', message: 'Replay JSON 無法解析。' }; }
+    const result = replayGame(bundle, this.ruleset);
+    if (result.status === 'completed') return { status: 'completed', message: 'Replay 完成，沒有偵測到 divergence。', commandCount: Array.isArray((bundle as { commands?: unknown }).commands) ? (bundle as { commands: unknown[] }).commands.length : 0, eventCount: result.events.length, revision: result.finalSnapshot.state.revision };
+    const diagnostic = result.diagnostic;
+    return { status: 'failed', message: diagnostic.message, reasonCode: diagnostic.reasonCode, commandIndex: diagnostic.commandIndex, commandId: diagnostic.commandId, expectedRevision: diagnostic.expectedRevision, actualRevision: diagnostic.actualRevision, engineErrorCode: diagnostic.engineErrorCode, ...(diagnostic.divergence ? { divergence: structuredClone(diagnostic.divergence) } : {}) };
   }
 }

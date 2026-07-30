@@ -1,7 +1,7 @@
-import { ReplayBundleSchema, isFiniteJsonValue, stableJsonFingerprint, type ReplayBundle, type ReplayDiagnostic, type ReplayRegistryFingerprint, type ReplayResult } from '@guildmaster/game-protocol';
+import { ReplayBundleSchema, isFiniteJsonValue, stableJsonFingerprint, type ReplayBundle, type ReplayDiagnostic, type ReplayDivergence, type ReplayRegistryFingerprint, type ReplayResult } from '@guildmaster/game-protocol';
 import { createGame } from './create-game.js';
 import { dispatch } from './dispatch.js';
-import { serializeSnapshot } from './snapshot.js';
+import { restoreSnapshot, serializeSnapshot } from './snapshot.js';
 import type { Ruleset } from '../rules/ruleset.js';
 
 const engineVersion = '0.2.0';
@@ -18,6 +18,28 @@ export function replayRegistryFingerprint(ruleset: Ruleset): ReplayRegistryFinge
 
 function diagnostic(reasonCode: ReplayDiagnostic['reasonCode'], message: string, extra: Omit<ReplayDiagnostic, 'reasonCode' | 'message'> = {}): ReplayDiagnostic {
   return { reasonCode, message, ...extra };
+}
+
+/** Returns the first deterministic JSON leaf that differs, never exposing a whole state blob. */
+export function firstReplayDivergence(expected: unknown, actual: unknown, path = '$'): ReplayDivergence | undefined {
+  if (Object.is(expected, actual)) return undefined;
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    const length = Math.max(expected.length, actual.length);
+    for (let index = 0; index < length; index += 1) {
+      const difference = firstReplayDivergence(expected[index], actual[index], `${path}[${index}]`);
+      if (difference) return difference;
+    }
+    return undefined;
+  }
+  if (expected && actual && typeof expected === 'object' && typeof actual === 'object' && !Array.isArray(expected) && !Array.isArray(actual)) {
+    const keys = [...new Set([...Object.keys(expected as Record<string, unknown>), ...Object.keys(actual as Record<string, unknown>)])].sort();
+    for (const key of keys) {
+      const difference = firstReplayDivergence((expected as Record<string, unknown>)[key], (actual as Record<string, unknown>)[key], `${path}.${key}`);
+      if (difference) return difference;
+    }
+    return undefined;
+  }
+  return { path, expected, actual };
 }
 
 export function validateReplayBundleAgainstRuleset(bundle: unknown, ruleset: Ruleset): { bundle?: ReplayBundle; diagnostic?: ReplayDiagnostic } {
@@ -48,8 +70,9 @@ export function replayGame(bundle: unknown, ruleset: Ruleset): ReplayResult {
     state = result.state;
     events.push(...result.events);
   }
-  const finalSnapshot = serializeSnapshot(state);
-  if (replay.expectedEvents && JSON.stringify(replay.expectedEvents) !== JSON.stringify(events)) return { status: 'failed', diagnostic: diagnostic('EXPECTED_EVENTS_MISMATCH', 'Replay events differ from the audit assertion.', { expected: replay.expectedEvents, actual: events }) };
-  if (replay.expectedFinalSnapshot && JSON.stringify(replay.expectedFinalSnapshot) !== JSON.stringify(finalSnapshot)) return { status: 'failed', diagnostic: diagnostic('EXPECTED_FINAL_SNAPSHOT_MISMATCH', 'Replay final snapshot differs from the audit assertion.', { expected: replay.expectedFinalSnapshot, actual: finalSnapshot }) };
+  // Match the strict JSON schema normalization performed on imported expected snapshots.
+  const finalSnapshot = serializeSnapshot(restoreSnapshot(serializeSnapshot(state), ruleset));
+  if (replay.expectedEvents && JSON.stringify(replay.expectedEvents) !== JSON.stringify(events)) { const divergence = firstReplayDivergence(replay.expectedEvents, events, '$.expectedEvents'); return { status: 'failed', diagnostic: diagnostic('EXPECTED_EVENTS_MISMATCH', 'Replay events differ from the audit assertion.', { expected: replay.expectedEvents, actual: events, ...(divergence ? { divergence } : {}) }) }; }
+  if (replay.expectedFinalSnapshot && JSON.stringify(replay.expectedFinalSnapshot) !== JSON.stringify(finalSnapshot)) { const divergence = firstReplayDivergence(replay.expectedFinalSnapshot, finalSnapshot, '$.expectedFinalSnapshot'); return { status: 'failed', diagnostic: diagnostic('EXPECTED_FINAL_SNAPSHOT_MISMATCH', 'Replay final snapshot differs from the audit assertion.', { expected: replay.expectedFinalSnapshot, actual: finalSnapshot, ...(divergence ? { divergence } : {}) }) }; }
   return { status: 'completed', finalSnapshot, events };
 }
