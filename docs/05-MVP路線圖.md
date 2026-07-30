@@ -116,7 +116,9 @@
 - 基礎榮譽與平手判定
 - 自動存檔、讀檔、schema migration
 - 保存 engine/ruleset/protocol、content manifests/hash、module versions、revision 與 RNG state
-- Command Replay 與錯誤診斷匯出
+- Versioned deterministic Command Replay、錯誤 diagnostic 與 LocalGameSession JSON export 已完成；這是 runtime 能力，並不代表正式或 provisional 卡牌內容已載入。
+
+M3 完整基礎內容仍被可稽核官方資料阻擋；物資／魔物逐種份數與基礎供應耗盡 official ruling 保持 `blocked-by-rule-exception`。通用 dice primitive 只在有已驗證卡牌需求時才加入。
 
 驗收：所有起始座位終局邊界有測試；重新整理可繼續；相同 registry/seed/Commands 重播結果一致；不相容內容明確拒絕。
 
