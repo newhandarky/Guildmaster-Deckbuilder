@@ -8,6 +8,9 @@ export type GameCommand =
   | { type: 'ATTACK_TARGET'; targetId: string }
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'RESOLVE_EFFECT_CHOICE'; executionId: string; choiceId: string; optionId: string }
+  | { type: 'RESPOND_COUNTER_CONSENT'; requestId: string; response: 'accept' | 'decline' }
+  | { type: 'CANCEL_COUNTER_CONSENT'; requestId: string }
+  | { type: 'EXPIRE_COUNTER_CONSENT'; requestId: string }
   | { type: 'END_PHASE'; phase: Phase };
 
 export type CommandEnvelope = { protocolVersion: 1; gameId: string; commandId: string; actorId: string; expectedRevision: number; command: GameCommand };
@@ -20,6 +23,9 @@ export const GameCommandSchema: z.ZodType<GameCommand> = z.discriminatedUnion('t
   z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmptyId }).strict(),
   z.object({ type: z.literal('BUY_CARD'), cardId: nonEmptyId }).strict(),
   z.object({ type: z.literal('RESOLVE_EFFECT_CHOICE'), executionId: nonEmptyId, choiceId: nonEmptyId, optionId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('RESPOND_COUNTER_CONSENT'), requestId: nonEmptyId, response: z.enum(['accept', 'decline']) }).strict(),
+  z.object({ type: z.literal('CANCEL_COUNTER_CONSENT'), requestId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('EXPIRE_COUNTER_CONSENT'), requestId: nonEmptyId }).strict(),
   z.object({ type: z.literal('END_PHASE'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict()
 ]);
 export const CommandEnvelopeSchema: z.ZodType<CommandEnvelope> = z.object({
@@ -31,7 +37,7 @@ export const CommandEnvelopeSchema: z.ZodType<CommandEnvelope> = z.object({
   command: GameCommandSchema
 }).strict();
 
-export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] } | import('./encounter.js').EncounterEventPayload | import('./dice.js').DiceRollEventPayload;
+export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] } | import('./encounter.js').EncounterEventPayload | import('./dice.js').DiceRollEventPayload | import('./counter-consent.js').CounterConsentEventPayload;
 export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string; payload?: DomainEventPayload };
 
 export type EngineErrorCode = 'STALE_REVISION' | 'NOT_AUTHORIZED' | 'INVALID_COMMAND' | 'RULE_CLARIFICATION_REQUIRED' | 'GAME_FINISHED';

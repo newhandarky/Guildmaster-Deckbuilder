@@ -4,6 +4,7 @@ import { validatePostCommandContinuationState } from './post-command-pipeline.js
 import type { Ruleset } from '../rules/ruleset.js';
 import { assertGameStateInvariants } from './state-invariants.js';
 import { validateEncounterStateAgainstRuleset } from '../rules/encounter-resolution-evaluator.js';
+import { validatePendingCounterConsentState } from '../rules/counter-consent-evaluator.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -32,31 +33,34 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   if (ruleset) {
     const encounterError = validateEncounterStateAgainstRuleset(state, ruleset);
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);
+    const consentError = validatePendingCounterConsentState(state, ruleset);
+    if (consentError) throw new Error(`Snapshot counter consent registry mismatch: ${consentError}`);
   }
   const pending = state.effectState.pendingLifecycle;
   if (pending) {
     const rollbackState = GameStateSchema.parse(pending.rollbackState) as GameState; assertGameStateInvariants(rollbackState);
     const rollbackEffects = rollbackState.effectState;
     const stateRegistry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
-    if (rollbackState.gameId !== state.gameId || JSON.stringify(pending.registry) !== JSON.stringify(stateRegistry) || rollbackState.engineVersion !== state.engineVersion || JSON.stringify(rollbackState.contentPacks) !== JSON.stringify(state.contentPacks) || JSON.stringify(rollbackState.rulesModules) !== JSON.stringify(state.rulesModules) || rollbackEffects.pendingChoice || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand) throw new Error('Invalid lifecycle rollback checkpoint.');
+    if (rollbackState.gameId !== state.gameId || JSON.stringify(pending.registry) !== JSON.stringify(stateRegistry) || rollbackState.engineVersion !== state.engineVersion || JSON.stringify(rollbackState.contentPacks) !== JSON.stringify(state.contentPacks) || JSON.stringify(rollbackState.rulesModules) !== JSON.stringify(state.rulesModules) || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand) throw new Error('Invalid lifecycle rollback checkpoint.');
     pending.rollbackState = structuredClone(rollbackState);
   }
   const command = state.effectState.pendingCommand;
   if (command) {
-    const choice = state.effectState.pendingChoice;
+    const choice = state.effectState.pendingChoice; const consent = state.effectState.pendingCounterConsent;
     if (command.kind === 'team-overflow') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
       const optionSets = Object.values(command.optionCandidates);
-      if (!choice || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'PLAY_ADVENTURER' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `team-overflow:${command.envelope.commandId}` || choice.choiceId !== `team-overflow:${command.policy.policyId}` || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.candidateIds).size !== command.candidateIds.length || !command.candidateIds.every((id) => rollbackState.players.find(({ id: playerId }) => playerId === command.envelope.actorId)?.party.some((slot) => slot.adventurerId === id)) || !optionSets.every((set) => set.length === command.requiredSelectionCount && new Set(set).size === set.length && set.every((id) => command.candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidates[option.id])) throw new Error('Invalid team overflow continuation.');
+      if (!choice || consent || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'PLAY_ADVENTURER' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `team-overflow:${command.envelope.commandId}` || choice.choiceId !== `team-overflow:${command.policy.policyId}` || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.candidateIds).size !== command.candidateIds.length || !command.candidateIds.every((id) => rollbackState.players.find(({ id: playerId }) => playerId === command.envelope.actorId)?.party.some((slot) => slot.adventurerId === id)) || !optionSets.every((set) => set.length === command.requiredSelectionCount && new Set(set).size === set.length && set.every((id) => command.candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidates[option.id])) throw new Error('Invalid team overflow continuation.');
       command.rollbackState = structuredClone(rollbackState); return state;
     }
     if (command.kind === 'combat-reward') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) }; const evaluation = command.evaluation;
-      if (!choice || pending || state.effectState.pendingPostCommand || command.continuationId !== `combat-reward:${command.envelope.commandId}` || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || JSON.stringify(evaluation.registry) !== JSON.stringify(registry) || evaluation.input.playerId !== command.envelope.actorId || evaluation.input.targetId !== command.envelope.command.targetId || command.policyIndex >= evaluation.matchedPolicies.length || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid combat reward continuation.');
+      if (Boolean(choice) === Boolean(consent) || pending || state.effectState.pendingPostCommand || command.continuationId !== `combat-reward:${command.envelope.commandId}` || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || JSON.stringify(evaluation.registry) !== JSON.stringify(registry) || evaluation.input.playerId !== command.envelope.actorId || evaluation.input.targetId !== command.envelope.command.targetId || command.policyIndex >= evaluation.matchedPolicies.length || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid combat reward continuation.');
       command.rollbackState = structuredClone(rollbackState); return state;
     }
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
-    if (!pending || !choice || state.effectState.pendingPostCommand || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || pending.payload.point !== 'command-before' || pending.context.controllerId !== command.envelope.actorId || choice.actorId !== command.envelope.actorId || choice.executionId !== executionId || JSON.stringify(choice.context) !== JSON.stringify(pending.context)) throw new Error('Invalid command-before continuation.');
+    const suspension = choice ?? consent;
+    if (!pending || Boolean(choice) === Boolean(consent) || state.effectState.pendingPostCommand || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || pending.payload.point !== 'command-before' || pending.context.controllerId !== command.envelope.actorId || (choice && choice.actorId !== command.envelope.actorId) || (consent && consent.requesterId !== command.envelope.actorId) || suspension!.executionId !== executionId || JSON.stringify(suspension!.context) !== JSON.stringify(pending.context)) throw new Error('Invalid command-before continuation.');
   }
   const outer = state.effectState.pendingPostCommand;
   if (outer) {
@@ -64,7 +68,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     const error = validatePostCommandContinuationState(state);
     if (error) throw new Error(error);
   }
-  if (pending && !state.effectState.pendingChoice) throw new Error('Pending lifecycle dispatch has no matching choice.');
+  if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');
   if (!pending && (command || outer)) throw new Error('Outer continuation has no matching lifecycle dispatch.');
   return state;
 }

@@ -21,7 +21,7 @@
 | 供應 | 2 | 0 | 2 | 0 |
 | 討伐 | 4 | 0 | 0 | 0 |
 | 隊伍、裝備與道具 | 4 | 0 | 0 | 0 |
-| 隨機與資訊 | 3 | 0 | 0 | 1 |
+| 隨機與資訊 | 4 | 0 | 0 | 0 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
 | 羈絆、終局與計分 | 2 | 0 | 0 | 1 |
 
@@ -44,6 +44,7 @@
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch、continuous runtime、supply refresh、multi-target encounter、Snapshot resume 與 versioned Command Replay diagnostic export 均已 supported；不代表任何正式或 provisional 卡牌內容已載入。
 - generic dice roll runtime 已 supported：Rules Module 只註冊 JSON-only sides，Effect AST 以明確 face outcome 執行；DIE_ROLLED payload、Snapshot 與 choice resume 可重播且不重擲。未載入任何卡牌骰子內容。
+- generic counter consent lifecycle 已 supported：Rules Module JSON-only policy、純 evaluator、Effect AST 與專用 Commands 管理 request／accept／decline／cancel／deterministic explicit expiration；PlayerView 只在全體接受後投影公開 counter。Snapshot 與 command transaction resume 不重跑 reducer、effects、events 或 RNG，未載入任何 Vol.1 HP／卡牌內容。
 - command-before 與 post-command lifecycle choice continuation 均已實作；command transaction 可跨 Snapshot 從精確 fact/boundary cursor 恢復，且 reducer、facts、hooks、events 與 RNG 不重複，後段失敗回到 command 起點。
 - continuation 能力不代表任何正式或 provisional 卡牌內容已載入。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
@@ -53,7 +54,7 @@
 1. **P0：解除資料阻擋前不可開完整對局。** 取得物資與魔物「逐種」份數的可稽核官方資料。這不是引擎工作；不得反推或建立非官方供應組成 policy。
 2. **已完成基礎：Effect AST 與 lifecycle dispatch。** 原子 card movement、choice、deterministic random、Rules Module lifecycle registry、pending queue、command-before/post-command 精確 cursor resume 與 command 起點 transaction rollback 已有 contract tests；不代表任何 provisional 卡牌已載入。
 3. **P1：供應／裝備的泛用 extensions。** generic combat、equipment eligibility、team overflow 與公開列刷新已完成；不可在 reducer 以單一卡名分支。
-4. **P2：continuous 與內容接線。** continuous runtime 已完成；在官方資料與個別時序確認後，才把卡牌內容接到既有 lifecycle boundary；不得把 provisional catalog 當 production content 載入。Vol.1、counter consent、正式卡牌 reward／continuous policy 仍未啟用。
+4. **P2：continuous 與內容接線。** continuous runtime 與 generic counter consent 已完成；在官方資料與個別時序確認後，才把卡牌內容接到既有 lifecycle boundary；不得把 provisional catalog 當 production content 載入。Vol.1、正式卡牌 reward／continuous／counter policy 仍未啟用。
 5. **P3：Vol.1 專屬能力。** HP、同分排名、協助者、究極魔神多部位，全部保持獨立 Rules Module，不滲入基礎 MVP。
 
 ## 被官方例外阻擋的項目
