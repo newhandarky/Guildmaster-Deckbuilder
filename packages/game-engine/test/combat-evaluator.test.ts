@@ -66,6 +66,28 @@ describe('generic combat evaluation pipeline', () => {
     expect(getLegalCommands(deepSuspended.state, deepRuleset, 'p1')).toHaveLength(1);
   });
 
+  it('keeps attacks discoverable when command-before legality depends on a consent continuation', () => {
+    const request: EffectDefinition['body'] = {
+      kind: 'request-counter-consent',
+      requestId: 'combat-consent',
+      policy: { moduleId: 'test:consent-preview', policyId: 'combat-counter' },
+      counterOwner: { kind: 'controller' },
+      outcomes: { accepted: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 }, declined: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 }, cancelled: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 }, expired: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } }
+    };
+    const consentModule: RulesModule = {
+      ...module('test:consent-preview', []),
+      lifecycleHooks: [lifecycle('test:consent-preview', 'before-attack', request)],
+      counterConsentPolicies: [{ schemaVersion: 1, moduleId: 'test:consent-preview', policyId: 'combat-counter', resourceId: 'test:combat-counter', requester: 'counter-owner', requiredConsent: 'all-other-players', expiration: { kind: 'explicit-command', actor: 'any-player' } }]
+    };
+    const ruleset = rules(consentModule);
+    const state = game(ruleset); state.phase = 'combat'; state.players[0]!.counters.push({ resourceId: 'test:combat-counter', amount: 1, visibility: 'allPlayersByConsent' });
+    const targetId = target(state);
+    expect(getLegalCommands(state, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingCounterConsent?.requestId).toBe('combat-consent');
+  });
+
   it('orders active rules across modules and rejects ambiguous priorities atomically', () => {
     const ordered = rules(module('test:first', [modifier('test:first', 'first', -1, 1)]), module('test:last', [modifier('test:last', 'last', 2, 2)])); const orderedState = game(ordered); orderedState.phase = 'combat';
     expect(evaluateCombat(orderedState, ordered, 'p1', target(orderedState))).toMatchObject({ status: 'ready', evaluation: { appliedRules: [{ moduleId: 'test:first' }, { moduleId: 'test:last' }] } });
@@ -114,9 +136,9 @@ describe('generic combat evaluation pipeline', () => {
     const duplicateFact = structuredClone(serializeSnapshot(suspended.state)); duplicateFact.state.effectState.pendingPostCommand!.facts = [duplicateFact.state.effectState.pendingPostCommand!.facts[0]!, ...duplicateFact.state.effectState.pendingPostCommand!.facts];
     expect(() => restoreSnapshot(duplicateFact)).toThrow('fact IDs must be unique');
     const truncatedFacts = structuredClone(serializeSnapshot(suspended.state)); truncatedFacts.state.effectState.pendingPostCommand!.facts = truncatedFacts.state.effectState.pendingPostCommand!.facts.slice(0, -1);
-    expect(() => restoreSnapshot(truncatedFacts)).toThrow('complete ordered reducer fact segment');
+    expect(() => restoreSnapshot(truncatedFacts, ruleset)).toThrow('complete ordered reducer fact segment');
     const reorderedFacts = structuredClone(serializeSnapshot(suspended.state)); reorderedFacts.state.effectState.pendingPostCommand!.facts = [...reorderedFacts.state.effectState.pendingPostCommand!.facts].reverse(); reorderedFacts.state.effectState.pendingPostCommand!.factIndex = reorderedFacts.state.effectState.pendingPostCommand!.facts.findIndex(({ type }) => type === 'COMBAT_EVALUATED');
-    expect(() => restoreSnapshot(reorderedFacts)).toThrow('complete ordered reducer fact segment');
+    expect(() => restoreSnapshot(reorderedFacts, ruleset)).toThrow(/complete ordered reducer fact segment|preserve their original contiguous transaction order/);
     const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', command));
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.enemyTargets[targetId]!.status).toBe('defeated'); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(2); expect(completed.events.filter(({ type }) => type === 'COMBAT_EVALUATED')).toHaveLength(1);
     expect(completed.events.find(({ type }) => type === 'COMBAT_EVALUATED')?.payload).toEqual(suspended.state.effectState.pendingPostCommand?.facts[0]?.payload);

@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { createPresentationResolver, neutralPlaceholderPresentationPack, validatePresentationPack, type PresentationPack } from '../src/index.js';
 
-const alternatePack: PresentationPack = { manifest: { id: 'presentation:alternate', version: '1.0.0', theme: 'alternate', locale: 'en' }, entries: [{ definitionId: 'base:starter/newcomer', displayName: 'Alternate starter', portraitAssetKey: 'placeholder:alternate-01', shortDisplayText: 'Alternative client-only text.' }] };
+const alternatePack: PresentationPack = { manifest: { id: 'presentation:alternate', version: '1.0.0', theme: 'alternate', locale: 'en' }, entries: [{ definitionId: 'base:starter/newcomer', displayName: 'Alternate starter', portraitAssetKey: 'placeholder:alternate-01', portraitAltText: 'Alternate starter portrait', shortDisplayText: 'Alternative client-only text.', detailDisplayText: 'Alternative client-only detail text.' }] };
 
 describe('Presentation Pack resolver', () => {
   it('resolves a stable definition ID without accessing game state', () => {
     const resolver = createPresentationResolver([neutralPlaceholderPresentationPack]);
-    expect(resolver.resolve('base:starter/newcomer')).toMatchObject({ definitionId: 'base:starter/newcomer', displayName: '起始牌 A', source: 'pack' });
+    expect(resolver.resolve('base:starter/newcomer')).toMatchObject({ definitionId: 'base:starter/newcomer', displayName: '起始牌 A', portraitAsset: { key: 'placeholder:text-card-1', altText: '起始牌 A的中性文字卡牌 placeholder' }, detailDisplayText: expect.any(String), source: 'pack' });
+  });
+
+  it('resolves deployable asset metadata without putting URLs in a JSON Presentation Pack', () => {
+    const resolver = createPresentationResolver([alternatePack], {
+      resolveAsset: (key) => key === 'placeholder:alternate-01' ? { src: '/assets/alternate.webp', width: 640, height: 896 } : undefined
+    });
+    expect(resolver.resolve('base:starter/newcomer').portraitAsset).toEqual({
+      key: 'placeholder:alternate-01',
+      altText: 'Alternate starter portrait',
+      src: '/assets/alternate.webp',
+      width: 640,
+      height: 896
+    });
   });
 
   it('uses a neutral fallback for absent or incompatible packs', () => {

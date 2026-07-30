@@ -1,6 +1,13 @@
 import type { PresentationPack } from './schema.js';
 
-const entry = (definitionId: string, displayName: string, assetIndex: number) => ({ definitionId, displayName, portraitAssetKey: `placeholder:text-card-${assetIndex}`, shortDisplayText: '原創文字 placeholder。' });
+const entry = (definitionId: string, displayName: string, assetIndex: number) => ({
+  definitionId,
+  displayName,
+  portraitAssetKey: `placeholder:text-card-${assetIndex}`,
+  portraitAltText: `${displayName}的中性文字卡牌 placeholder`,
+  shortDisplayText: '原創文字 placeholder。',
+  detailDisplayText: '目前只有中性文字版；正式圖像與完整卡牌詳情尚未載入。'
+});
 
 /** Original text-only presentation for the current demo Content Pack. */
 export const neutralPlaceholderPresentationPack: PresentationPack = {

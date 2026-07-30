@@ -1,5 +1,6 @@
 import type {
   CommandEnvelope,
+  CounterConsentPolicyRef,
   DomainEvent,
   EffectContext,
   GameState,
@@ -66,19 +67,21 @@ function compatibleCheckpoint(checkpoint: GameState, state: GameState): boolean 
 function validateCounterConsentEventSequence(
   events: readonly DomainEvent[],
   state: GameState,
-  registry: LifecycleRegistrySnapshot
+  registry: LifecycleRegistrySnapshot,
+  ruleset?: Ruleset
 ): string | undefined {
   const consentEvents = events.filter((event) => event.payload?.kind === 'counter-consent');
   if (!consentEvents.length) return undefined;
   let request:
     | {
         requestId: string;
-        policy: unknown;
+        policy: CounterConsentPolicyRef;
         counterOwnerId: string;
         requesterId: string;
         requiredActorIds: readonly string[];
         acceptedActorIds: string[];
         terminal: boolean;
+        terminalStatus?: 'accepted' | 'declined' | 'cancelled' | 'expired';
       }
     | undefined;
   const eventType: Record<string, string> = {
@@ -107,7 +110,15 @@ function validateCounterConsentEventSequence(
         || !evaluation.requiredActorIds.length
         || new Set(evaluation.requiredActorIds).size !== evaluation.requiredActorIds.length
         || evaluation.requiredActorIds.includes(evaluation.requesterId)
+        || !same(evaluation.requiredActorIds, state.players.map(({ id }) => id).filter((id) => id !== evaluation.requesterId))
       ) return 'Transaction counter consent request evaluation is invalid or tampered.';
+      if (ruleset) {
+        const module = ruleset.modules.find(({ id }) => id === evaluation.policy.moduleId);
+        const policy = module?.counterConsentPolicies?.find(({ policyId }) => policyId === evaluation.policy.policyId);
+        const owner = state.players.find(({ id }) => id === evaluation.counterOwnerId);
+        const counter = owner?.counters.find(({ resourceId }) => resourceId === policy?.resourceId);
+        if (!module || !policy || !counter) return 'Transaction counter consent policy or target is unknown.';
+      }
       request = {
         requestId: evaluation.input.requestId,
         policy: evaluation.policy,
@@ -139,18 +150,37 @@ function validateCounterConsentEventSequence(
         || !same(evaluation.acceptedActorIds, request.acceptedActorIds)
       ) return 'Transaction counter consent accept progression is invalid or tampered.';
       request.terminal = complete;
+      if (complete) request.terminalStatus = 'accepted';
       continue;
     }
+    const activeRequest = request;
+    const registeredPolicy = ruleset
+      ? ruleset.modules.find(({ id }) => id === activeRequest.policy.moduleId)
+        ?.counterConsentPolicies?.find(({ policyId }) => policyId === activeRequest.policy.policyId)
+      : undefined;
     const terminalMatches =
-      (evaluation.input.action === 'decline' && evaluation.status === 'declined' && evaluation.reasonCode === 'REQUIRED_ACTOR_DECLINED' && request.requiredActorIds.includes(actorId) && !request.acceptedActorIds.includes(actorId))
-      || (evaluation.input.action === 'cancel' && evaluation.status === 'cancelled' && evaluation.reasonCode === 'REQUESTER_CANCELLED' && actorId === request.requesterId)
-      || (evaluation.input.action === 'expire' && evaluation.status === 'expired' && evaluation.reasonCode === 'REQUEST_EXPIRED');
-    if (!terminalMatches || !same(evaluation.acceptedActorIds, request.acceptedActorIds)) return 'Transaction counter consent terminal evaluation is invalid or tampered.';
-    request.terminal = true;
+      (evaluation.input.action === 'decline' && evaluation.status === 'declined' && evaluation.reasonCode === 'REQUIRED_ACTOR_DECLINED' && activeRequest.requiredActorIds.includes(actorId) && !activeRequest.acceptedActorIds.includes(actorId))
+      || (evaluation.input.action === 'cancel' && evaluation.status === 'cancelled' && evaluation.reasonCode === 'REQUESTER_CANCELLED' && actorId === activeRequest.requesterId)
+      || (evaluation.input.action === 'expire'
+        && evaluation.status === 'expired'
+        && evaluation.reasonCode === 'REQUEST_EXPIRED'
+        && state.players.some(({ id }) => id === actorId)
+        && (!registeredPolicy || registeredPolicy.expiration.actor === 'any-player' || actorId === activeRequest.requesterId));
+    if (!terminalMatches || !same(evaluation.acceptedActorIds, activeRequest.acceptedActorIds)) return 'Transaction counter consent terminal evaluation is invalid or tampered.';
+    activeRequest.terminal = true;
+    activeRequest.terminalStatus = evaluation.status as 'declined' | 'cancelled' | 'expired';
   }
   const pending = state.effectState.pendingCounterConsent;
   if (pending && (!request || request.terminal || request.requestId !== pending.requestId || !same(request.policy, pending.policy) || request.counterOwnerId !== pending.counterOwnerId || request.requesterId !== pending.requesterId || !same(request.requiredActorIds, pending.requiredActorIds) || !same(request.acceptedActorIds, pending.acceptedActorIds))) return 'Transaction counter consent events do not match the pending request.';
   if (!pending && request && !request.terminal) return 'Transaction counter consent events contain an unfinished request without a pending continuation.';
+  if (request && ruleset) {
+    const registeredPolicy = ruleset.modules.find(({ id }) => id === request.policy.moduleId)
+      ?.counterConsentPolicies?.find(({ policyId }) => policyId === request.policy.policyId);
+    const counter = state.players.find(({ id }) => id === request.counterOwnerId)
+      ?.counters.find(({ resourceId }) => resourceId === registeredPolicy?.resourceId);
+    const expectedVisibility = request.terminalStatus === 'accepted' ? 'public' : 'allPlayersByConsent';
+    if (!registeredPolicy || !counter || counter.visibility !== expectedVisibility) return 'Transaction counter consent result does not match the authoritative counter state.';
+  }
   return undefined;
 }
 
@@ -164,6 +194,7 @@ export function validateTransactionEventSequence(
   if (new Set(events.map(({ eventId }) => eventId)).size !== events.length) return 'Transaction event IDs must be unique.';
   if (events.some((event, index) => event.eventId !== `transaction:${commandId}:${index + 1}`)) return 'Transaction event IDs must form one exact ordered command sequence.';
   if (events.some(({ revision }) => revision !== state.revision + 1)) return 'Transaction events must use the uncommitted command revision.';
+  if (events.some(({ causedByCommandId }) => causedByCommandId !== commandId)) return 'Transaction events must identify their originating command.';
   for (const transactionEvent of events) {
     const dicePayload = transactionEvent.payload?.kind === 'dice-roll' ? transactionEvent.payload : undefined;
     if (dicePayload && !same(dicePayload.evaluation.input.registry, registry)) return 'Transaction dice evaluation registry mismatch.';
@@ -172,7 +203,7 @@ export function validateTransactionEventSequence(
       if (evaluated.status !== 'ready' || !same(evaluated.evaluation, dicePayload.evaluation)) return 'Transaction dice evaluation is invalid or tampered.';
     }
   }
-  return validateCounterConsentEventSequence(events, state, registry);
+  return validateCounterConsentEventSequence(events, state, registry, ruleset);
 }
 
 /** Validates the JSON-only outer cursor and its relationship to the hook-level continuation. */
@@ -198,8 +229,6 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   const transactionError = validateTransactionEventSequence(outer.events, state, outer.registry, outer.envelope.commandId, ruleset);
   if (transactionError) return transactionError;
   if (new Set(outer.facts.map(({ eventId }) => eventId)).size !== outer.facts.length) return 'Post-command fact IDs must be unique.';
-  const commandFacts = outer.events.filter(({ causedByCommandId }) => causedByCommandId === outer.envelope.commandId);
-  if (!same(outer.facts, commandFacts)) return 'Post-command facts must equal the complete ordered reducer fact segment.';
   if (outer.facts.some((fact) => { const matches = outer.events.filter((event) => event.eventId === fact.eventId); return fact.revision !== outer.envelope.expectedRevision + 1 || matches.length !== 1 || !same(matches[0], fact); })) return 'Post-command facts are missing, duplicated, modified, or use an invalid revision.';
   const factPositions = outer.facts.map((fact) => outer.events.findIndex((event) => event.eventId === fact.eventId));
   if (factPositions.some((position, index) => position < 0 || (index > 0 && position !== factPositions[index - 1]! + 1))) return 'Post-command facts must preserve their original contiguous transaction order.';
@@ -247,7 +276,7 @@ function advance(cursor: PostCommandPipelineCursor): boolean {
 
 function appendLifecycleEvents(cursor: PostCommandPipelineCursor, incoming: readonly DomainEvent[]): void {
   const start = cursor.events.length;
-  cursor.events.push(...incoming.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${cursor.envelope.commandId}:${start + index + 1}` })));
+  cursor.events.push(...incoming.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${cursor.envelope.commandId}:${start + index + 1}`, causedByCommandId: cursor.envelope.commandId })));
 }
 
 function suspend(state: GameState, cursor: PostCommandPipelineCursor): PostCommandPipelineResult {
@@ -285,8 +314,7 @@ export function continuePostCommandPipeline(state: GameState, ruleset: Ruleset, 
 
 /** Starts post-command processing with reducer facts fixed exactly once. */
 export function beginPostCommandPipeline(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, rollbackState: GameState, facts: readonly DomainEvent[], events: readonly DomainEvent[]): PostCommandPipelineResult {
-  const factStart = events.length - facts.length;
-  const normalizedEvents = events.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${envelope.commandId}:${index + 1}`, ...(index >= factStart ? { causedByCommandId: envelope.commandId } : {}) }));
+  const normalizedEvents = events.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${envelope.commandId}:${index + 1}`, causedByCommandId: envelope.commandId }));
   const normalizedFacts = normalizedEvents.slice(normalizedEvents.length - facts.length);
   const cursor: PostCommandPipelineCursor = {
     continuationId: `post-command:${envelope.commandId}`,

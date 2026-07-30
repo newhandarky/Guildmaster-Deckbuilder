@@ -37,7 +37,7 @@ const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand
 type CounterConsentCommand = Extract<GameCommand, { type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT' }>;
 const isCounterConsentCommand = (command: GameCommand): command is CounterConsentCommand => command.type === 'RESPOND_COUNTER_CONSENT' || command.type === 'CANCEL_COUNTER_CONSENT' || command.type === 'EXPIRE_COUNTER_CONSENT';
 const counterConsentAction = (command: CounterConsentCommand): 'accept' | 'decline' | 'cancel' | 'expire' => command.type === 'RESPOND_COUNTER_CONSENT' ? command.response : command.type === 'CANCEL_COUNTER_CONSENT' ? 'cancel' : 'expire';
-const transactionEvents = (events: readonly DomainEvent[], commandId: string): DomainEvent[] => events.map((entry, index) => ({ ...entry, eventId: `transaction:${commandId}:${index + 1}` }));
+const transactionEvents = (events: readonly DomainEvent[], commandId: string): DomainEvent[] => events.map((entry, index) => ({ ...entry, eventId: `transaction:${commandId}:${index + 1}`, causedByCommandId: commandId }));
 function combinations(ids: readonly string[], count: number, limit = 257): string[][] { const results: string[][] = []; const visit = (start: number, prefix: string[]): void => { if (results.length >= limit) return; if (prefix.length === count) { results.push(prefix); return; } for (let index = start; index < ids.length && results.length < limit; index += 1) visit(index + 1, [...prefix, ids[index]!]); }; visit(0, []); return results; }
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
