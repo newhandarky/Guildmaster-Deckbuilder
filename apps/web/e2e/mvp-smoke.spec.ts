@@ -72,3 +72,36 @@ test('replay runner reports the first assertion divergence without changing the 
   await expect(page.getByTestId('replay-report')).toContainText('first divergence $.expectedFinalSnapshot.state.rngState');
   await expect(page.getByTestId('end-phase')).toBeEnabled();
 });
+
+test('deterministic full-game journey defeats, recruits, rests, restores v3 save, and continues legally', async ({ page }) => {
+  await page.goto('/');
+  const endPhase = page.getByTestId('end-phase');
+
+  await endPhase.click();
+  const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+  const legalMonster = monsterRow.locator('button:not([disabled])').first();
+  await expect(legalMonster).toBeEnabled();
+  await legalMonster.click();
+  await expect(page.locator('.log')).toContainText('討伐了');
+
+  await endPhase.click();
+  await endPhase.click();
+  const recruitRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /招募區/ }) });
+  const legalRecruit = recruitRow.locator('button:not([disabled])').first();
+  await expect(legalRecruit).toBeEnabled();
+  await legalRecruit.click();
+  await expect(page.locator('.log')).toContainText('取得了');
+
+  await endPhase.click();
+  await endPhase.click();
+  await expect(page.getByText(/第 \d+ 輪 · 行動一階段/)).toBeVisible();
+  await expect(page.getByText('你的回合')).toBeVisible();
+  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(3);
+
+  await page.reload();
+  await expect(page.getByText(/第 \d+ 輪 · 行動一階段/)).toBeVisible();
+  await expect(page.getByText('你的回合')).toBeVisible();
+  await expect(endPhase).toBeEnabled();
+  await endPhase.click();
+  await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
+});
