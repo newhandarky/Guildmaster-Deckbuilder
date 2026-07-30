@@ -15,6 +15,7 @@ describe('個人牌庫抽牌規則', () => {
     drawCards(state, player.id, 2, events);
     expect(player.hand).toHaveLength(2);
     expect(events.some((item) => item.type === 'DRAW_PILE_REBUILT')).toBe(true);
+    expect(events.filter((item) => item.type === 'CARD_DRAWN')).toHaveLength(2);
   });
 
   it('抽完最後一張而不需續抽時不洗棄牌堆', () => {

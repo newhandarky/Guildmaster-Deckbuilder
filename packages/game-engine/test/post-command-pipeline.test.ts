@@ -84,7 +84,7 @@ describe('resumable post-command pipeline', () => {
 
   it('normalizes helper-generated reducer facts and resumes after a rest command changes active player', () => {
     const ruleset = rules(module('test:draw-choice', [hook('test:draw-choice', 'draw', 'event-after', 1, choose(), 'CARD_DRAWN')]));
-    const state = game(ruleset); state.phase = 'rest'; const player = state.players[0]!; const onlyCard = player.hand[0] ?? player.drawPile[0]!; player.hand = []; player.playArea = []; player.discardPile = []; player.drawPile = [onlyCard];
+    const state = game(ruleset); state.phase = 'rest'; const player = state.players[0]!; const onlyCard = player.hand[0] ?? player.drawPile[0]!; const displaced = [...player.hand, ...player.playArea, ...player.discardPile, ...player.drawPile].filter((cardId) => cardId !== onlyCard); player.hand = []; player.playArea = []; player.discardPile = []; player.drawPile = [onlyCard]; state.removedCards.push(...displaced);
     const command = envelope(state, 'p1', { type: 'END_PHASE', phase: 'rest' }, 'finish-rest'); const suspended = dispatch(state, ruleset, command);
     expect(suspended.error).toBeUndefined(); expect(suspended.state.activePlayerId).toBe('p2'); expect(suspended.state.revision).toBe(0);
     expect(suspended.state.effectState.pendingPostCommand?.facts.find(({ type }) => type === 'CARD_DRAWN')?.causedByCommandId).toBe('finish-rest');

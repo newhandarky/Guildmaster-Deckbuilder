@@ -36,8 +36,9 @@ describe('core abstraction contracts', () => {
     const state = makeGame();
     state.zones['vol1:arena'] = { zoneId: 'vol1:arena', kind: 'moduleArea', cardIds: [], visibility: 'public', rulesModuleId: 'vol1:rules', metadata: { round: 1 } };
     state.enemyEncounters.push({ encounterId: 'vol1:demon', kind: 'vol1:ultimate-demon', status: 'active', rulesModuleId: 'vol1:rules', targetIds: ['vol1:left', 'vol1:right'], state: { phase: 'awakening' } });
-    state.enemyTargets['vol1:left'] = { targetId: 'vol1:left', cardInstanceId: state.zones[baseZoneIds.monsterRow]!.cardIds[0]!, kind: 'vol1:part', status: 'available', parentEncounterId: 'vol1:demon', partKey: 'left', health: { current: 3, max: 5 }, attachments: [], moduleState: { shield: 1 } };
-    state.enemyTargets['vol1:right'] = { ...state.enemyTargets['vol1:left']!, targetId: 'vol1:right', partKey: 'right' };
+    const leftCard = state.players[0]!.hand.pop()!; const rightCard = state.players[1]!.hand.pop()!;
+    state.enemyTargets['vol1:left'] = { targetId: 'vol1:left', cardInstanceId: leftCard, kind: 'vol1:part', status: 'available', parentEncounterId: 'vol1:demon', partKey: 'left', health: { current: 3, max: 5 }, attachments: [], moduleState: { shield: 1 } };
+    state.enemyTargets['vol1:right'] = { ...state.enemyTargets['vol1:left']!, cardInstanceId: rightCard, targetId: 'vol1:right', partKey: 'right' };
     state.moduleState['vol1:rules'] = { awakened: true };
     state.players[0]!.counters.push({ resourceId: 'vol1:hp', amount: 4, visibility: 'ownerOnly' });
     expect(restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))))).toEqual(state);

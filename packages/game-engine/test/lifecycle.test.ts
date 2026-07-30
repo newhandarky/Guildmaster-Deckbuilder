@@ -106,6 +106,14 @@ describe('Rules Module lifecycle dispatcher', () => {
     expect(() => createRuleset([testPack], [baseRulesModule, module('test:function', [invalid])])).toThrow('JSON-serializable data only');
   });
 
+  it('rejects non-canonical finite JSON hook registrations before dispatch', () => {
+    const nonFinite = hook('test:finite', 'finite', 'turn-start', Number.POSITIVE_INFINITY, modify(1));
+    expect(() => createRuleset([testPack], [baseRulesModule, module('test:finite', [nonFinite])])).toThrow('Lifecycle hook must contain finite');
+    const unknownField = hook('test:shape', 'shape', 'turn-start', 1, modify(1));
+    (unknownField as unknown as { unexpected: string }).unexpected = 'reject-me';
+    expect(() => createRuleset([testPack], [baseRulesModule, module('test:shape', [unknownField])])).toThrow('Lifecycle hook invalid');
+  });
+
   it('does not let stale or illegal commands mutate or bypass a pending lifecycle', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:choice', [hook('test:choice', 'choice', 'turn-start', 1, choiceBody())])]); const state = gameFor(ruleset); dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'turn-start' }, { controllerId: 'p1' }); const before = structuredClone(state); const choice = state.effectState.pendingChoice!;
     const stale = dispatch(state, ruleset, { ...envelope(state, 'p1', { type: 'RESOLVE_EFFECT_CHOICE', executionId: choice.executionId, choiceId: choice.choiceId, optionId: 'accept' }), expectedRevision: state.revision + 1 });
