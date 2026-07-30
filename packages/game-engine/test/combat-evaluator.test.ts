@@ -35,7 +35,7 @@ describe('generic combat evaluation pipeline', () => {
     expect(dispatch(restricted, restrictedRuleset, envelope(restricted, 'p1', { type: 'ATTACK_TARGET', targetId: restrictedTarget })).state).toEqual(before);
 
     const boostHook = lifecycle('test:before-boost', 'boost-before-attack', { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 3 });
-    const boostedRuleset = rules({ ...module('test:before-boost', [modifier('test:before-boost', 'harder', 3)]), lifecycleHooks: [boostHook] }); const boosted = game(boostedRuleset); boosted.phase = 'combat'; boosted.players[0]!.party.splice(3); const boostedTarget = target(boosted);
+    const boostedRuleset = rules({ ...module('test:before-boost', [modifier('test:before-boost', 'harder', 3)]), lifecycleHooks: [boostHook] }); const boosted = game(boostedRuleset); boosted.phase = 'combat'; const trimmed = boosted.players[0]!.party.splice(3); boosted.players[0]!.discardPile.push(...trimmed.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])); const boostedTarget = target(boosted);
     expect(getLegalCommands(boosted, boostedRuleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId: boostedTarget });
     expect(dispatch(boosted, boostedRuleset, envelope(boosted, 'p1', { type: 'ATTACK_TARGET', targetId: boostedTarget })).error).toBeUndefined();
   });
@@ -46,21 +46,21 @@ describe('generic combat evaluation pipeline', () => {
       { id: 'boost', effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 3 } }
     ] };
     const hook = lifecycle('test:choice-before', 'prepare', body);
-    const ruleset = rules({ ...module('test:choice-before', [modifier('test:choice-before', 'harder', 3)]), lifecycleHooks: [hook] }); const state = game(ruleset); state.phase = 'combat'; state.players[0]!.party.splice(3); const targetId = target(state);
+    const ruleset = rules({ ...module('test:choice-before', [modifier('test:choice-before', 'harder', 3)]), lifecycleHooks: [hook] }); const state = game(ruleset); state.phase = 'combat'; const trimmed = state.players[0]!.party.splice(3); state.players[0]!.discardPile.push(...trimmed.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])); const targetId = target(state);
     expect(getLegalCommands(state, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId });
     const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })); expect(suspended.error).toBeUndefined(); expect(suspended.state.revision).toBe(0);
     const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))));
     expect(getLegalCommands(restored, ruleset, 'p1')).toEqual([{ type: 'RESOLVE_EFFECT_CHOICE', executionId: restored.effectState.pendingChoice!.executionId, choiceId: 'prepare-combat', optionId: 'boost' }]);
     const completed = dispatch(restored, ruleset, envelope(restored, 'p1', getLegalCommands(restored, ruleset, 'p1')[0]!)); expect(completed.error).toBeUndefined(); expect(completed.state.enemyTargets[targetId]!.status).toBe('defeated'); expect(completed.state.revision).toBe(1);
 
-    const impossible = game(ruleset); impossible.phase = 'combat'; impossible.players[0]!.party.splice(0); const impossibleTarget = target(impossible);
+    const impossible = game(ruleset); impossible.phase = 'combat'; const removedParty = impossible.players[0]!.party.splice(0); impossible.players[0]!.discardPile.push(...removedParty.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])); const impossibleTarget = target(impossible);
     expect(getLegalCommands(impossible, ruleset, 'p1')).not.toContainEqual({ type: 'ATTACK_TARGET', targetId: impossibleTarget });
     expect(getLegalCommands(impossible, ruleset, 'p1')).toContainEqual({ type: 'END_PHASE', phase: 'combat' });
 
     const nestedChoice = (depth: number): EffectDefinition['body'] => depth === 0
       ? { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 3 }
       : { kind: 'choice', choiceId: `deep-${depth}`, actor: { kind: 'controller' }, options: [{ id: 'continue', effect: nestedChoice(depth - 1) }] };
-    const deepRuleset = rules({ ...module('test:deep-choice', [modifier('test:deep-choice', 'harder', 3)]), lifecycleHooks: [lifecycle('test:deep-choice', 'prepare', nestedChoice(34))] }); const deep = game(deepRuleset); deep.phase = 'combat'; deep.players[0]!.party.splice(3); const deepTarget = target(deep);
+    const deepRuleset = rules({ ...module('test:deep-choice', [modifier('test:deep-choice', 'harder', 3)]), lifecycleHooks: [lifecycle('test:deep-choice', 'prepare', nestedChoice(34))] }); const deep = game(deepRuleset); deep.phase = 'combat'; const deepTrimmed = deep.players[0]!.party.splice(3); deep.players[0]!.discardPile.push(...deepTrimmed.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])); const deepTarget = target(deep);
     expect(getLegalCommands(deep, deepRuleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId: deepTarget });
     const deepSuspended = dispatch(deep, deepRuleset, envelope(deep, 'p1', { type: 'ATTACK_TARGET', targetId: deepTarget }));
     expect(getLegalCommands(deepSuspended.state, deepRuleset, 'p1')).toHaveLength(1);

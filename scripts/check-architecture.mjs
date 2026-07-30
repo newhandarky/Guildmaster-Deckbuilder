@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const root = process.cwd();
 const forbiddenEngineImports = [/from ['"]react['"]/, /from ['"]zustand['"]/, /from ['"][^'"]*apps\//, /from ['"]@guildmaster\/content-/];
+const forbiddenAuthorityGlobals = /\b(?:window|document|localStorage|sessionStorage|navigator)\b/;
 
 async function filesAt(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -17,6 +18,7 @@ for (const file of engineFiles) {
   const lineCount = source.split('\n').length;
   if (lineCount > 500) failures.push(`${file}: exceeds 500 lines (${lineCount})`);
   if (forbiddenEngineImports.some((pattern) => pattern.test(source))) failures.push(`${file}: game-engine imports a UI/app/content implementation dependency`);
+  if (forbiddenAuthorityGlobals.test(source)) failures.push(`${file}: authoritative engine code references a browser-only global`);
 }
 if (failures.length > 0) {
   console.error(failures.join('\n'));
