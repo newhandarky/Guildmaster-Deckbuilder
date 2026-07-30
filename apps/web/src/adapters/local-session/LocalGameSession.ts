@@ -1,15 +1,21 @@
 import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
-import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
-import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView } from '@guildmaster/game-protocol';
+import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
+import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayInitialConfig } from '@guildmaster/game-protocol';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
-export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; error?: EngineError; scoreboard?: ScoreRow[] };
+export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; replayHistoryComplete: boolean; error?: EngineError; scoreboard?: ScoreRow[] };
+export type ReplayDiagnosticExport = { json?: string; error?: string };
 
 export class LocalGameSession {
   private state: GameState;
   private readonly processed = new Map<string, SessionUpdate>();
   private events: DomainEvent[];
+  private auditEvents: DomainEvent[] = [];
+  private commands: CommandEnvelope[] = [];
+  private initialConfig!: ReplayInitialConfig;
+  private replayHistoryComplete = true;
   private commandSequence = 0;
+  private gameSequence = 0;
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const saved = loadLocalGame();
@@ -17,6 +23,13 @@ export class LocalGameSession {
       try {
         this.state = restoreSnapshot(saved.snapshot, this.ruleset);
         this.events = saved.events;
+        this.replayHistoryComplete = saved.replayHistoryComplete;
+        if (saved.replayBundle) {
+          this.initialConfig = structuredClone(saved.replayBundle.initialConfig);
+          this.commands = structuredClone([...saved.replayBundle.commands]);
+          this.auditEvents = structuredClone([...(saved.replayBundle.expectedEvents ?? [])]);
+          this.commandSequence = this.commands.length;
+        }
       } catch {
         clearLocalGame();
         this.state = this.createFreshGame();
@@ -29,7 +42,12 @@ export class LocalGameSession {
   }
 
   private createFreshGame(): GameState {
-    return createGame({ gameId: `local-${Date.now()}`, seed: 20260726, players: [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId }, this.ruleset);
+    this.gameSequence += 1;
+    this.initialConfig = { gameId: `local-${this.gameSequence}`, seed: 20260726, players: [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId };
+    this.commands = [];
+    this.auditEvents = [];
+    this.replayHistoryComplete = true;
+    return createGame(this.initialConfig, this.ruleset);
   }
 
   current(): SessionUpdate { return this.makeUpdate([]); }
@@ -38,6 +56,7 @@ export class LocalGameSession {
     this.state = this.createFreshGame();
     this.events = [];
     this.processed.clear();
+    this.commandSequence = 0;
     return this.persistAndReturn([]);
   }
 
@@ -48,7 +67,7 @@ export class LocalGameSession {
 
   private nextCommandId(actorId: string): string {
     this.commandSequence += 1;
-    return `${actorId}-${this.state.revision + 1}-${Date.now()}-${this.commandSequence}`;
+    return `${actorId}-${this.state.revision + 1}-${this.commandSequence}`;
   }
 
   private submitEnvelope(envelope: CommandEnvelope): SessionUpdate {
@@ -58,6 +77,7 @@ export class LocalGameSession {
     if (result.error) return this.makeUpdate([], result.error);
     this.state = result.state;
     this.events.push(...result.events);
+    this.recordAccepted(envelope, result.events);
     this.runAi();
     const update = this.persistAndReturn(result.events);
     this.processed.set(envelope.commandId, update);
@@ -71,21 +91,38 @@ export class LocalGameSession {
       const view = projectPlayerView(this.state, this.ruleset, active.id);
       const command = simpleAiStrategy.chooseCommand(view, getLegalCommands(this.state, this.ruleset, active.id));
       if (!command) return;
-      const result = dispatch(this.state, this.ruleset, asEnvelope(view, active.id, command, this.nextCommandId(active.id)));
+      const envelope = asEnvelope(view, active.id, command, this.nextCommandId(active.id));
+      const result = dispatch(this.state, this.ruleset, envelope);
       if (result.error) return;
       this.state = result.state;
       this.events.push(...result.events);
+      this.recordAccepted(envelope, result.events);
     }
   }
 
   private persistAndReturn(newEvents: DomainEvent[]): SessionUpdate {
-    try { saveLocalGame(serializeSnapshot(this.state), this.events); return this.makeUpdate(newEvents); }
+    try { saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined); return this.makeUpdate(newEvents); }
     catch { return this.makeUpdate(newEvents, { code: 'INVALID_COMMAND', message: '本機儲存不可用；目前進度只保留在記憶體中。' }); }
   }
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
-    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, ...(error ? { error } : {}) };
+    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, replayHistoryComplete: this.replayHistoryComplete, ...(error ? { error } : {}) };
     return this.state.status === 'finished' ? { ...update, scoreboard: getScoreboard(this.state, this.ruleset) } : update;
+  }
+
+  private recordAccepted(envelope: CommandEnvelope, events: readonly DomainEvent[]): void {
+    this.commands.push(structuredClone(envelope));
+    this.auditEvents.push(...structuredClone(events));
+  }
+
+  private replayBundle(): ReplayBundle {
+    return { schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(this.ruleset), initialConfig: structuredClone(this.initialConfig), commands: structuredClone(this.commands), expectedEvents: structuredClone(this.auditEvents), expectedFinalSnapshot: serializeSnapshot(this.state) };
+  }
+
+  exportReplayDiagnostic(): ReplayDiagnosticExport {
+    if (!this.replayHistoryComplete) return { error: '此舊存檔只保存 Snapshot，沒有完整 Command Replay history。' };
+    try { return { json: JSON.stringify(this.replayBundle(), null, 2) }; }
+    catch { return { error: 'Replay diagnostic 匯出失敗；目前對局與本機存檔未受影響。' }; }
   }
 }
