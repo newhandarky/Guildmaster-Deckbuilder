@@ -1,0 +1,18 @@
+{
+  "fixtureVersion": 1,
+  "cases": [
+    { "id": "tampered-dice-face", "source": "dice-consent-choice", "checkpoint": 0, "mutation": "dice-face", "expectedMessage": "dice evaluation" },
+    { "id": "tampered-dice-registry", "source": "dice-consent-choice", "checkpoint": 0, "mutation": "dice-registry", "expectedMessage": "dice evaluation registry" },
+    { "id": "tampered-choice-id", "source": "dice-consent-choice", "checkpoint": 2, "mutation": "choice-id", "expectedMessage": "registered effect program" },
+    { "id": "tampered-choice-cursor", "source": "choice-dice-consent", "checkpoint": 0, "mutation": "choice-cursor", "expectedMessage": "registered effect program" },
+    { "id": "tampered-consent-actors", "source": "choice-dice-consent", "checkpoint": 2, "mutation": "consent-actors", "expectedMessage": "counter consent" },
+    { "id": "tampered-consent-request-id", "source": "choice-dice-consent", "checkpoint": 1, "mutation": "consent-request-id", "expectedMessage": "counter consent" },
+    { "id": "duplicate-event-ids", "source": "post-command-mixed-continuation", "checkpoint": 1, "mutation": "duplicate-event-id", "expectedMessage": "event IDs must be unique" },
+    { "id": "duplicated-suspended-events", "source": "post-command-mixed-continuation", "checkpoint": 2, "mutation": "duplicate-suspended-events", "expectedMessage": "event IDs must be unique" },
+    { "id": "malformed-mixed-continuation", "source": "post-command-mixed-continuation", "checkpoint": 3, "mutation": "mixed-cursor", "expectedMessage": "cursor" },
+    { "id": "unknown-module", "source": "choice-dice-consent", "checkpoint": 1, "mutation": "unknown-module", "expectedMessage": "Unknown counter consent policy" },
+    { "id": "unknown-policy", "source": "choice-dice-consent", "checkpoint": 1, "mutation": "unknown-policy", "expectedMessage": "Unknown counter consent policy" },
+    { "id": "unknown-module-version", "source": "post-command-mixed-continuation", "checkpoint": 2, "mutation": "module-version", "expectedMessage": "registry mismatch" },
+    { "id": "unknown-snapshot-version", "source": "dice-consent-choice", "checkpoint": 0, "mutation": "snapshot-version", "expectedMessage": "expected 2" }
+  ]
+}

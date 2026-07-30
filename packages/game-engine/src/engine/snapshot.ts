@@ -1,10 +1,11 @@
 import { GameStateSchema, SnapshotEnvelopeSchema, isFiniteJsonValue, type GameState, type VersionedSnapshot } from '@guildmaster/game-protocol';
 import { baseZoneIds } from '../model/zones.js';
-import { validatePostCommandContinuationState } from './post-command-pipeline.js';
+import { validatePostCommandContinuationState, validateTransactionEventSequence } from './post-command-pipeline.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { assertGameStateInvariants } from './state-invariants.js';
 import { validateEncounterStateAgainstRuleset } from '../rules/encounter-resolution-evaluator.js';
 import { validatePendingCounterConsentState } from '../rules/counter-consent-evaluator.js';
+import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect } from '../effects/executor.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -43,6 +44,16 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     const stateRegistry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
     if (rollbackState.gameId !== state.gameId || JSON.stringify(pending.registry) !== JSON.stringify(stateRegistry) || rollbackState.engineVersion !== state.engineVersion || JSON.stringify(rollbackState.contentPacks) !== JSON.stringify(state.contentPacks) || JSON.stringify(rollbackState.rulesModules) !== JSON.stringify(state.rulesModules) || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand) throw new Error('Invalid lifecycle rollback checkpoint.');
     pending.rollbackState = structuredClone(rollbackState);
+    if (ruleset) {
+      const hook = ruleset.modules.find(({ id }) => id === pending.currentHook.moduleId)?.lifecycleHooks?.find(({ hookId }) => hookId === pending.currentHook.hookId);
+      const suspension = state.effectState.pendingChoice ?? state.effectState.pendingCounterConsent;
+      const programError = !hook || !suspension
+        ? 'Pending lifecycle hook or suspension is missing.'
+        : state.effectState.pendingChoice
+          ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect)
+          : validatePendingCounterConsentAgainstEffect(state.effectState.pendingCounterConsent!, hook.effect);
+      if (programError) throw new Error(programError);
+    }
   }
   const command = state.effectState.pendingCommand;
   if (command) {
@@ -61,11 +72,13 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
     const suspension = choice ?? consent;
     if (!pending || Boolean(choice) === Boolean(consent) || state.effectState.pendingPostCommand || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || pending.payload.point !== 'command-before' || pending.context.controllerId !== command.envelope.actorId || (choice && choice.actorId !== command.envelope.actorId) || (consent && consent.requesterId !== command.envelope.actorId) || suspension!.executionId !== executionId || JSON.stringify(suspension!.context) !== JSON.stringify(pending.context)) throw new Error('Invalid command-before continuation.');
+    const eventError = validateTransactionEventSequence(command.events, state, pending.registry, command.envelope.commandId, ruleset);
+    if (eventError) throw new Error(eventError);
   }
   const outer = state.effectState.pendingPostCommand;
   if (outer) {
     outer.rollbackState = structuredClone(GameStateSchema.parse(outer.rollbackState) as GameState); assertGameStateInvariants(outer.rollbackState);
-    const error = validatePostCommandContinuationState(state);
+    const error = validatePostCommandContinuationState(state, ruleset);
     if (error) throw new Error(error);
   }
   if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');
