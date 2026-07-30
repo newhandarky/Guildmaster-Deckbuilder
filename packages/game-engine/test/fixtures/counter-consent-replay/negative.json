@@ -1,0 +1,20 @@
+{
+  "fixtureVersion": 1,
+  "cases": [
+    { "id": "unknown-replay-schema-version", "kind": "replay-bundle", "mutation": "schema-version", "expectedReasonCode": "UNKNOWN_REPLAY_VERSION" },
+    { "id": "unknown-replay-protocol-version", "kind": "replay-bundle", "mutation": "protocol-version", "expectedReasonCode": "UNKNOWN_REPLAY_VERSION" },
+    { "id": "malformed-consent-command", "kind": "command", "mutation": "malformed-response", "expectedErrorCode": "INVALID_COMMAND" },
+    { "id": "unknown-command-protocol-version", "kind": "command", "mutation": "command-version", "expectedErrorCode": "INVALID_COMMAND" },
+    { "id": "wrong-actor", "kind": "command", "mutation": "wrong-actor", "expectedErrorCode": "INVALID_COMMAND" },
+    { "id": "wrong-game-id", "kind": "command", "mutation": "wrong-game", "expectedErrorCode": "STALE_REVISION" },
+    { "id": "wrong-revision", "kind": "command", "mutation": "wrong-revision", "expectedErrorCode": "STALE_REVISION" },
+    { "id": "wrong-request-id", "kind": "command", "mutation": "wrong-request", "expectedErrorCode": "INVALID_COMMAND" },
+    { "id": "unrelated-command-bypass", "kind": "command", "mutation": "unrelated-command", "expectedErrorCode": "INVALID_COMMAND" },
+    { "id": "unknown-module", "kind": "snapshot", "mutation": "unknown-module", "expectedMessage": "Unknown counter consent policy" },
+    { "id": "unknown-policy", "kind": "snapshot", "mutation": "unknown-policy", "expectedMessage": "Unknown counter consent policy" },
+    { "id": "module-version-registry-mismatch", "kind": "snapshot", "mutation": "module-version", "expectedMessage": "registry mismatch" },
+    { "id": "malformed-pending-consent", "kind": "snapshot", "mutation": "malformed-pending", "expectedMessage": "invalid" },
+    { "id": "tampered-accepted-actor-ids", "kind": "snapshot", "mutation": "accepted-actors", "expectedMessage": "invalid" },
+    { "id": "tampered-required-actor-ids", "kind": "snapshot", "mutation": "required-actors", "expectedMessage": "counter consent" }
+  ]
+}

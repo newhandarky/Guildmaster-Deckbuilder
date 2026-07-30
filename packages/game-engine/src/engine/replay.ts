@@ -65,10 +65,12 @@ export function replayGame(bundle: unknown, ruleset: Ruleset): ReplayResult {
   catch (error) { return { status: 'failed', diagnostic: diagnostic('CREATE_GAME_FAILED', error instanceof Error ? error.message : 'Replay initial configuration could not create a game.') }; }
   const events = [] as import('@guildmaster/game-protocol').DomainEvent[];
   for (const [commandIndex, envelope] of replay.commands.entries()) {
+    const previousEventLogCursor = state.eventLogCursor;
     const result = dispatch(state, ruleset, structuredClone(envelope));
     if (result.error) return { status: 'failed', diagnostic: diagnostic('COMMAND_REJECTED', result.error.message, { commandIndex, commandId: envelope.commandId, expectedRevision: envelope.expectedRevision, actualRevision: state.revision, engineErrorCode: result.error.code }) };
     state = result.state;
-    events.push(...result.events);
+    const committedEventCount = state.eventLogCursor - previousEventLogCursor;
+    if (committedEventCount > 0) events.push(...result.events.slice(-committedEventCount));
   }
   // Match the strict JSON schema normalization performed on imported expected snapshots.
   const finalSnapshot = serializeSnapshot(restoreSnapshot(serializeSnapshot(state), ruleset));

@@ -37,6 +37,7 @@ const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand
 type CounterConsentCommand = Extract<GameCommand, { type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT' }>;
 const isCounterConsentCommand = (command: GameCommand): command is CounterConsentCommand => command.type === 'RESPOND_COUNTER_CONSENT' || command.type === 'CANCEL_COUNTER_CONSENT' || command.type === 'EXPIRE_COUNTER_CONSENT';
 const counterConsentAction = (command: CounterConsentCommand): 'accept' | 'decline' | 'cancel' | 'expire' => command.type === 'RESPOND_COUNTER_CONSENT' ? command.response : command.type === 'CANCEL_COUNTER_CONSENT' ? 'cancel' : 'expire';
+const transactionEvents = (events: readonly DomainEvent[], commandId: string): DomainEvent[] => events.map((entry, index) => ({ ...entry, eventId: `transaction:${commandId}:${index + 1}` }));
 function combinations(ids: readonly string[], count: number, limit = 257): string[][] { const results: string[][] = []; const visit = (start: number, prefix: string[]): void => { if (results.length >= limit) return; if (prefix.length === count) { results.push(prefix); return; } for (let index = start; index < ids.length && results.length < limit; index += 1) visit(index + 1, [...prefix, ids[index]!]); }; visit(0, []); return results; }
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
@@ -333,7 +334,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     else if (nextState.effectState.pendingCounterConsent?.requestId !== resolution.requestId) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before counter consent.');
     const resumed = resolution.type === 'RESOLVE_EFFECT_CHOICE' ? resumeLifecycleChoice(nextState, ruleset, envelope.actorId, resolution.executionId, resolution.choiceId, resolution.optionId) : resumeLifecycleCounterConsent(nextState, ruleset, envelope.actorId, resolution.requestId, counterConsentAction(resolution));
     if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。' } };
-    const events = [...continuation.events, ...resumed.events];
+    const events = transactionEvents([...continuation.events, ...resumed.events], continuation.envelope.commandId);
     if (resumed.status === 'suspended') { nextState.effectState.pendingCommand!.events = structuredClone(events); return { state: nextState, events }; }
     delete nextState.effectState.pendingCommand;
     const factStart = events.length;
@@ -366,7 +367,11 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   const rollback = structuredClone(state);
   const before = dispatchLifecycle(nextState, ruleset, { schemaVersion: 1, point: 'command-before', actorId: envelope.actorId, commandType: envelope.command.type, phase: nextState.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });
   events.push(...before.events);
-  if (before.status === 'suspended') { nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope), events: structuredClone(events) }; return { state: nextState, events }; }
+  if (before.status === 'suspended') {
+    const pendingEvents = transactionEvents(events, envelope.commandId);
+    nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope), events: structuredClone(pendingEvents) };
+    return { state: nextState, events: pendingEvents };
+  }
   if (before.status === 'failed' || before.status === 'unsupported') return { state, events: [], error: { code: 'INVALID_COMMAND', message: before.error ?? before.reason ?? 'command-before lifecycle failed.' } };
   if (envelope.command.type === 'PLAY_ADVENTURER') {
     const overflow = evaluateTeamOverflow(nextState, ruleset, { schemaVersion: 1, playerId: envelope.actorId, incomingMemberId: envelope.command.cardId });

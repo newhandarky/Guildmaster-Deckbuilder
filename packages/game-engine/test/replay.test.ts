@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, dispatch, firstReplayDivergence, replayGame, replayRegistryFingerprint, serializeSnapshot, validateReplayBundleAgainstRuleset } from '../src/index.js';
-import { testRuleset } from './fixtures.js';
-import type { CommandEnvelope, ReplayBundle } from '@guildmaster/game-protocol';
+import { createGame, createRuleset, dispatch, firstReplayDivergence, replayGame, replayRegistryFingerprint, serializeSnapshot, validateReplayBundleAgainstRuleset } from '../src/index.js';
+import { testPack, testRuleset } from './fixtures.js';
+import type { CommandEnvelope, LifecycleHook, ReplayBundle } from '@guildmaster/game-protocol';
+import { baseRulesModule } from '../src/rules/base-rules.js';
+import type { RulesModule } from '../src/rules/ruleset.js';
 
 const initialConfig = { gameId: 'replay-game', seed: 31, players: [{ id: 'p1', name: '玩家', kind: 'human' as const }, { id: 'p2', name: 'AI', kind: 'ai' as const }], startingPlayerId: 'p1' };
 
@@ -43,5 +45,46 @@ describe('versioned command replay', () => {
     expect(firstReplayDivergence({ b: 2, a: [1, 3] }, { a: [1, 4], b: 2 })).toEqual({ path: '$.a[1]', expected: 3, actual: 4 });
     const result = replayGame({ ...bundle(), expectedFinalSnapshot: { ...serializeSnapshot(createGame(initialConfig, testRuleset)), engineVersion: 'wrong' } }, testRuleset);
     expect(result).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'EXPECTED_FINAL_SNAPSHOT_MISMATCH', divergence: { path: '$.expectedFinalSnapshot.engineVersion', expected: 'wrong', actual: '0.2.0' } } });
+  });
+
+  it('records suspended transaction events only when the event cursor commits', () => {
+    const hook: LifecycleHook = {
+      schemaVersion: 1,
+      moduleId: 'test:replay-continuation',
+      hookId: 'choice-before',
+      point: 'command-before',
+      kind: 'trigger',
+      priority: 1,
+      effect: {
+        schemaVersion: 1,
+        effectId: 'test:replay-continuation/choice',
+        body: { kind: 'choice', choiceId: 'replay-choice', actor: { kind: 'controller' }, options: [{ id: 'confirm', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 1 } }] }
+      }
+    };
+    const module: RulesModule = { id: 'test:replay-continuation', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', lifecycleHooks: [hook] };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const config = { ...initialConfig, gameId: 'replay-continuation' };
+    const commands: CommandEnvelope[] = [
+      { protocolVersion: 1, gameId: config.gameId, commandId: 'choice-start', actorId: 'p1', expectedRevision: 0, command: { type: 'END_PHASE', phase: 'action1' } },
+      {
+        protocolVersion: 1,
+        gameId: config.gameId,
+        commandId: 'choice-resume',
+        actorId: 'p1',
+        expectedRevision: 0,
+        command: {
+          type: 'RESOLVE_EFFECT_CHOICE',
+          executionId: 'lifecycle:command-before:0:choice-start:test:replay-continuation:choice-before',
+          choiceId: 'replay-choice',
+          optionId: 'confirm'
+        }
+      }
+    ];
+    const result = replayGame({ schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(ruleset), initialConfig: config, commands }, ruleset);
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.events).toHaveLength(result.finalSnapshot.state.eventLogCursor);
+    expect(new Set(result.events.map(({ eventId }) => eventId)).size).toBe(result.events.length);
+    expect(result.events.map(({ type }) => type)).toEqual(['EFFECT_STARTED', 'EFFECT_SUSPENDED', 'EFFECT_VALUE_MODIFIED', 'EFFECT_COMPLETED', 'PHASE_ENDED']);
   });
 });
