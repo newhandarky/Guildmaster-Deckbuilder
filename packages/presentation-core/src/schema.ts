@@ -52,10 +52,11 @@ const entryKeys = new Set(['definitionId', 'displayName', 'portraitAssetKey', 's
 function unknownKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): string[] {
   return Object.keys(value).filter((key) => !allowed.has(key));
 }
+function isPlainObject(value: unknown): value is Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) return false; const prototype = Object.getPrototypeOf(value); return prototype === Object.prototype || prototype === null; }
 
 export function validatePresentationPack(pack: PresentationPack): PresentationValidationResult {
   const errors: string[] = [];
-  if (!pack || typeof pack !== 'object') return { valid: false, errors: ['Presentation Pack must be an object.'] };
+  if (!isPlainObject(pack)) return { valid: false, errors: ['Presentation Pack must be a plain object.'] };
   const manifest = pack.manifest as unknown as Record<string, unknown>;
   if (!manifest || typeof manifest !== 'object') errors.push('manifest is required.');
   else {
@@ -67,6 +68,7 @@ export function validatePresentationPack(pack: PresentationPack): PresentationVa
   else {
     const definitionIds = new Set<string>();
     for (const [index, entry] of pack.entries.entries()) {
+      if (!isPlainObject(entry)) { errors.push(`entries[${index}] must be a plain object.`); continue; }
       const candidate = entry as unknown as Record<string, unknown>;
       for (const key of unknownKeys(candidate, entryKeys)) errors.push(`entries[${index}].${key} is not allowed.`);
       for (const key of ['definitionId', 'displayName', 'portraitAssetKey', 'shortDisplayText'] as const) if (typeof candidate[key] !== 'string' || candidate[key].trim() === '') errors.push(`entries[${index}].${key} must be a non-empty string.`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPresentationResolver, neutralPlaceholderPresentationPack, type PresentationPack } from '../src/index.js';
+import { createPresentationResolver, neutralPlaceholderPresentationPack, validatePresentationPack, type PresentationPack } from '../src/index.js';
 
 const alternatePack: PresentationPack = { manifest: { id: 'presentation:alternate', version: '1.0.0', theme: 'alternate', locale: 'en' }, entries: [{ definitionId: 'base:starter/newcomer', displayName: 'Alternate starter', portraitAssetKey: 'placeholder:alternate-01', shortDisplayText: 'Alternative client-only text.' }] };
 
@@ -35,5 +35,16 @@ describe('Presentation Pack resolver', () => {
     const clientB = createPresentationResolver([alternatePack]);
     expect(clientA.resolve('base:starter/newcomer').definitionId).toBe(clientB.resolve('base:starter/newcomer').definitionId);
     expect(clientA.resolve('base:starter/newcomer').displayName).not.toBe(clientB.resolve('base:starter/newcomer').displayName);
+  });
+
+  it('returns diagnostics instead of throwing for null or primitive entries', () => {
+    const invalid = { ...alternatePack, entries: [null, 1] } as unknown as PresentationPack;
+    expect(() => validatePresentationPack(invalid)).not.toThrow();
+    expect(validatePresentationPack(invalid).valid).toBe(false);
+  });
+
+  it('rejects a non-plain pack before inspecting its fields', () => {
+    const invalid = new Date() as unknown as PresentationPack;
+    expect(validatePresentationPack(invalid)).toEqual({ valid: false, errors: ['Presentation Pack must be a plain object.'] });
   });
 });
