@@ -125,7 +125,7 @@ M3 完整基礎內容仍被可稽核官方資料阻擋；物資／魔物逐種�
 ### M6 — MVP 穩定化
 
 - 基礎版官方規則／FAQ／勘誤回歸矩陣
-- Playwright 完整對局 smoke test
+- 已建立 deterministic Playwright full-game journey：真人合法討伐、招募、休息、AI 回合、v3 local save reload 與恢復後繼續合法操作；它只覆蓋原創示範內容與既有 runtime contracts。
 - 無障礙鍵盤操作、色彩與文字替代
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單

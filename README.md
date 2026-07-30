@@ -32,6 +32,7 @@ pnpm check
 - Content Pack、Rules Module、可擴充敵方 Encounter、Snapshot、Command、Event、PlayerView 與 LocalGameSession 邊界。
 - 簡單 AI 只透過相同的合法 Command 介面操作；沒有另一套 AI 規則。
 - localStorage 自動保存版本化 Snapshot 與近期事件紀錄。
+- Deterministic Playwright journey 會以原創示範內容走完真人討伐、招募、休息、AI 回合與 v3 local save reload；這是 runtime／測試穩定化能力，不是正式基礎卡表完成的宣告。
 - 規則核心 Vitest 回歸測試，涵蓋抽牌途中洗牌、展示不洗牌、隊伍滿員、過量派遣、道具休息棄置、供應牌庫耗盡與 Snapshot round-trip。
 
 ## 有意保留的限制
