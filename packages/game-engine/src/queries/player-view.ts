@@ -6,7 +6,8 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
   const player = getPlayer(state, viewerId);
   const { drawPile, ...visibleSelf } = structuredClone(player);
   const visibleZones = Object.fromEntries(Object.entries(state.zones).filter(([, zone]) => zone.visibility === 'public'));
-  const visibleIds = new Set([...visibleSelf.hand, ...visibleSelf.discardPile, ...visibleSelf.playArea, ...visibleSelf.party.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])]), ...Object.values(visibleZones).flatMap((zone) => zone.cardIds)]);
+  const visibleTargetIds = Object.values(state.enemyTargets).flatMap((target) => [target.cardInstanceId, ...target.attachments]);
+  const visibleIds = new Set([...visibleSelf.hand, ...visibleSelf.discardPile, ...visibleSelf.playArea, ...visibleSelf.party.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])]), ...Object.values(visibleZones).flatMap((zone) => zone.cardIds), ...visibleTargetIds]);
   const cards = Object.fromEntries(Object.entries(state.cards).filter(([id]) => visibleIds.has(id)));
   return {
     viewerId, gameId: state.gameId, status: state.status, phase: state.phase, round: state.round, revision: state.revision, activePlayerId: state.activePlayerId,

@@ -19,4 +19,17 @@ describe('PlayerView visibility boundary', () => {
     const state = makeGame();
     expect(projectPlayerView(state, testRuleset, 'p1').partyLimit).toBe(5);
   });
+
+  it('exposes enemy target cards and attachments without revealing unrelated private cards', () => {
+    const state = makeGame();
+    const target = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!;
+    const attachmentId = state.players[0]!.hand.pop()!;
+    target.attachments.push(attachmentId);
+
+    const view = projectPlayerView(state, testRuleset, 'p2');
+
+    expect(view.cards[target.cardInstanceId]).toBeDefined();
+    expect(view.cards[attachmentId]).toBeDefined();
+    expect(view.cards[state.players[0]!.hand[0]!]).toBeUndefined();
+  });
 });

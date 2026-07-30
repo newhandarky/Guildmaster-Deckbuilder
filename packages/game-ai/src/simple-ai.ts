@@ -19,6 +19,6 @@ export const simpleAiStrategy: AiStrategy = {
   }
 };
 
-export function asEnvelope(view: PlayerView, actorId: string, command: GameCommand): CommandEnvelope {
-  return { protocolVersion: 1, gameId: view.gameId, commandId: `ai-${view.revision + 1}`, actorId, expectedRevision: view.revision, command };
+export function asEnvelope(view: PlayerView, actorId: string, command: GameCommand, commandId = `ai-${view.revision + 1}-${command.type.toLowerCase()}`): CommandEnvelope {
+  return { protocolVersion: 1, gameId: view.gameId, commandId, actorId, expectedRevision: view.revision, command };
 }

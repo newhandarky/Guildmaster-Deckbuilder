@@ -1,20 +1,27 @@
 import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
 import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
-import type { CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView } from '@guildmaster/game-protocol';
-import { loadLocalGame, saveLocalGame } from './local-storage.js';
+import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView } from '@guildmaster/game-protocol';
+import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
-export type SessionUpdate = { view: PlayerView; events: DomainEvent[]; legalCommands: GameCommand[]; error?: EngineError; scoreboard?: ScoreRow[] };
+export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; error?: EngineError; scoreboard?: ScoreRow[] };
 
 export class LocalGameSession {
   private state: GameState;
   private readonly processed = new Map<string, SessionUpdate>();
   private events: DomainEvent[];
+  private commandSequence = 0;
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const saved = loadLocalGame();
     if (saved) {
-      this.state = restoreSnapshot(saved.snapshot);
-      this.events = saved.events;
+      try {
+        this.state = restoreSnapshot(saved.snapshot, this.ruleset);
+        this.events = saved.events;
+      } catch {
+        clearLocalGame();
+        this.state = this.createFreshGame();
+        this.events = [];
+      }
     } else {
       this.state = this.createFreshGame();
       this.events = [];
@@ -35,8 +42,13 @@ export class LocalGameSession {
   }
 
   submit(command: GameCommand): SessionUpdate {
-    const envelope: CommandEnvelope = { protocolVersion: 1, gameId: this.state.gameId, commandId: `human-${this.state.revision + 1}`, actorId: this.humanId, expectedRevision: this.state.revision, command };
+    const envelope: CommandEnvelope = { protocolVersion: 1, gameId: this.state.gameId, commandId: this.nextCommandId(this.humanId), actorId: this.humanId, expectedRevision: this.state.revision, command };
     return this.submitEnvelope(envelope);
+  }
+
+  private nextCommandId(actorId: string): string {
+    this.commandSequence += 1;
+    return `${actorId}-${this.state.revision + 1}-${Date.now()}-${this.commandSequence}`;
   }
 
   private submitEnvelope(envelope: CommandEnvelope): SessionUpdate {
@@ -59,7 +71,7 @@ export class LocalGameSession {
       const view = projectPlayerView(this.state, this.ruleset, active.id);
       const command = simpleAiStrategy.chooseCommand(view, getLegalCommands(this.state, this.ruleset, active.id));
       if (!command) return;
-      const result = dispatch(this.state, this.ruleset, asEnvelope(view, active.id, command));
+      const result = dispatch(this.state, this.ruleset, asEnvelope(view, active.id, command, this.nextCommandId(active.id)));
       if (result.error) return;
       this.state = result.state;
       this.events.push(...result.events);
@@ -67,13 +79,13 @@ export class LocalGameSession {
   }
 
   private persistAndReturn(newEvents: DomainEvent[]): SessionUpdate {
-    saveLocalGame(serializeSnapshot(this.state), this.events);
-    return this.makeUpdate(newEvents);
+    try { saveLocalGame(serializeSnapshot(this.state), this.events); return this.makeUpdate(newEvents); }
+    catch { return this.makeUpdate(newEvents, { code: 'INVALID_COMMAND', message: '本機儲存不可用；目前進度只保留在記憶體中。' }); }
   }
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
-    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), events: this.events.slice(-60), legalCommands, ...(error ? { error } : {}) };
+    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, ...(error ? { error } : {}) };
     return this.state.status === 'finished' ? { ...update, scoreboard: getScoreboard(this.state, this.ruleset) } : update;
   }
 }
