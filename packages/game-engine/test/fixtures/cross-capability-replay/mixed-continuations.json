@@ -1,0 +1,408 @@
+{
+  "fixtureVersion": 1,
+  "scenarios": [
+    {
+      "id": "dice-consent-choice",
+      "gameId": "cross-replay-dice-consent-choice",
+      "mode": "dice-consent-choice",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0, 1, 2],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-dice-consent-choice",
+          "commandId": "dcc-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-dice-consent-choice",
+          "commandId": "dcc-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "dice-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-dice-consent-choice",
+          "commandId": "dcc-p3",
+          "actorId": "p3",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "dice-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-dice-consent-choice",
+          "commandId": "dcc-choice",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:command-before:0:dcc-start:test:cross-replay:dice-consent-choice",
+            "choiceId": "after-consent-choice",
+            "optionId": "confirm"
+          }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 111,
+        "counterVisibility": "public",
+        "revision": 1,
+        "eventLogCursor": 11,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:b152c639",
+        "continuations": [
+          {
+            "index": 0,
+            "kind": "consent",
+            "executionId": "lifecycle:command-before:0:dcc-start:test:cross-replay:dice-consent-choice",
+            "suspensionId": "dice-consent",
+            "acceptedActorIds": [],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 4,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          },
+          {
+            "index": 1,
+            "kind": "consent",
+            "executionId": "lifecycle:command-before:0:dcc-start:test:cross-replay:dice-consent-choice",
+            "suspensionId": "dice-consent",
+            "acceptedActorIds": ["p2"],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 5,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          },
+          {
+            "index": 2,
+            "kind": "choice",
+            "executionId": "lifecycle:command-before:0:dcc-start:test:cross-replay:dice-consent-choice",
+            "suspensionId": "after-consent-choice",
+            "acceptedActorIds": [],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 7,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          }
+        ],
+        "orderedEvents": [
+          "transaction:dcc-start:1|EFFECT_STARTED|-|-|-",
+          "transaction:dcc-start:2|DIE_ROLLED|-|-|1",
+          "transaction:dcc-start:3|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:dcc-start:4|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
+          "transaction:dcc-start:5|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
+          "transaction:dcc-start:6|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:dcc-start:7|EFFECT_SUSPENDED|-|-|-",
+          "transaction:dcc-start:8|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:dcc-start:9|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:dcc-start:10|EFFECT_COMPLETED|-|-|-",
+          "transaction:dcc-start:11|PHASE_ENDED|dcc-start|-|-"
+        ]
+      }
+    },
+    {
+      "id": "choice-dice-consent",
+      "gameId": "cross-replay-choice-dice-consent",
+      "mode": "choice-dice-consent",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0, 1, 2],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-choice-dice-consent",
+          "commandId": "cdc-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-choice-dice-consent",
+          "commandId": "cdc-choice",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:command-before:0:cdc-start:test:cross-replay:choice-dice-consent",
+            "choiceId": "before-dice-choice",
+            "optionId": "confirm"
+          }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-choice-dice-consent",
+          "commandId": "cdc-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "choice-dice-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-choice-dice-consent",
+          "commandId": "cdc-p3",
+          "actorId": "p3",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "choice-dice-consent", "response": "accept" }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 116,
+        "counterVisibility": "public",
+        "revision": 1,
+        "eventLogCursor": 12,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:8240f349",
+        "continuations": [
+          {
+            "index": 0,
+            "kind": "choice",
+            "executionId": "lifecycle:command-before:0:cdc-start:test:cross-replay:choice-dice-consent",
+            "suspensionId": "before-dice-choice",
+            "acceptedActorIds": [],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 2,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 47
+          },
+          {
+            "index": 1,
+            "kind": "consent",
+            "executionId": "lifecycle:command-before:0:cdc-start:test:cross-replay:choice-dice-consent",
+            "suspensionId": "choice-dice-consent",
+            "acceptedActorIds": [],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 6,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          },
+          {
+            "index": 2,
+            "kind": "consent",
+            "executionId": "lifecycle:command-before:0:cdc-start:test:cross-replay:choice-dice-consent",
+            "suspensionId": "choice-dice-consent",
+            "acceptedActorIds": ["p2"],
+            "boundary": "command-before",
+            "factIndex": null,
+            "eventCount": 7,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          }
+        ],
+        "orderedEvents": [
+          "transaction:cdc-start:1|EFFECT_STARTED|-|-|-",
+          "transaction:cdc-start:2|EFFECT_SUSPENDED|-|-|-",
+          "transaction:cdc-start:3|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:cdc-start:4|DIE_ROLLED|-|-|1",
+          "transaction:cdc-start:5|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:cdc-start:6|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
+          "transaction:cdc-start:7|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
+          "transaction:cdc-start:8|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:cdc-start:9|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:cdc-start:10|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:cdc-start:11|EFFECT_COMPLETED|-|-|-",
+          "transaction:cdc-start:12|PHASE_ENDED|cdc-start|-|-"
+        ]
+      }
+    },
+    {
+      "id": "post-command-mixed-continuation",
+      "gameId": "cross-replay-post-command",
+      "mode": "post-command-mixed",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0, 1, 2, 3],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-post-command",
+          "commandId": "post-mixed-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-post-command",
+          "commandId": "post-before-choice",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:event-before:0:transaction:post-mixed-start:1:test:cross-replay:post-event-before-choice",
+            "choiceId": "post-before-choice",
+            "optionId": "confirm"
+          }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-post-command",
+          "commandId": "post-consent-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "post-mixed-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-post-command",
+          "commandId": "post-consent-p3",
+          "actorId": "p3",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "post-mixed-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-post-command",
+          "commandId": "post-after-choice",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:command-after:0:post-mixed-start:test:cross-replay:post-command-after-choice",
+            "choiceId": "post-after-choice",
+            "optionId": "confirm"
+          }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 66,
+        "counterVisibility": "public",
+        "revision": 1,
+        "eventLogCursor": 18,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:e51aadbf",
+        "continuations": [
+          {
+            "index": 0,
+            "kind": "choice",
+            "executionId": "lifecycle:event-before:0:transaction:post-mixed-start:1:test:cross-replay:post-event-before-choice",
+            "suspensionId": "post-before-choice",
+            "acceptedActorIds": [],
+            "boundary": "event-before",
+            "factIndex": 0,
+            "eventCount": 3,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 47
+          },
+          {
+            "index": 1,
+            "kind": "consent",
+            "executionId": "lifecycle:event-after:0:transaction:post-mixed-start:1:test:cross-replay:post-event-after-mixed",
+            "suspensionId": "post-mixed-consent",
+            "acceptedActorIds": [],
+            "boundary": "event-after",
+            "factIndex": 0,
+            "eventCount": 9,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          },
+          {
+            "index": 2,
+            "kind": "consent",
+            "executionId": "lifecycle:event-after:0:transaction:post-mixed-start:1:test:cross-replay:post-event-after-mixed",
+            "suspensionId": "post-mixed-consent",
+            "acceptedActorIds": ["p2"],
+            "boundary": "event-after",
+            "factIndex": 0,
+            "eventCount": 10,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          },
+          {
+            "index": 3,
+            "kind": "choice",
+            "executionId": "lifecycle:command-after:0:post-mixed-start:test:cross-replay:post-command-after-choice",
+            "suspensionId": "post-after-choice",
+            "acceptedActorIds": [],
+            "boundary": "command-after",
+            "factIndex": 1,
+            "eventCount": 16,
+            "revision": 0,
+            "eventLogCursor": 0,
+            "rngState": 12182925
+          }
+        ],
+        "orderedEvents": [
+          "transaction:post-mixed-start:1|PHASE_ENDED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:2|EFFECT_STARTED|-|-|-",
+          "transaction:post-mixed-start:3|EFFECT_SUSPENDED|-|-|-",
+          "transaction:post-mixed-start:4|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:post-mixed-start:5|EFFECT_COMPLETED|-|-|-",
+          "transaction:post-mixed-start:6|EFFECT_STARTED|-|-|-",
+          "transaction:post-mixed-start:7|DIE_ROLLED|-|-|1",
+          "transaction:post-mixed-start:8|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:post-mixed-start:9|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
+          "transaction:post-mixed-start:10|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
+          "transaction:post-mixed-start:11|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:post-mixed-start:12|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:post-mixed-start:13|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:post-mixed-start:14|EFFECT_COMPLETED|-|-|-",
+          "transaction:post-mixed-start:15|EFFECT_STARTED|-|-|-",
+          "transaction:post-mixed-start:16|EFFECT_SUSPENDED|-|-|-",
+          "transaction:post-mixed-start:17|EFFECT_VALUE_MODIFIED|-|-|-",
+          "transaction:post-mixed-start:18|EFFECT_COMPLETED|-|-|-"
+        ]
+      }
+    }
+  ],
+  "rollbackScenarios": [
+    {
+      "id": "late-post-command-failure",
+      "gameId": "cross-replay-late-failure",
+      "mode": "post-command-rollback",
+      "players": ["p1", "p2"],
+      "snapshotAfterCommandIndexes": [0, 1],
+      "failureCommandIndex": 2,
+      "expectedErrorCode": "INVALID_COMMAND",
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-late-failure",
+          "commandId": "rollback-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-late-failure",
+          "commandId": "rollback-choice",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:event-before:0:transaction:rollback-start:1:test:cross-replay:post-event-before-choice",
+            "choiceId": "post-before-choice",
+            "optionId": "confirm"
+          }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "cross-replay-late-failure",
+          "commandId": "rollback-consent",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "post-mixed-consent", "response": "accept" }
+        }
+      ]
+    }
+  ]
+}

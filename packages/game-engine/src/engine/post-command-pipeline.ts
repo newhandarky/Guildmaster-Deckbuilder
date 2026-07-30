@@ -9,6 +9,7 @@ import type {
 } from '@guildmaster/game-protocol';
 import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
+import { evaluateDiceRoll } from '../rules/dice-evaluator.js';
 
 export type PostCommandBoundary = 'event-before' | 'event-after' | 'command-after';
 export type PostCommandPipelineResult = {
@@ -62,6 +63,118 @@ function compatibleCheckpoint(checkpoint: GameState, state: GameState): boolean 
     && same(checkpoint.rulesModules, state.rulesModules);
 }
 
+function validateCounterConsentEventSequence(
+  events: readonly DomainEvent[],
+  state: GameState,
+  registry: LifecycleRegistrySnapshot
+): string | undefined {
+  const consentEvents = events.filter((event) => event.payload?.kind === 'counter-consent');
+  if (!consentEvents.length) return undefined;
+  let request:
+    | {
+        requestId: string;
+        policy: unknown;
+        counterOwnerId: string;
+        requesterId: string;
+        requiredActorIds: readonly string[];
+        acceptedActorIds: string[];
+        terminal: boolean;
+      }
+    | undefined;
+  const eventType: Record<string, string> = {
+    requested: 'COUNTER_CONSENT_REQUESTED',
+    pending: 'COUNTER_CONSENT_ACCEPT_RECORDED',
+    accepted: 'COUNTER_CONSENT_ACCEPTED',
+    declined: 'COUNTER_CONSENT_DECLINED',
+    cancelled: 'COUNTER_CONSENT_CANCELLED',
+    expired: 'COUNTER_CONSENT_EXPIRED'
+  };
+  for (const event of consentEvents) {
+    const payload = event.payload;
+    if (payload?.kind !== 'counter-consent') return 'Transaction counter consent event payload is missing.';
+    const evaluation = payload.evaluation;
+    if (event.type !== eventType[evaluation.status]) return 'Transaction counter consent event type and status mismatch.';
+    if (!same(evaluation.input.registry, registry)) return 'Transaction counter consent evaluation registry mismatch.';
+    if (evaluation.input.action === 'request') {
+      if (request && !request.terminal) return 'Transaction counter consent request starts before the prior request terminates.';
+      if (
+        evaluation.status !== 'requested'
+        || evaluation.reasonCode !== 'CONSENT_REQUESTED'
+        || evaluation.input.actorId !== evaluation.requesterId
+        || evaluation.input.counterOwnerId !== evaluation.counterOwnerId
+        || !same(evaluation.input.policy, evaluation.policy)
+        || evaluation.acceptedActorIds.length
+        || !evaluation.requiredActorIds.length
+        || new Set(evaluation.requiredActorIds).size !== evaluation.requiredActorIds.length
+        || evaluation.requiredActorIds.includes(evaluation.requesterId)
+      ) return 'Transaction counter consent request evaluation is invalid or tampered.';
+      request = {
+        requestId: evaluation.input.requestId,
+        policy: evaluation.policy,
+        counterOwnerId: evaluation.counterOwnerId,
+        requesterId: evaluation.requesterId,
+        requiredActorIds: evaluation.requiredActorIds,
+        acceptedActorIds: [],
+        terminal: false
+      };
+      continue;
+    }
+    if (
+      !request
+      || request.terminal
+      || evaluation.input.requestId !== request.requestId
+      || !same(evaluation.policy, request.policy)
+      || evaluation.counterOwnerId !== request.counterOwnerId
+      || evaluation.requesterId !== request.requesterId
+      || !same(evaluation.requiredActorIds, request.requiredActorIds)
+    ) return 'Transaction counter consent continuation identity is invalid or tampered.';
+    const actorId = evaluation.input.actorId;
+    if (evaluation.input.action === 'accept') {
+      if (!request.requiredActorIds.includes(actorId) || request.acceptedActorIds.includes(actorId)) return 'Transaction counter consent accept actor is invalid or duplicated.';
+      request.acceptedActorIds.push(actorId);
+      const complete = request.requiredActorIds.every((id) => request!.acceptedActorIds.includes(id));
+      if (
+        evaluation.status !== (complete ? 'accepted' : 'pending')
+        || evaluation.reasonCode !== (complete ? 'ALL_REQUIRED_ACTORS_ACCEPTED' : 'ACCEPT_RECORDED')
+        || !same(evaluation.acceptedActorIds, request.acceptedActorIds)
+      ) return 'Transaction counter consent accept progression is invalid or tampered.';
+      request.terminal = complete;
+      continue;
+    }
+    const terminalMatches =
+      (evaluation.input.action === 'decline' && evaluation.status === 'declined' && evaluation.reasonCode === 'REQUIRED_ACTOR_DECLINED' && request.requiredActorIds.includes(actorId) && !request.acceptedActorIds.includes(actorId))
+      || (evaluation.input.action === 'cancel' && evaluation.status === 'cancelled' && evaluation.reasonCode === 'REQUESTER_CANCELLED' && actorId === request.requesterId)
+      || (evaluation.input.action === 'expire' && evaluation.status === 'expired' && evaluation.reasonCode === 'REQUEST_EXPIRED');
+    if (!terminalMatches || !same(evaluation.acceptedActorIds, request.acceptedActorIds)) return 'Transaction counter consent terminal evaluation is invalid or tampered.';
+    request.terminal = true;
+  }
+  const pending = state.effectState.pendingCounterConsent;
+  if (pending && (!request || request.terminal || request.requestId !== pending.requestId || !same(request.policy, pending.policy) || request.counterOwnerId !== pending.counterOwnerId || request.requesterId !== pending.requesterId || !same(request.requiredActorIds, pending.requiredActorIds) || !same(request.acceptedActorIds, pending.acceptedActorIds))) return 'Transaction counter consent events do not match the pending request.';
+  if (!pending && request && !request.terminal) return 'Transaction counter consent events contain an unfinished request without a pending continuation.';
+  return undefined;
+}
+
+export function validateTransactionEventSequence(
+  events: readonly DomainEvent[],
+  state: GameState,
+  registry: LifecycleRegistrySnapshot,
+  commandId: string,
+  ruleset?: Ruleset
+): string | undefined {
+  if (new Set(events.map(({ eventId }) => eventId)).size !== events.length) return 'Transaction event IDs must be unique.';
+  if (events.some((event, index) => event.eventId !== `transaction:${commandId}:${index + 1}`)) return 'Transaction event IDs must form one exact ordered command sequence.';
+  if (events.some(({ revision }) => revision !== state.revision + 1)) return 'Transaction events must use the uncommitted command revision.';
+  for (const transactionEvent of events) {
+    const dicePayload = transactionEvent.payload?.kind === 'dice-roll' ? transactionEvent.payload : undefined;
+    if (dicePayload && !same(dicePayload.evaluation.input.registry, registry)) return 'Transaction dice evaluation registry mismatch.';
+    if (dicePayload && ruleset) {
+      const evaluated = evaluateDiceRoll(state, ruleset, dicePayload.evaluation.input);
+      if (evaluated.status !== 'ready' || !same(evaluated.evaluation, dicePayload.evaluation)) return 'Transaction dice evaluation is invalid or tampered.';
+    }
+  }
+  return validateCounterConsentEventSequence(events, state, registry);
+}
+
 /** Validates the JSON-only outer cursor and its relationship to the hook-level continuation. */
 export function validatePostCommandContinuationState(state: GameState, ruleset?: Ruleset): string | undefined {
   const outer = state.effectState.pendingPostCommand;
@@ -82,7 +195,8 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (!cleanCheckpoint(outer.rollbackState) || !compatibleCheckpoint(outer.rollbackState, state)) return 'Invalid or recursive post-command rollback checkpoint.';
   if (outer.rollbackState.revision !== outer.envelope.expectedRevision || outer.rollbackState.eventLogCursor !== state.eventLogCursor) return 'Post-command rollback revision or event cursor mismatch.';
   if (!cleanCheckpoint(lifecycle.rollbackState) || !compatibleCheckpoint(lifecycle.rollbackState, state)) return 'Invalid or recursive lifecycle rollback checkpoint.';
-  if (new Set(outer.events.map(({ eventId }) => eventId)).size !== outer.events.length) return 'Post-command transaction event IDs must be unique.';
+  const transactionError = validateTransactionEventSequence(outer.events, state, outer.registry, outer.envelope.commandId, ruleset);
+  if (transactionError) return transactionError;
   if (new Set(outer.facts.map(({ eventId }) => eventId)).size !== outer.facts.length) return 'Post-command fact IDs must be unique.';
   const commandFacts = outer.events.filter(({ causedByCommandId }) => causedByCommandId === outer.envelope.commandId);
   if (!same(outer.facts, commandFacts)) return 'Post-command facts must equal the complete ordered reducer fact segment.';
@@ -97,8 +211,6 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
     const encounterTypes = new Set(['ENCOUNTER_CREATED', 'ENEMY_TARGET_CREATED', 'ENEMY_ATTACHMENT_ADDED', 'ENEMY_TARGET_DAMAGED', 'ENEMY_TARGET_DEFEATED', 'ENEMY_TARGET_REMOVED', 'ENCOUNTER_COMPLETED']);
     if (encounterTypes.has(transactionEvent.type) !== Boolean(encounterPayload)) return 'Post-command encounter fact type and payload are inconsistent.';
     if (encounterPayload && !same(encounterPayload.registry, outer.registry)) return 'Post-command encounter evaluation registry mismatch.';
-    const consentPayload = transactionEvent.payload?.kind === 'counter-consent' ? transactionEvent.payload : undefined;
-    if (consentPayload && !same(consentPayload.evaluation.input.registry, outer.registry)) return 'Post-command counter consent evaluation registry mismatch.';
   }
   if (outer.boundary === 'command-after') {
     if (outer.factIndex !== outer.facts.length || outer.payload.eventType !== undefined || outer.payload.commandType !== outer.envelope.command.type) return 'Command-after cursor still has unprocessed facts or an invalid payload.';
