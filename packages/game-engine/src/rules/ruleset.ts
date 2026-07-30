@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, validateBondConditionRule, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateBondConditionRule, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 
@@ -21,6 +21,7 @@ export type RulesModule = {
   continuousRules?: readonly ContinuousRule[];
   bondConditionRules?: readonly BondConditionRule[];
   diceDefinitions?: readonly DiceDefinition[];
+  counterConsentPolicies?: readonly CounterConsentPolicy[];
   endConditions?: readonly EndCondition[];
   getScoreContributions?: (state: GameState, registry: ContentRegistry) => readonly ScoreContribution[];
 };
@@ -65,7 +66,7 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>();
+  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
   for (const module of modules) {
     if (!module.id.trim() || !module.version.trim() || !isFiniteJsonValue(module.config ?? {})) throw new Error(`Rules Module ${module.id || '<empty>'} has invalid identity or config.`);
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
@@ -81,6 +82,7 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const rule of module.continuousRules ?? []) { const errors = validateContinuousRule(rule, module.id); const ref = `${module.id}\u0000${rule.effectId}`; if (continuousRefs.has(ref)) errors.push(`Duplicate continuous rule: ${module.id}/${rule.effectId}.`); continuousRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.bondConditionRules ?? []) { const errors = validateBondConditionRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (bondRefs.has(ref)) errors.push(`Duplicate bond condition rule: ${module.id}/${rule.ruleId}.`); bondRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const die of module.diceDefinitions ?? []) { const errors = validateDiceDefinition(die, module.id); const ref = `${module.id}\u0000${die.diceId}`; if (diceRefs.has(ref)) errors.push(`Duplicate dice definition: ${module.id}/${die.diceId}.`); diceRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.counterConsentPolicies ?? []) { const errors = validateCounterConsentPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (consentRefs.has(ref)) errors.push(`Duplicate counter consent policy: ${module.id}/${policy.policyId}.`); consentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
   }
   return { registry: createContentRegistry(packs, options), modules };
 }

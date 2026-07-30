@@ -5,6 +5,7 @@ import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 
 const maxAttackPreviewDepth = 32;
 const maxAttackPreviewBranches = 256;
@@ -78,6 +79,20 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
+  const consent = state.effectState.pendingCounterConsent;
+  if (consent) {
+    if (!state.players.some(({ id }) => id === actorId)) return [];
+    const candidates: GameCommand[] = [
+      { type: 'RESPOND_COUNTER_CONSENT', requestId: consent.requestId, response: 'accept' },
+      { type: 'RESPOND_COUNTER_CONSENT', requestId: consent.requestId, response: 'decline' },
+      { type: 'CANCEL_COUNTER_CONSENT', requestId: consent.requestId },
+      { type: 'EXPIRE_COUNTER_CONSENT', requestId: consent.requestId }
+    ];
+    return candidates.filter((command) => {
+      const action = command.type === 'RESPOND_COUNTER_CONSENT' ? command.response : command.type === 'CANCEL_COUNTER_CONSENT' ? 'cancel' : 'expire';
+      return evaluateCounterConsent(state, ruleset, { schemaVersion: 1, action, actorId, requestId: consent.requestId, registry: consent.registry }).status === 'ready';
+    });
+  }
   const pending = state.effectState.pendingChoice;
   if (pending) {
     if (pending.actorId !== actorId) return [];

@@ -6,17 +6,18 @@ import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
 import { refillConfiguredSupplyRows } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
-import { resumeEffectChoice } from '../effects/executor.js';
-import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
-import { beginPostCommandPipeline, resumePostCommandPipeline } from './post-command-pipeline.js';
+import { resumeEffectChoice, resumeEffectCounterConsent } from '../effects/executor.js';
+import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
+import { beginPostCommandPipeline, resumePostCommandPipeline, resumePostCommandCounterConsent } from './post-command-pipeline.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
-import { beginCombatRewardPipeline, resumeCombatRewardPipeline } from './combat-reward-pipeline.js';
+import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
 import { validateGameStateInvariants } from './state-invariants.js';
+import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -33,6 +34,9 @@ function removeFrom<T>(items: T[], item: T): boolean {
   return true;
 }
 const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand;
+type CounterConsentCommand = Extract<GameCommand, { type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT' }>;
+const isCounterConsentCommand = (command: GameCommand): command is CounterConsentCommand => command.type === 'RESPOND_COUNTER_CONSENT' || command.type === 'CANCEL_COUNTER_CONSENT' || command.type === 'EXPIRE_COUNTER_CONSENT';
+const counterConsentAction = (command: CounterConsentCommand): 'accept' | 'decline' | 'cancel' | 'expire' => command.type === 'RESPOND_COUNTER_CONSENT' ? command.response : command.type === 'CANCEL_COUNTER_CONSENT' ? 'cancel' : 'expire';
 function combinations(ids: readonly string[], count: number, limit = 257): string[][] { const results: string[][] = []; const visit = (start: number, prefix: string[]): void => { if (results.length >= limit) return; if (prefix.length === count) { results.push(prefix); return; } for (let index = start; index < ids.length && results.length < limit; index += 1) visit(index + 1, [...prefix, ids[index]!]); }; visit(0, []); return results; }
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
@@ -248,6 +252,9 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'END_PHASE': return endPhase(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'RESOLVE_EFFECT_CHOICE': return { code: 'INVALID_COMMAND', message: 'A choice command cannot be used as an original command continuation.' };
+    case 'RESPOND_COUNTER_CONSENT':
+    case 'CANCEL_COUNTER_CONSENT':
+    case 'EXPIRE_COUNTER_CONSENT': return { code: 'INVALID_COMMAND', message: 'A counter consent command cannot be used as an original command continuation.' };
   }
 }
 
@@ -271,11 +278,23 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
-  if (envelope.actorId !== (state.effectState.pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的回合。');
-  if ((state.effectState.pendingChoice || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand) && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果選擇。');
+  const pendingChoice = state.effectState.pendingChoice; const pendingConsent = state.effectState.pendingCounterConsent;
+  if (pendingConsent ? !state.players.some(({ id }) => id === envelope.actorId) : envelope.actorId !== (pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家可執行的指令。');
+  const hasContinuation = pendingChoice || pendingConsent || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand;
+  if (hasContinuation && ((pendingChoice && envelope.command.type !== 'RESOLVE_EFFECT_CHOICE') || (pendingConsent && !isCounterConsentCommand(envelope.command)) || (!pendingChoice && !pendingConsent))) return fail(state, 'INVALID_COMMAND', '必須先完成待處理的效果暫停。');
+  if (pendingConsent && isCounterConsentCommand(envelope.command)) {
+    const evaluation = evaluateCounterConsent(state, ruleset, {
+      schemaVersion: 1,
+      action: counterConsentAction(envelope.command),
+      actorId: envelope.actorId,
+      requestId: envelope.command.requestId,
+      registry: structuredClone(pendingConsent.registry)
+    });
+    if (evaluation.status === 'failed') return fail(state, 'INVALID_COMMAND', `${evaluation.reason}: ${evaluation.error}`);
+  }
   const nextState = structuredClone(state);
-  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand?.kind === 'combat-reward') {
-    const pending = nextState.effectState.pendingCommand; const resumed = resumeCombatRewardPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+  if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand?.kind === 'combat-reward') {
+    const pending = nextState.effectState.pendingCommand; const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumeCombatRewardPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumeCombatRewardCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
     if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? 'Combat reward choice failed.' } };
     if (resumed.status === 'suspended') return { state: nextState, events: resumed.events };
     const tail = finishAttackAfterRewards(nextState, ruleset, pending.envelope, resumed.events); if (tail) return { state: structuredClone(pending.rollbackState), events: [], error: tail };
@@ -283,19 +302,20 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events }; nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
   }
-  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingPostCommand) {
+  if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingPostCommand) {
     const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
-    const result = resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+    const result = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumePostCommandCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
     if (result.status === 'failed' || result.status === 'unsupported') return result.rollback === 'command' ? { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: result.error ?? '無法恢復 post-command lifecycle。' } } : fail(state, 'INVALID_COMMAND', result.error ?? '無法恢復 post-command lifecycle。');
     if (result.status === 'suspended') return { state: nextState, events: result.events };
     nextState.revision += 1;
     nextState.eventLogCursor += result.events.length;
     return { state: nextState, events: result.events };
   }
-  if (envelope.command.type === 'RESOLVE_EFFECT_CHOICE' && nextState.effectState.pendingCommand) {
+  if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand) {
     const resolution = envelope.command;
     const continuation = structuredClone(nextState.effectState.pendingCommand); const pending = nextState.effectState.pendingLifecycle; const rollback = pending?.rollbackState;
     if (continuation.kind === 'team-overflow') {
+      if (resolution.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', 'Team overflow requires its matching effect choice.');
       const choice = nextState.effectState.pendingChoice; const selected = continuation.optionCandidates[resolution.optionId];
       if (!choice || !selected || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision || continuation.envelope.actorId !== envelope.actorId || selected.length !== continuation.requiredSelectionCount || new Set(selected).size !== selected.length) return fail(state, 'INVALID_COMMAND', 'No matching pending team overflow choice.');
       const player = getPlayer(nextState, envelope.actorId); if (selected.some((id) => !player.party.some((slot) => slot.adventurerId === id))) return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow candidate is no longer in the party.' } };
@@ -308,10 +328,10 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
       nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
     }
-    if (!pending || continuation.envelope.actorId !== envelope.actorId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
-    const choice = nextState.effectState.pendingChoice;
-    if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.');
-    const resumed = resumeLifecycleChoice(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId);
+    if (!pending || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
+    if (resolution.type === 'RESOLVE_EFFECT_CHOICE') { const choice = nextState.effectState.pendingChoice; if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.'); }
+    else if (nextState.effectState.pendingCounterConsent?.requestId !== resolution.requestId) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before counter consent.');
+    const resumed = resolution.type === 'RESOLVE_EFFECT_CHOICE' ? resumeLifecycleChoice(nextState, ruleset, envelope.actorId, resolution.executionId, resolution.choiceId, resolution.optionId) : resumeLifecycleCounterConsent(nextState, ruleset, envelope.actorId, resolution.requestId, counterConsentAction(resolution));
     if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。' } };
     const events = [...continuation.events, ...resumed.events];
     if (resumed.status === 'suspended') { nextState.effectState.pendingCommand!.events = structuredClone(events); return { state: nextState, events }; }
@@ -335,6 +355,13 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     const error = resolveEffectChoice(nextState, ruleset, getPlayer(nextState, envelope.actorId), envelope.command, events);
     if (error) return { state, events: [], error };
     nextState.revision += 1; nextState.eventLogCursor += events.length; return { state: nextState, events };
+  }
+  if (isCounterConsentCommand(envelope.command)) {
+    const result = nextState.effectState.pendingLifecycle ? resumeLifecycleCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command)) : resumeEffectCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
+    const reason = 'reason' in result && typeof result.reason === 'string' ? result.reason : undefined;
+    if (result.status === 'failed' || result.status === 'unsupported') return { state, events: [], error: { code: 'INVALID_COMMAND', message: result.error ?? reason ?? '無法恢復 counter consent。' } };
+    if (result.status === 'suspended') return { state: nextState, events: result.events };
+    nextState.revision += 1; nextState.eventLogCursor += result.events.length; return { state: nextState, events: result.events };
   }
   const rollback = structuredClone(state);
   const before = dispatchLifecycle(nextState, ruleset, { schemaVersion: 1, point: 'command-before', actorId: envelope.actorId, commandType: envelope.command.type, phase: nextState.phase, metadata: { commandId: envelope.commandId } }, { controllerId: envelope.actorId });

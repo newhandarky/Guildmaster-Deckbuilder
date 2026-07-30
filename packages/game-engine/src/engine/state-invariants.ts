@@ -37,6 +37,7 @@ export function validateGameStateInvariants(state: GameState): string[] {
     for (const cardId of zone.cardIds) addLocation(cardId, `zone:${zoneId}`);
   }
   for (const player of state.players) {
+    if (duplicates(player.counters.map(({ resourceId }) => resourceId)).length) errors.push(`Player ${player.id} counters must have unique resource IDs.`);
     for (const zoneName of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) {
       if (duplicates(player[zoneName]).length) errors.push(`Player ${player.id} ${zoneName} contains duplicate cards.`);
       for (const cardId of player[zoneName]) addLocation(cardId, `player:${player.id}:${zoneName}`);
@@ -45,6 +46,12 @@ export function validateGameStateInvariants(state: GameState): string[] {
       addLocation(slot.adventurerId, `player:${player.id}:party:${index}`);
       if (slot.equipmentId) addLocation(slot.equipmentId, `player:${player.id}:equipment:${index}`);
     });
+  }
+  const consent = state.effectState.pendingCounterConsent;
+  if (consent) {
+    if (state.effectState.pendingChoice) errors.push('Counter consent and effect choice cannot be pending together.');
+    if (!playerIds.includes(consent.counterOwnerId) || consent.requesterId !== consent.counterOwnerId || consent.context.controllerId !== consent.requesterId) errors.push('Pending counter consent has an invalid owner, requester, or context.');
+    if (!consent.requiredActorIds.length || duplicates(consent.requiredActorIds).length || duplicates(consent.acceptedActorIds).length || consent.requiredActorIds.includes(consent.requesterId) || consent.acceptedActorIds.some((id) => !consent.requiredActorIds.includes(id)) || consent.requiredActorIds.some((id) => !playerIds.includes(id)) || consent.requiredActorIds.every((id) => consent.acceptedActorIds.includes(id))) errors.push('Pending counter consent responder sets are invalid.');
   }
   if (duplicates(state.removedCards).length) errors.push('Removed cards contains duplicate IDs.');
   for (const cardId of state.removedCards) addLocation(cardId, 'removed');

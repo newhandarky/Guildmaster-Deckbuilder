@@ -15,6 +15,7 @@ export type EffectNode =
   | { kind: 'choice'; choiceId: string; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
+  | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
   | { kind: 'move-card'; card: EffectCardRef; from: EffectCardLocation; to: EffectCardLocation; position?: 'top' | 'bottom' | number; permission?: 'controller-only' | 'system'; transferOwnership?: boolean }
   | { kind: 'draw'; player: EffectPlayerRef; count: number }
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
@@ -32,6 +33,21 @@ export type EffectNode =
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
 export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };
+export type PendingCounterConsent = {
+  schemaVersion: 1;
+  executionId: string;
+  requestId: string;
+  policy: import('./counter-consent.js').CounterConsentPolicyRef;
+  counterOwnerId: string;
+  requesterId: string;
+  requiredActorIds: readonly string[];
+  acceptedActorIds: readonly string[];
+  status: 'pending';
+  outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode };
+  remaining: readonly EffectNode[];
+  context: EffectContext;
+  registry: import('./counter-consent.js').CounterConsentRegistryFingerprint;
+};
 export type LifecycleHookRef = { moduleId: string; hookId: string };
 export type LifecycleRegistrySnapshot = { rulesetVersion: string; modules: readonly { id: string; version: string }[] };
 /**
@@ -68,7 +84,7 @@ export type PendingPostCommandContinuation = {
   context: EffectContext;
   registry: LifecycleRegistrySnapshot;
 };
-export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingLifecycle?: PendingLifecycleDispatch; pendingCommand?: PendingCommandContinuation; pendingPostCommand?: PendingPostCommandContinuation };
+export type EffectExecutionState = { pendingChoice?: PendingEffectChoice; pendingCounterConsent?: PendingCounterConsent; pendingLifecycle?: PendingLifecycleDispatch; pendingCommand?: PendingCommandContinuation; pendingPostCommand?: PendingPostCommandContinuation };
 /** Registry skeleton: card content is not registered in this PR. */
 export type EffectTrigger = { schemaVersion: 1; triggerId: string; eventType: string; effect: EffectDefinition; priority?: number };
 export type ContinuousEffect = { schemaVersion: 1; continuousId: string; source: EffectCardRef; duration: 'while-source-present' | 'until-rest' | 'this-turn' | 'this-combat'; effect: EffectDefinition };
@@ -116,6 +132,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),
+  z.object({ kind: z.literal('request-counter-consent'), requestId: nonEmpty, policy: policyRefSchema, counterOwner: playerRefSchema, outcomes: z.object({ accepted: EffectNodeSchema, declined: EffectNodeSchema, cancelled: EffectNodeSchema, expired: EffectNodeSchema }).strict() }).strict(),
   z.object({ kind: z.literal('move-card'), card: cardRefSchema, from: locationSchema, to: locationSchema, position: z.union([z.enum(['top', 'bottom']), z.number().finite().int().nonnegative()]).optional(), permission: z.enum(['controller-only', 'system']).optional(), transferOwnership: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('draw'), player: playerRefSchema, count: z.number().finite().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('discard-card'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),

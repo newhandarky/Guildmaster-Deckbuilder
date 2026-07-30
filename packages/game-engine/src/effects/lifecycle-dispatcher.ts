@@ -9,7 +9,7 @@ import type {
   PendingLifecycleDispatch
 } from '@guildmaster/game-protocol';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
-import { executeEffect, resolveEffectOrder, resumeEffectChoice, validatePendingChoiceAgainstEffect, type EffectExecutionResult } from './executor.js';
+import { executeEffect, resolveEffectOrder, resumeEffectChoice, resumeEffectCounterConsent, validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect, type EffectExecutionResult } from './executor.js';
 
 export type LifecycleFailureReason = 'ORDER_POLICY_REQUIRED' | 'UNKNOWN_HOOK' | 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH';
 export type LifecycleDispatchResult = {
@@ -84,7 +84,7 @@ function continueHooks(state: GameState, ruleset: Ruleset, pending: PendingLifec
 
 /** Runs only serializable registry records. Continuous hooks are evaluated as boundaries but are not applied as card effects. */
 export function dispatchLifecycle(state: GameState, ruleset: Ruleset, payload: LifecyclePayload, context: EffectContext): LifecycleDispatchResult {
-  if (state.effectState.pendingChoice || state.effectState.pendingLifecycle) return { status: 'failed', hookIds: [], evaluatedContinuousHookIds: [], events: [], error: 'Another effect continuation is pending.' };
+  if (state.effectState.pendingChoice || state.effectState.pendingCounterConsent || state.effectState.pendingLifecycle) return { status: 'failed', hookIds: [], evaluatedContinuousHookIds: [], events: [], error: 'Another effect continuation is pending.' };
   const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType) && active(hook, state));
   const continuous = hooks.filter((hook) => hook.kind === 'continuous');
   const executable = hooks.filter((hook) => hook.kind !== 'continuous');
@@ -125,6 +125,28 @@ export function resumeLifecycleChoice(state: GameState, ruleset: Ruleset, actorI
   const pendingChoice = state.effectState.pendingChoice; const currentHook = findHook(ruleset, pending.currentHook); const programError = pendingChoice && currentHook ? validatePendingChoiceAgainstEffect(pendingChoice, currentHook.effect) : 'Pending lifecycle choice or hook is missing.'; if (programError) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: programError };
   const next = structuredClone(state);
   const effect = resumeEffectChoice(next, ruleset, actorId, executionId, choiceId, optionId); effect.events = normalizedEffectEvents(pending, pending.currentHook, effect.events, 0);
+  if (effect.status === 'failed' || effect.status === 'unsupported') return { status: effect.status, hookIds, evaluatedContinuousHookIds: [], events: [], effect, ...(effect.error ? { error: effect.error } : {}) };
+  if (effect.status === 'suspended') { Object.assign(state, next); return { status: 'suspended', hookIds, evaluatedContinuousHookIds: [], events: effect.events, effect }; }
+  delete next.effectState.pendingLifecycle;
+  const result = continueHooks(next, ruleset, pending, pending.remainingHooks, effect.events);
+  Object.assign(state, next);
+  return result;
+}
+
+/** Resumes a multi-actor counter consent suspension, then continues the exact serialized lifecycle queue. */
+export function resumeLifecycleCounterConsent(state: GameState, ruleset: Ruleset, actorId: string, requestId: string, action: 'accept' | 'decline' | 'cancel' | 'expire'): LifecycleDispatchResult {
+  const pending = state.effectState.pendingLifecycle;
+  if (!pending) return { status: 'failed', hookIds: [], evaluatedContinuousHookIds: [], events: [], error: 'No pending lifecycle dispatch.' };
+  const hookIds = [pending.currentHook, ...pending.remainingHooks].map(({ hookId }) => hookId);
+  if (pending.rollbackState.gameId !== state.gameId || JSON.stringify(pending.rollbackState.contentPacks) !== JSON.stringify(state.contentPacks) || JSON.stringify(pending.rollbackState.rulesModules) !== JSON.stringify(state.rulesModules)) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: 'Lifecycle rollback checkpoint registry does not match current state.' };
+  const registryError = validateRegistry(pending.registry, state, ruleset);
+  if (registryError) return fail(registryError.reason, hookIds, [], registryError.error);
+  const refError = validateHookRefs(ruleset, [pending.currentHook, ...pending.remainingHooks]);
+  if (refError) return fail(refError.reason, hookIds, [], refError.error);
+  const canonical = canonicalRefs(pending.rollbackState, ruleset, pending.payload); const currentIndex = canonical?.findIndex((ref) => refKey(ref) === refKey(pending.currentHook)) ?? -1; if (!canonical || currentIndex < 0 || JSON.stringify(canonical.slice(currentIndex + 1)) !== JSON.stringify(pending.remainingHooks)) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: 'Pending lifecycle hook queue is not a canonical suffix for its payload.' };
+  const consent = state.effectState.pendingCounterConsent; const currentHook = findHook(ruleset, pending.currentHook); const programError = consent && currentHook ? validatePendingCounterConsentAgainstEffect(consent, currentHook.effect) : 'Pending lifecycle counter consent or hook is missing.'; if (programError) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: programError };
+  const next = structuredClone(state);
+  const effect = resumeEffectCounterConsent(next, ruleset, actorId, requestId, action); effect.events = normalizedEffectEvents(pending, pending.currentHook, effect.events, 0);
   if (effect.status === 'failed' || effect.status === 'unsupported') return { status: effect.status, hookIds, evaluatedContinuousHookIds: [], events: [], effect, ...(effect.error ? { error: effect.error } : {}) };
   if (effect.status === 'suspended') { Object.assign(state, next); return { status: 'suspended', hookIds, evaluatedContinuousHookIds: [], events: effect.events, effect }; }
   delete next.effectState.pendingLifecycle;

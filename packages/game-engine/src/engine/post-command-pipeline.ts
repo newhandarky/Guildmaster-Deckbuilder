@@ -7,7 +7,7 @@ import type {
   LifecycleRegistrySnapshot,
   PendingPostCommandContinuation
 } from '@guildmaster/game-protocol';
-import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 
 export type PostCommandBoundary = 'event-before' | 'event-after' | 'command-after';
@@ -51,7 +51,7 @@ export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState,
 
 function cleanCheckpoint(state: GameState): boolean {
   const effects = state.effectState;
-  return !effects.pendingChoice && !effects.pendingLifecycle && !effects.pendingCommand && !effects.pendingPostCommand;
+  return !effects.pendingChoice && !effects.pendingCounterConsent && !effects.pendingLifecycle && !effects.pendingCommand && !effects.pendingPostCommand;
 }
 
 function compatibleCheckpoint(checkpoint: GameState, state: GameState): boolean {
@@ -68,13 +68,14 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (!outer) return undefined;
   const lifecycle = state.effectState.pendingLifecycle;
   const choice = state.effectState.pendingChoice;
-  if (!lifecycle || !choice || state.effectState.pendingCommand) return 'Post-command continuation requires exactly one pending lifecycle choice.';
+  const consent = state.effectState.pendingCounterConsent;
+  if (!lifecycle || Boolean(choice) === Boolean(consent) || state.effectState.pendingCommand) return 'Post-command continuation requires exactly one pending lifecycle suspension.';
   if (outer.schemaVersion !== 1 || outer.step !== 'resume-boundary' || outer.continuationId !== `post-command:${outer.envelope.commandId}`) return 'Malformed post-command continuation identity or step.';
   if (outer.envelope.command.type === 'RESOLVE_EFFECT_CHOICE') return 'Post-command continuation cannot contain a choice command.';
   if (outer.envelope.gameId !== state.gameId || outer.envelope.expectedRevision !== state.revision) return 'Post-command command envelope is incompatible with current state.';
-  if (choice.actorId !== outer.envelope.actorId || lifecycle.context.controllerId !== outer.envelope.actorId || !same(choice.context, lifecycle.context)) return 'Post-command actor or effect context mismatch.';
+  if (lifecycle.context.controllerId !== outer.envelope.actorId || (choice && (choice.actorId !== outer.envelope.actorId || !same(choice.context, lifecycle.context))) || (consent && (consent.requesterId !== outer.envelope.actorId || !same(consent.context, lifecycle.context)))) return 'Post-command actor or effect context mismatch.';
   const expectedExecutionId = `${lifecycle.dispatchId}:${lifecycle.currentHook.moduleId}:${lifecycle.currentHook.hookId}`;
-  if (choice.executionId !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
+  if ((choice?.executionId ?? consent?.executionId) !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
   if (!same(outer.payload, lifecycle.payload) || !same(outer.context, lifecycle.context) || !same(outer.registry, lifecycle.registry)) return 'Post-command lifecycle payload, context, or registry mismatch.';
   const stateRegistry: LifecycleRegistrySnapshot = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
   if (!same(outer.registry, stateRegistry)) return 'Post-command registry fingerprint does not match the Snapshot state.';
@@ -96,6 +97,8 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
     const encounterTypes = new Set(['ENCOUNTER_CREATED', 'ENEMY_TARGET_CREATED', 'ENEMY_ATTACHMENT_ADDED', 'ENEMY_TARGET_DAMAGED', 'ENEMY_TARGET_DEFEATED', 'ENEMY_TARGET_REMOVED', 'ENCOUNTER_COMPLETED']);
     if (encounterTypes.has(transactionEvent.type) !== Boolean(encounterPayload)) return 'Post-command encounter fact type and payload are inconsistent.';
     if (encounterPayload && !same(encounterPayload.registry, outer.registry)) return 'Post-command encounter evaluation registry mismatch.';
+    const consentPayload = transactionEvent.payload?.kind === 'counter-consent' ? transactionEvent.payload : undefined;
+    if (consentPayload && !same(consentPayload.evaluation.input.registry, outer.registry)) return 'Post-command counter consent evaluation registry mismatch.';
   }
   if (outer.boundary === 'command-after') {
     if (outer.factIndex !== outer.facts.length || outer.payload.eventType !== undefined || outer.payload.commandType !== outer.envelope.command.type) return 'Command-after cursor still has unprocessed facts or an invalid payload.';
@@ -208,6 +211,24 @@ export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, ac
   appendLifecycleEvents(cursor, resumed.events);
   if (resumed.status === 'suspended') return suspend(state, cursor);
   if (resumed.status === 'failed' || resumed.status === 'unsupported') return { status: resumed.status, state, events: [], error: resumed.error ?? resumed.reason ?? 'Post-command lifecycle resume failed.', rollback: 'command' };
+  delete state.effectState.pendingPostCommand;
+  if (!advance(cursor)) return { status: 'completed', state, events: cursor.events };
+  return continuePostCommandPipeline(state, ruleset, cursor);
+}
+
+/** Resolves a counter consent action, then advances only from the serialized outer cursor. */
+export function resumePostCommandCounterConsent(state: GameState, ruleset: Ruleset, actorId: string, requestId: string, action: 'accept' | 'decline' | 'cancel' | 'expire'): PostCommandPipelineResult {
+  const validationError = validatePostCommandContinuationState(state, ruleset);
+  const saved = state.effectState.pendingPostCommand;
+  if (!saved) return { status: 'failed', state, events: [], error: 'No pending post-command continuation.', rollback: 'none' };
+  if (validationError) return { status: 'failed', state, events: [], error: validationError, rollback: 'command' };
+  const consent = state.effectState.pendingCounterConsent;
+  if (!consent || requestId !== consent.requestId) return { status: 'failed', state, events: [], error: 'No matching pending post-command counter consent.', rollback: 'none' };
+  const cursor: PostCommandPipelineCursor = { continuationId: saved.continuationId, envelope: clone(saved.envelope), rollbackState: clone(saved.rollbackState), facts: clone(saved.facts), factIndex: saved.factIndex, boundary: saved.boundary, events: clone([...saved.events]) };
+  const resumed = resumeLifecycleCounterConsent(state, ruleset, actorId, requestId, action);
+  appendLifecycleEvents(cursor, resumed.events);
+  if (resumed.status === 'suspended') return suspend(state, cursor);
+  if (resumed.status === 'failed' || resumed.status === 'unsupported') return { status: resumed.status, state, events: [], error: resumed.error ?? resumed.reason ?? 'Post-command counter consent resume failed.', rollback: 'command' };
   delete state.effectState.pendingPostCommand;
   if (!advance(cursor)) return { status: 'completed', state, events: cursor.events };
   return continuePostCommandPipeline(state, ruleset, cursor);

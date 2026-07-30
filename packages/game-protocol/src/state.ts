@@ -36,6 +36,7 @@ export type GameState = {
 export type PlayerView = {
   viewerId: string; gameId: string; status: GameStatus; phase: Phase; round: number; revision: number; activePlayerId: string;
   self: Omit<PlayerState, 'drawPile'> & { drawPileCount: number }; partyLimit: number;
-  opponents: { id: string; name: string; handCount: number; partyCount: number; discardCount: number; defeatedBosses: number }[];
+  opponents: { id: string; name: string; handCount: number; partyCount: number; discardCount: number; defeatedBosses: number; counters: PlayerCounterState[] }[];
+  pendingCounterConsent?: { requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwnerId: string; requesterId: string; requiredActorIds: readonly string[]; acceptedActorIds: readonly string[]; status: 'pending' };
   zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, EnemyTargetState>; cards: Record<string, CardInstance>; endState?: EndState;
 };
