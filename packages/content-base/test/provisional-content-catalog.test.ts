@@ -35,4 +35,14 @@ describe('base provisional content catalog', () => {
       expect(value(`base:adventurer/${id}`, 'effect')).toMatchObject({ status: 'provisional', confidence: 'medium' });
     }
   });
+
+  it('rejects non-finite, fractional, negative, and duplicate mechanics fields', () => {
+    const invalid = structuredClone(baseProvisionalContentCatalog);
+    const candidate = invalid.candidates[0]!; const copies = candidate.fields.find((field) => field.field === 'copies')!;
+    copies.candidateValue = Number.POSITIVE_INFINITY;
+    candidate.fields = [...candidate.fields, { ...copies }];
+    const errors = validateProvisionalBaseContentCatalog(invalid);
+    expect(errors.some((error) => error.includes('finite non-negative integer'))).toBe(true);
+    expect(errors.some((error) => error.includes('Duplicate field'))).toBe(true);
+  });
 });

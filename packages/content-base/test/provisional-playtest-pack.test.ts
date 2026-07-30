@@ -46,4 +46,13 @@ describe('provisional playtest Content Pack assembly', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.failures.some((failure) => failure.definitionId === 'base:starter/adventurer-01' && failure.field === 'copies')).toBe(true);
   });
+
+  it('never assembles a requested candidate with invalid numeric mechanics', () => {
+    const invalid = structuredClone(baseProvisionalContentCatalog);
+    const candidate = invalid.candidates.find((entry) => entry.definitionId === 'base:starter/adventurer-01')!;
+    candidate.fields.find((field) => field.field === 'copies')!.candidateValue = Number.POSITIVE_INFINITY;
+    const result = assembleProvisionalPlaytestPack(invalid, { definitionIds: starterIds });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((failure) => failure.definitionId === '<catalog>' && failure.reason.includes('finite non-negative integer'))).toBe(true);
+  });
 });

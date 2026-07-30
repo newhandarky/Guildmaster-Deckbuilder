@@ -34,4 +34,13 @@ describe('base Content Pack audit', () => {
     const ocr = { ...imageOnly, sourceCatalog: [{ ...imageOnly.sourceCatalog[0]!, sourceId: 'ocr-output', availability: 'ocr-derived' as const }], cards: [{ ...imageOnly.cards[0]!, sourceIds: ['ocr-output'], fieldAudits: [{ field: 'combat' as const, status: 'verified' as const, sourceIds: ['ocr-output'] }] }] };
     expect(validateContentAudit(ocr, [demoCards[0]!])).toContain(`Verified field combat on ${demoCards[0]!.id} cannot cite non-text-readable source ocr-output.`);
   });
+
+  it('rejects non-official sources, duplicate fields, and incomplete enabled audits', () => {
+    const definition = demoCards[0]!;
+    const invalid: ContentAuditCatalog = { packId: 'test', sourceCatalog: [{ sourceId: 'fake', kind: 'official-rulebook', title: 'Fake', url: 'https://example.com/rules', locator: 'x', accessedOn: '2026-07-29', availability: 'text-readable' }], cards: [{ definitionId: definition.id, status: 'verified', activation: 'enabled', sourceIds: ['fake'], fieldAudits: [{ field: 'combat', status: 'verified', sourceIds: ['fake'] }, { field: 'combat', status: 'verified', sourceIds: ['fake'] }] }] };
+    const errors = validateContentAudit(invalid, [definition]);
+    expect(errors.some((error) => error.includes('allowlisted official URL'))).toBe(true);
+    expect(errors).toContain(`Duplicate field audit combat on ${definition.id}.`);
+    expect(errors.some((error) => error.includes('missing audit coverage'))).toBe(true);
+  });
 });
