@@ -66,7 +66,8 @@
             "eventCount": 4,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:15e98035"
           },
           {
             "index": 1,
@@ -79,7 +80,8 @@
             "eventCount": 5,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:3420aa49"
           },
           {
             "index": 2,
@@ -92,20 +94,21 @@
             "eventCount": 7,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:82b8499f"
           }
         ],
         "orderedEvents": [
-          "transaction:dcc-start:1|EFFECT_STARTED|-|-|-",
-          "transaction:dcc-start:2|DIE_ROLLED|-|-|1",
-          "transaction:dcc-start:3|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:dcc-start:4|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
-          "transaction:dcc-start:5|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
-          "transaction:dcc-start:6|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
-          "transaction:dcc-start:7|EFFECT_SUSPENDED|-|-|-",
-          "transaction:dcc-start:8|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:dcc-start:9|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:dcc-start:10|EFFECT_COMPLETED|-|-|-",
+          "transaction:dcc-start:1|EFFECT_STARTED|dcc-start|-|-",
+          "transaction:dcc-start:2|DIE_ROLLED|dcc-start|-|1",
+          "transaction:dcc-start:3|EFFECT_VALUE_MODIFIED|dcc-start|-|-",
+          "transaction:dcc-start:4|COUNTER_CONSENT_REQUESTED|dcc-start|CONSENT_REQUESTED|-",
+          "transaction:dcc-start:5|COUNTER_CONSENT_ACCEPT_RECORDED|dcc-start|ACCEPT_RECORDED|-",
+          "transaction:dcc-start:6|COUNTER_CONSENT_ACCEPTED|dcc-start|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:dcc-start:7|EFFECT_SUSPENDED|dcc-start|-|-",
+          "transaction:dcc-start:8|EFFECT_VALUE_MODIFIED|dcc-start|-|-",
+          "transaction:dcc-start:9|EFFECT_VALUE_MODIFIED|dcc-start|-|-",
+          "transaction:dcc-start:10|EFFECT_COMPLETED|dcc-start|-|-",
           "transaction:dcc-start:11|PHASE_ENDED|dcc-start|-|-"
         ]
       }
@@ -175,7 +178,8 @@
             "eventCount": 2,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 47
+            "rngState": 47,
+            "snapshotFingerprint": "fnv1a32:b2d9d9cb"
           },
           {
             "index": 1,
@@ -188,7 +192,8 @@
             "eventCount": 6,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:c6e09d89"
           },
           {
             "index": 2,
@@ -201,21 +206,22 @@
             "eventCount": 7,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:b406851d"
           }
         ],
         "orderedEvents": [
-          "transaction:cdc-start:1|EFFECT_STARTED|-|-|-",
-          "transaction:cdc-start:2|EFFECT_SUSPENDED|-|-|-",
-          "transaction:cdc-start:3|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:cdc-start:4|DIE_ROLLED|-|-|1",
-          "transaction:cdc-start:5|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:cdc-start:6|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
-          "transaction:cdc-start:7|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
-          "transaction:cdc-start:8|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
-          "transaction:cdc-start:9|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:cdc-start:10|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:cdc-start:11|EFFECT_COMPLETED|-|-|-",
+          "transaction:cdc-start:1|EFFECT_STARTED|cdc-start|-|-",
+          "transaction:cdc-start:2|EFFECT_SUSPENDED|cdc-start|-|-",
+          "transaction:cdc-start:3|EFFECT_VALUE_MODIFIED|cdc-start|-|-",
+          "transaction:cdc-start:4|DIE_ROLLED|cdc-start|-|1",
+          "transaction:cdc-start:5|EFFECT_VALUE_MODIFIED|cdc-start|-|-",
+          "transaction:cdc-start:6|COUNTER_CONSENT_REQUESTED|cdc-start|CONSENT_REQUESTED|-",
+          "transaction:cdc-start:7|COUNTER_CONSENT_ACCEPT_RECORDED|cdc-start|ACCEPT_RECORDED|-",
+          "transaction:cdc-start:8|COUNTER_CONSENT_ACCEPTED|cdc-start|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:cdc-start:9|EFFECT_VALUE_MODIFIED|cdc-start|-|-",
+          "transaction:cdc-start:10|EFFECT_VALUE_MODIFIED|cdc-start|-|-",
+          "transaction:cdc-start:11|EFFECT_COMPLETED|cdc-start|-|-",
           "transaction:cdc-start:12|PHASE_ENDED|cdc-start|-|-"
         ]
       }
@@ -298,7 +304,8 @@
             "eventCount": 3,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 47
+            "rngState": 47,
+            "snapshotFingerprint": "fnv1a32:9e05c7c8"
           },
           {
             "index": 1,
@@ -311,7 +318,8 @@
             "eventCount": 9,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:cd6448a1"
           },
           {
             "index": 2,
@@ -324,7 +332,8 @@
             "eventCount": 10,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:80b1d3a8"
           },
           {
             "index": 3,
@@ -337,28 +346,29 @@
             "eventCount": 16,
             "revision": 0,
             "eventLogCursor": 0,
-            "rngState": 12182925
+            "rngState": 12182925,
+            "snapshotFingerprint": "fnv1a32:ed403f7f"
           }
         ],
         "orderedEvents": [
           "transaction:post-mixed-start:1|PHASE_ENDED|post-mixed-start|-|-",
-          "transaction:post-mixed-start:2|EFFECT_STARTED|-|-|-",
-          "transaction:post-mixed-start:3|EFFECT_SUSPENDED|-|-|-",
-          "transaction:post-mixed-start:4|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:post-mixed-start:5|EFFECT_COMPLETED|-|-|-",
-          "transaction:post-mixed-start:6|EFFECT_STARTED|-|-|-",
-          "transaction:post-mixed-start:7|DIE_ROLLED|-|-|1",
-          "transaction:post-mixed-start:8|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:post-mixed-start:9|COUNTER_CONSENT_REQUESTED|-|CONSENT_REQUESTED|-",
-          "transaction:post-mixed-start:10|COUNTER_CONSENT_ACCEPT_RECORDED|-|ACCEPT_RECORDED|-",
-          "transaction:post-mixed-start:11|COUNTER_CONSENT_ACCEPTED|-|ALL_REQUIRED_ACTORS_ACCEPTED|-",
-          "transaction:post-mixed-start:12|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:post-mixed-start:13|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:post-mixed-start:14|EFFECT_COMPLETED|-|-|-",
-          "transaction:post-mixed-start:15|EFFECT_STARTED|-|-|-",
-          "transaction:post-mixed-start:16|EFFECT_SUSPENDED|-|-|-",
-          "transaction:post-mixed-start:17|EFFECT_VALUE_MODIFIED|-|-|-",
-          "transaction:post-mixed-start:18|EFFECT_COMPLETED|-|-|-"
+          "transaction:post-mixed-start:2|EFFECT_STARTED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:3|EFFECT_SUSPENDED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:4|EFFECT_VALUE_MODIFIED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:5|EFFECT_COMPLETED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:6|EFFECT_STARTED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:7|DIE_ROLLED|post-mixed-start|-|1",
+          "transaction:post-mixed-start:8|EFFECT_VALUE_MODIFIED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:9|COUNTER_CONSENT_REQUESTED|post-mixed-start|CONSENT_REQUESTED|-",
+          "transaction:post-mixed-start:10|COUNTER_CONSENT_ACCEPT_RECORDED|post-mixed-start|ACCEPT_RECORDED|-",
+          "transaction:post-mixed-start:11|COUNTER_CONSENT_ACCEPTED|post-mixed-start|ALL_REQUIRED_ACTORS_ACCEPTED|-",
+          "transaction:post-mixed-start:12|EFFECT_VALUE_MODIFIED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:13|EFFECT_VALUE_MODIFIED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:14|EFFECT_COMPLETED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:15|EFFECT_STARTED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:16|EFFECT_SUSPENDED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:17|EFFECT_VALUE_MODIFIED|post-mixed-start|-|-",
+          "transaction:post-mixed-start:18|EFFECT_COMPLETED|post-mixed-start|-|-"
         ]
       }
     }

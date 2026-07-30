@@ -4,7 +4,7 @@
     { "id": "tampered-dice-face", "source": "dice-consent-choice", "checkpoint": 0, "mutation": "dice-face", "expectedMessage": "dice evaluation" },
     { "id": "tampered-dice-registry", "source": "dice-consent-choice", "checkpoint": 0, "mutation": "dice-registry", "expectedMessage": "dice evaluation registry" },
     { "id": "tampered-choice-id", "source": "dice-consent-choice", "checkpoint": 2, "mutation": "choice-id", "expectedMessage": "registered effect program" },
-    { "id": "tampered-choice-cursor", "source": "choice-dice-consent", "checkpoint": 0, "mutation": "choice-cursor", "expectedMessage": "registered effect program" },
+    { "id": "tampered-choice-cursor", "source": "choice-dice-consent", "checkpoint": 0, "mutation": "choice-cursor", "expectedMessage": "continuation cursor" },
     { "id": "tampered-consent-actors", "source": "choice-dice-consent", "checkpoint": 2, "mutation": "consent-actors", "expectedMessage": "counter consent" },
     { "id": "tampered-consent-request-id", "source": "choice-dice-consent", "checkpoint": 1, "mutation": "consent-request-id", "expectedMessage": "counter consent" },
     { "id": "duplicate-event-ids", "source": "post-command-mixed-continuation", "checkpoint": 1, "mutation": "duplicate-event-id", "expectedMessage": "event IDs must be unique" },

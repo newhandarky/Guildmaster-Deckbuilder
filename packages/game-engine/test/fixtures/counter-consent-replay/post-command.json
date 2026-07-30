@@ -38,14 +38,14 @@
         "stateFingerprint": "fnv1a32:635e972e",
         "orderedEvents": [
           { "eventId": "transaction:post-start:1", "type": "PHASE_ENDED", "causedByCommandId": "post-start", "reasonCode": null },
-          { "eventId": "transaction:post-start:2", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:post-start:3", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:post-start:4", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:post-start:5", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
-          { "eventId": "transaction:post-start:6", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": null, "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
-          { "eventId": "transaction:post-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:post-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:post-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null }
+          { "eventId": "transaction:post-start:2", "type": "EFFECT_STARTED", "causedByCommandId": "post-start", "reasonCode": null },
+          { "eventId": "transaction:post-start:3", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": "post-start", "reasonCode": null },
+          { "eventId": "transaction:post-start:4", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "post-start", "reasonCode": null },
+          { "eventId": "transaction:post-start:5", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": "post-start", "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:post-start:6", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": "post-start", "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
+          { "eventId": "transaction:post-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "post-start", "reasonCode": null },
+          { "eventId": "transaction:post-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "post-start", "reasonCode": null },
+          { "eventId": "transaction:post-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": "post-start", "reasonCode": null }
         ]
       }
     }

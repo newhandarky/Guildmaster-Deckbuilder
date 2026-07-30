@@ -36,6 +36,7 @@ type ContinuationGolden = {
   revision: number;
   eventLogCursor: number;
   rngState: number;
+  snapshotFingerprint: string;
 };
 type ExpectedState = {
   phase: GameState['phase'];
@@ -273,7 +274,8 @@ function continuationProjection(state: GameState, index: number): ContinuationGo
     eventCount: pendingPost?.events.length ?? pendingCommand?.events.length ?? 0,
     revision: state.revision,
     eventLogCursor: state.eventLogCursor,
-    rngState: state.rngState
+    rngState: state.rngState,
+    snapshotFingerprint: stateFingerprint(state)
   };
 }
 
@@ -375,7 +377,9 @@ function mutateSnapshot(snapshot: MutableSnapshot, mutation: NegativeCase['mutat
   } else if (mutation === 'choice-id') {
     pendingChoice().choiceId = 'tampered-choice';
   } else if (mutation === 'choice-cursor') {
-    pendingChoice().remaining = [modify(999)];
+    // This node exists in the registered option program but is not the
+    // continuation that follows the pending choice.
+    pendingChoice().remaining = [modify(5)];
   } else if (mutation === 'consent-actors') {
     const event = [...transactionEvents].reverse().find(({ payload }) => payload?.kind === 'counter-consent');
     if (!event || event.payload?.kind !== 'counter-consent') throw new Error('Negative fixture has no counter consent event.');

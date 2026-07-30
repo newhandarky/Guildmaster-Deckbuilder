@@ -6,6 +6,7 @@ import { assertGameStateInvariants } from './state-invariants.js';
 import { validateEncounterStateAgainstRuleset } from '../rules/encounter-resolution-evaluator.js';
 import { validatePendingCounterConsentState } from '../rules/counter-consent-evaluator.js';
 import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect } from '../effects/executor.js';
+import { dispatch } from './dispatch.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -80,6 +81,11 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     outer.rollbackState = structuredClone(GameStateSchema.parse(outer.rollbackState) as GameState); assertGameStateInvariants(outer.rollbackState);
     const error = validatePostCommandContinuationState(state, ruleset);
     if (error) throw new Error(error);
+    if (ruleset) {
+      const replayed = dispatch(structuredClone(outer.rollbackState), ruleset, structuredClone(outer.envelope));
+      const canonicalFacts = replayed.state.effectState.pendingPostCommand?.facts;
+      if (replayed.error || !canonicalFacts || JSON.stringify(canonicalFacts) !== JSON.stringify(outer.facts)) throw new Error('Post-command facts must equal the complete ordered reducer fact segment.');
+    }
   }
   if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');
   if (!pending && (command || outer)) throw new Error('Outer continuation has no matching lifecycle dispatch.');

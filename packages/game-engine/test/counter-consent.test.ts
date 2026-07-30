@@ -50,6 +50,9 @@ describe('generic counter consent lifecycle', () => {
     expect(suspended.error).toBeUndefined(); expect(suspended.state.revision).toBe(0); expect(suspended.state.eventLogCursor).toBe(0); expect(suspended.state.rngState).not.toBe(initialRng);
     const rng = suspended.state.rngState;
     const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
+    const wrongCursor = JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)));
+    wrongCursor.state.effectState.pendingCounterConsent.remaining = [modify(1)];
+    expect(() => restoreSnapshot(wrongCursor, ruleset)).toThrow(/continuation cursor/i);
     const partial = dispatch(restored, ruleset, consentCommand(restored, 'p2', { type: 'RESPOND_COUNTER_CONSENT', requestId: 'share-request', response: 'accept' }, 'accept-p2'));
     expect(partial.error).toBeUndefined(); expect(partial.state.revision).toBe(0); expect(partial.state.eventLogCursor).toBe(0); expect(partial.state.rngState).toBe(rng); expect(partial.state.effectState.pendingCounterConsent?.acceptedActorIds).toEqual(['p2']);
     const completed = dispatch(partial.state, ruleset, consentCommand(partial.state, 'p3', { type: 'RESPOND_COUNTER_CONSENT', requestId: 'share-request', response: 'accept' }, 'accept-p3'));
@@ -113,6 +116,23 @@ describe('generic counter consent lifecycle', () => {
     expect(suspended.phase).toBe('combat'); expect(suspended.revision).toBe(0); expect(suspended.effectState.pendingPostCommand).toBeDefined();
     const failed = dispatch(suspended, ruleset, consentCommand(suspended, 'p2', { type: 'RESPOND_COUNTER_CONSENT', requestId: 'share-request', response: 'accept' }, 'accept'));
     expect(failed.error?.code).toBe('INVALID_COMMAND'); expect(failed.state).toEqual(before); expect(state).toEqual(before);
+  });
+
+  it('rejects a completed expiration audit whose actor violates the registered policy', () => {
+    const expiredChoice: EffectDefinition['body'] = { kind: 'choice', choiceId: 'expired-choice', actor: { kind: 'controller' }, options: [{ id: 'ok', effect: modify(1) }] };
+    const requesterOnly = policy({ expiration: { kind: 'explicit-command', actor: 'requester' } });
+    const expirationRequest = request();
+    if (expirationRequest.kind !== 'request-counter-consent') throw new Error('Expected a counter consent request.');
+    expirationRequest.outcomes.expired = expiredChoice;
+    const ruleset = rules([hook('command-before', expirationRequest)], [requesterOnly]);
+    const state = game(ruleset, 2);
+    const suspended = dispatch(state, ruleset, end(state, 'p1', 'expiration-audit')).state;
+    const expired = dispatch(suspended, ruleset, consentCommand(suspended, 'p1', { type: 'EXPIRE_COUNTER_CONSENT', requestId: 'share-request' }, 'expire')).state;
+    const snapshot = structuredClone(serializeSnapshot(expired));
+    const event = snapshot.state.effectState.pendingCommand?.events.find(({ type }) => type === 'COUNTER_CONSENT_EXPIRED');
+    if (!event || event.payload?.kind !== 'counter-consent') throw new Error('Expected a completed expiration audit event.');
+    event.payload.evaluation.input.actorId = 'p2';
+    expect(() => restoreSnapshot(snapshot, ruleset)).toThrow(/terminal evaluation/i);
   });
 
   it('rejects malformed Snapshot, unknown policy, and registry/version mismatch explicitly', () => {

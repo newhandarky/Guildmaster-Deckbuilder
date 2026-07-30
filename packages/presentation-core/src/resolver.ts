@@ -1,6 +1,11 @@
 import { validatePresentationPack, type PresentationPack, type PresentationPreferences, type PresentationViewModel } from './schema.js';
 
-export type PresentationResolverOptions = { contentHash?: string };
+export type PresentationAssetSource = { src: string; width?: number; height?: number };
+export type PresentationResolverOptions = {
+  contentHash?: string;
+  /** Client-only mapping from a stable pack asset key to a deployable asset. */
+  resolveAsset?: (assetKey: string) => PresentationAssetSource | undefined;
+};
 
 export type PresentationResolver = {
   resolve(definitionId: string, preferences?: PresentationPreferences): PresentationViewModel;
@@ -12,7 +17,9 @@ function fallback(definitionId: string): PresentationViewModel {
     definitionId,
     displayName: `中性卡牌 ${definitionId.split('/').at(-1) ?? definitionId}`,
     portraitAssetKey: 'placeholder:neutral-card',
+    portraitAsset: { key: 'placeholder:neutral-card', altText: '中性卡牌圖像 placeholder' },
     shortDisplayText: '原創文字 placeholder；不影響遊戲規則。',
+    detailDisplayText: '尚未提供此卡牌的詳細視覺說明。',
     source: 'fallback',
   };
 }
@@ -55,7 +62,18 @@ export function createPresentationResolver(packs: readonly PresentationPack[], o
       const chosen = matches[0];
       if (!chosen) return fallback(definitionId);
       const { pack, entry } = chosen;
-      return { definitionId, displayName: entry.displayName, portraitAssetKey: entry.portraitAssetKey, shortDisplayText: entry.shortDisplayText, source: 'pack', presentationPackId: pack.manifest.id, presentationVersion: pack.manifest.version };
+      const asset = options.resolveAsset?.(entry.portraitAssetKey);
+      return {
+        definitionId,
+        displayName: entry.displayName,
+        portraitAssetKey: entry.portraitAssetKey,
+        portraitAsset: { key: entry.portraitAssetKey, altText: entry.portraitAltText, ...(asset ?? {}) },
+        shortDisplayText: entry.shortDisplayText,
+        detailDisplayText: entry.detailDisplayText,
+        source: 'pack',
+        presentationPackId: pack.manifest.id,
+        presentationVersion: pack.manifest.version
+      };
     },
   };
 }

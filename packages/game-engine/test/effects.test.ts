@@ -18,6 +18,37 @@ describe('serializable effect primitives', () => {
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.discardPile).toContain(cardId); expect(result.state.effectState.pendingChoice).toBeUndefined();
   });
 
+  it('preserves the exact outer execution tail when a nested sequence suspends', () => {
+    const state = makeGame();
+    const effect: EffectDefinition = {
+      schemaVersion: 1,
+      effectId: 'test:effect/nested-suspension',
+      body: {
+        kind: 'sequence',
+        effects: [
+          {
+            kind: 'sequence',
+            effects: [{
+              kind: 'choice',
+              choiceId: 'nested-choice',
+              actor: { kind: 'controller' },
+              options: [{ id: 'continue', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 1 } }]
+            }]
+          },
+          { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 7 }
+        ]
+      }
+    };
+    expect(executeEffect(state, testRuleset, effect, { controllerId: 'p1' }, 'nested-execution')).toMatchObject({ status: 'suspended' });
+    expect(state.effectState.pendingChoice?.remaining).toEqual([
+      { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 7 }
+    ]);
+    const command = getLegalCommands(state, testRuleset, 'p1')[0]!;
+    const result = dispatch(state, testRuleset, envelope(state, 'p1', command));
+    expect(result.error).toBeUndefined();
+    expect(result.state.players[0]!.turnPurchaseBonus).toBe(8);
+  });
+
   it('is deterministic for random outcomes and records no hidden UI state', () => {
     const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/random', body: { kind: 'random', randomId: 'coin', outcomes: [{ id: 'purchase', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 2 } }, { id: 'combat', effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 2 } }] } };
     const left = makeGame(); const right = makeGame();

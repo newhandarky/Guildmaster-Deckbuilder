@@ -16,7 +16,9 @@ export type PresentationEntry = {
   definitionId: string;
   displayName: string;
   portraitAssetKey: string;
+  portraitAltText: string;
   shortDisplayText: string;
+  detailDisplayText: string;
   variant?: string;
   theme?: string;
   locale?: string;
@@ -38,7 +40,15 @@ export type PresentationViewModel = {
   definitionId: string;
   displayName: string;
   portraitAssetKey: string;
+  portraitAsset: {
+    key: string;
+    altText: string;
+    src?: string;
+    width?: number;
+    height?: number;
+  };
   shortDisplayText: string;
+  detailDisplayText: string;
   source: 'pack' | 'fallback';
   presentationPackId?: string;
   presentationVersion?: string;
@@ -47,7 +57,7 @@ export type PresentationViewModel = {
 export type PresentationValidationResult = { valid: boolean; errors: readonly string[] };
 
 const manifestKeys = new Set(['id', 'version', 'theme', 'locale', 'compatibleContentHashes']);
-const entryKeys = new Set(['definitionId', 'displayName', 'portraitAssetKey', 'shortDisplayText', 'variant', 'theme', 'locale']);
+const entryKeys = new Set(['definitionId', 'displayName', 'portraitAssetKey', 'portraitAltText', 'shortDisplayText', 'detailDisplayText', 'variant', 'theme', 'locale']);
 
 function unknownKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): string[] {
   return Object.keys(value).filter((key) => !allowed.has(key));
@@ -71,7 +81,7 @@ export function validatePresentationPack(pack: PresentationPack): PresentationVa
       if (!isPlainObject(entry)) { errors.push(`entries[${index}] must be a plain object.`); continue; }
       const candidate = entry as unknown as Record<string, unknown>;
       for (const key of unknownKeys(candidate, entryKeys)) errors.push(`entries[${index}].${key} is not allowed.`);
-      for (const key of ['definitionId', 'displayName', 'portraitAssetKey', 'shortDisplayText'] as const) if (typeof candidate[key] !== 'string' || candidate[key].trim() === '') errors.push(`entries[${index}].${key} must be a non-empty string.`);
+      for (const key of ['definitionId', 'displayName', 'portraitAssetKey', 'portraitAltText', 'shortDisplayText', 'detailDisplayText'] as const) if (typeof candidate[key] !== 'string' || candidate[key].trim() === '') errors.push(`entries[${index}].${key} must be a non-empty string.`);
       if (typeof candidate.definitionId === 'string') {
         if (definitionIds.has(candidate.definitionId)) errors.push(`entries[${index}].definitionId duplicates ${candidate.definitionId}.`);
         definitionIds.add(candidate.definitionId);

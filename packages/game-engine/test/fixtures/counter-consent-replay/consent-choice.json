@@ -50,15 +50,15 @@
         "rngState": 12182925,
         "stateFingerprint": "fnv1a32:3648b507",
         "orderedEvents": [
-          { "eventId": "transaction:choice-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
-          { "eventId": "transaction:choice-start:5", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": null, "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
-          { "eventId": "transaction:choice-start:6", "type": "EFFECT_SUSPENDED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
-          { "eventId": "transaction:choice-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:1", "type": "EFFECT_STARTED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": "choice-start", "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:choice-start:5", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": "choice-start", "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
+          { "eventId": "transaction:choice-start:6", "type": "EFFECT_SUSPENDED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": "choice-start", "reasonCode": null },
+          { "eventId": "transaction:choice-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": "choice-start", "reasonCode": null },
           { "eventId": "transaction:choice-start:10", "type": "PHASE_ENDED", "causedByCommandId": "choice-start", "reasonCode": null }
         ]
       }

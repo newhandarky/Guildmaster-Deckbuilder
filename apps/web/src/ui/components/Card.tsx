@@ -7,6 +7,7 @@ type Props = { instance?: CardInstance | undefined; definition?: CardDefinition 
 export function Card({ instance, definition, presentation, onClick, selected = false, label, testId }: Props) {
   const disabled = !onClick;
   return <button type="button" data-testid={testId} className={`card ${definition?.type ?? 'unknown'} ${selected ? 'selected' : ''}`} disabled={disabled} onClick={onClick}>
+    {presentation?.portraitAsset.src ? <img className="card-portrait" src={presentation.portraitAsset.src} alt={presentation.portraitAsset.altText} width={presentation.portraitAsset.width} height={presentation.portraitAsset.height} /> : null}
     <span className="card-type">{label ?? definition?.type ?? '未知'}</span>
     <strong>{presentation?.displayName ?? instance?.definitionId ?? '隱藏卡'}</strong>
     <small>{presentation?.shortDisplayText}</small>

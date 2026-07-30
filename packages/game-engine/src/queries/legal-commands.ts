@@ -24,6 +24,10 @@ function expandAttackChoicePreviews(state: GameState, ruleset: Ruleset, actorId:
     const result = resumeLifecycleChoice(branch, ruleset, actorId, choice.executionId, choice.choiceId, option.id);
     if (result.status === 'completed') completed.push(branch);
     else if (result.status === 'suspended') {
+      if (branch.effectState.pendingCounterConsent) {
+        indeterminate = true;
+        continue;
+      }
       const nested = expandAttackChoicePreviews(branch, ruleset, actorId, depth + 1, budget);
       completed.push(...nested.states); indeterminate ||= nested.indeterminate;
     }
@@ -37,6 +41,7 @@ function resumeAttackChoicePreview(state: GameState, ruleset: Ruleset, actorId: 
   const branch = structuredClone(state);
   const result = resumeLifecycleChoice(branch, ruleset, actorId, choice.executionId, choice.choiceId, optionId);
   if (result.status === 'completed') return { states: [branch], indeterminate: false };
+  if (result.status === 'suspended' && branch.effectState.pendingCounterConsent) return { states: [], indeterminate: true };
   return result.status === 'suspended' ? expandAttackChoicePreviews(branch, ruleset, actorId, 1, { remaining: maxAttackPreviewBranches }) : { states: [], indeterminate: false };
 }
 
@@ -44,6 +49,7 @@ function previewAttackCommandBefore(state: GameState, ruleset: Ruleset, actorId:
   const preview = structuredClone(state);
   const result = dispatchLifecycle(preview, ruleset, { schemaVersion: 1, point: 'command-before', actorId, commandType: 'ATTACK_TARGET', phase: preview.phase, metadata: { commandId: `legal-preview-${state.revision + 1}` } }, { controllerId: actorId });
   if (result.status === 'completed') return { states: [preview], indeterminate: false };
+  if (result.status === 'suspended' && preview.effectState.pendingCounterConsent) return { states: [], indeterminate: true };
   return result.status === 'suspended' ? expandAttackChoicePreviews(preview, ruleset, actorId, 0, { remaining: maxAttackPreviewBranches }) : { states: [], indeterminate: false };
 }
 

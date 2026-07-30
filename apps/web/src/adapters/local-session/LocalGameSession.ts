@@ -74,36 +74,79 @@ export class LocalGameSession {
   private submitEnvelope(envelope: CommandEnvelope): SessionUpdate {
     const duplicate = this.processed.get(envelope.commandId);
     if (duplicate) return duplicate;
+    const priorCursor = this.state.eventLogCursor;
+    const pendingRootCommandId = this.pendingRootCommandId(this.state);
     const result = dispatch(this.state, this.ruleset, envelope);
-    if (result.error) return this.makeUpdate([], result.error);
     this.state = result.state;
-    this.events.push(...result.events);
-    this.recordAccepted(envelope, result.events);
-    this.runAi();
-    const update = this.persistAndReturn(result.events);
+    if (result.error) {
+      this.rollbackCommandHistoryIfNeeded(pendingRootCommandId);
+      return this.persistAndReturn([], result.error);
+    }
+    const committedEvents = this.committedEvents(priorCursor, result.events);
+    this.events.push(...committedEvents);
+    this.recordAccepted(envelope, committedEvents);
+    const aiError = this.runAi();
+    const update = this.persistAndReturn(committedEvents, aiError);
     this.processed.set(envelope.commandId, update);
     return update;
   }
 
-  private runAi(): void {
+  private runAi(): EngineError | undefined {
     for (let turns = 0; turns < 80 && this.state.status !== 'finished' && this.state.status !== 'pendingOfficialRuling'; turns += 1) {
-      const active = this.state.players.find((player) => player.id === this.state.activePlayerId);
-      if (!active || active.kind !== 'ai') return;
-      const view = projectPlayerView(this.state, this.ruleset, active.id);
-      const command = simpleAiStrategy.chooseCommand(view, getLegalCommands(this.state, this.ruleset, active.id));
-      if (!command) return;
-      const envelope = asEnvelope(view, active.id, command, this.nextCommandId(active.id));
+      const actor = this.nextAiActor();
+      if (!actor) return undefined;
+      const view = projectPlayerView(this.state, this.ruleset, actor.id);
+      const command = simpleAiStrategy.chooseCommand(view, getLegalCommands(this.state, this.ruleset, actor.id));
+      if (!command) return undefined;
+      const envelope = asEnvelope(view, actor.id, command, this.nextCommandId(actor.id));
+      const priorCursor = this.state.eventLogCursor;
+      const pendingRootCommandId = this.pendingRootCommandId(this.state);
       const result = dispatch(this.state, this.ruleset, envelope);
-      if (result.error) return;
       this.state = result.state;
-      this.events.push(...result.events);
-      this.recordAccepted(envelope, result.events);
+      if (result.error) {
+        this.rollbackCommandHistoryIfNeeded(pendingRootCommandId);
+        return result.error;
+      }
+      const committedEvents = this.committedEvents(priorCursor, result.events);
+      this.events.push(...committedEvents);
+      this.recordAccepted(envelope, committedEvents);
     }
+    return undefined;
   }
 
-  private persistAndReturn(newEvents: DomainEvent[]): SessionUpdate {
-    try { saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined); return this.makeUpdate(newEvents); }
-    catch { return this.makeUpdate(newEvents, { code: 'INVALID_COMMAND', message: '本機儲存不可用；目前進度只保留在記憶體中。' }); }
+  private nextAiActor(): GameState['players'][number] | undefined {
+    const consent = this.state.effectState.pendingCounterConsent;
+    if (consent) {
+      return this.state.players.find((player) =>
+        player.kind === 'ai'
+        && consent.requiredActorIds.includes(player.id)
+        && !consent.acceptedActorIds.includes(player.id)
+      );
+    }
+    const choiceActorId = this.state.effectState.pendingChoice?.actorId;
+    if (choiceActorId) return this.state.players.find((player) => player.id === choiceActorId && player.kind === 'ai');
+    return this.state.players.find((player) => player.id === this.state.activePlayerId && player.kind === 'ai');
+  }
+
+  private committedEvents(priorCursor: number, transactionEvents: readonly DomainEvent[]): DomainEvent[] {
+    const committedCount = this.state.eventLogCursor - priorCursor;
+    return committedCount > 0 ? structuredClone(transactionEvents.slice(-committedCount)) : [];
+  }
+
+  private pendingRootCommandId(state: GameState): string | undefined {
+    return state.effectState.pendingPostCommand?.envelope.commandId
+      ?? state.effectState.pendingCommand?.envelope.commandId;
+  }
+
+  private rollbackCommandHistoryIfNeeded(pendingRootCommandId: string | undefined): void {
+    if (!pendingRootCommandId || this.pendingRootCommandId(this.state)) return;
+    const checkpoint = this.commands.findIndex(({ commandId }) => commandId === pendingRootCommandId);
+    if (checkpoint >= 0) this.commands.splice(checkpoint);
+  }
+
+  private persistAndReturn(newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
+    try { saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined); return this.makeUpdate(newEvents, error); }
+    catch { return this.makeUpdate(newEvents, error ?? { code: 'INVALID_COMMAND', message: '本機儲存不可用；目前進度只保留在記憶體中。' }); }
   }
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
@@ -123,6 +166,7 @@ export class LocalGameSession {
 
   exportReplayDiagnostic(): ReplayDiagnosticExport {
     if (!this.replayHistoryComplete) return { error: '此舊存檔只保存 Snapshot，沒有完整 Command Replay history。' };
+    if (this.state.status !== 'finished') return { error: '為保護未公開牌序、手牌與隨機種子，完整 Replay 只能在對局結束後匯出。' };
     try { return { json: JSON.stringify(this.replayBundle(), null, 2) }; }
     catch { return { error: 'Replay diagnostic 匯出失敗；目前對局與本機存檔未受影響。' }; }
   }
