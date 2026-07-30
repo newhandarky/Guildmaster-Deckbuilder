@@ -22,4 +22,5 @@ export * from './rules/supply-row-evaluator.js';
 export * from './rules/supply-row-refresh-evaluator.js';
 export * from './rules/continuous-evaluator.js';
 export * from './rules/bond-condition-evaluator.js';
+export * from './rules/dice-evaluator.js';
 export * from './rules/ruleset.js';

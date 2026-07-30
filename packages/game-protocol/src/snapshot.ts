@@ -4,6 +4,7 @@ import { CombatEvaluationSchema } from './combat.js';
 import { CommandEnvelopeSchema } from './commands.js';
 import { EffectNodeSchema } from './effects.js';
 import { EncounterEventPayloadSchema } from './encounter.js';
+import { DiceRollEventPayloadSchema } from './dice.js';
 const jsonValue: z.ZodType<unknown> = z.lazy(() => z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(jsonValue), z.record(jsonValue)]));
 const manifest = z.object({ id: z.string(), version: z.string(), hash: z.string() });
 const pendingChoice = z.object({ schemaVersion: z.literal(1), executionId: z.string(), choiceId: z.string(), actorId: z.string(), options: z.array(z.object({ id: z.string(), effect: EffectNodeSchema })), remaining: z.array(EffectNodeSchema), context: z.object({ controllerId: z.string(), cardRefs: z.record(z.string()).optional(), playerRefs: z.record(z.string()).optional() }) });
@@ -13,12 +14,14 @@ const pendingLifecycle = z.object({ schemaVersion: z.literal(1), dispatchId: z.s
 const combatEventPayload = z.object({ schemaVersion: z.literal(1), kind: z.literal('combat-evaluation'), evaluation: CombatEvaluationSchema }).strict();
 const combatRewardEventPayload = z.object({ schemaVersion: z.literal(1), kind: z.literal('combat-reward-evaluation'), evaluation: jsonValue, executedPolicy: z.object({ moduleId: z.string().min(1), rewardPolicyId: z.string().min(1) }).strict() }).strict();
 const overflowEventPayload = z.object({ schemaVersion: z.literal(1), kind: z.literal('team-overflow'), policy: z.object({ moduleId: z.string(), policyId: z.string() }).optional(), candidateIds: z.array(z.string()).min(1) }).strict();
-export const DomainEventSchema = z.object({ eventId: z.string(), revision: z.number().finite().int().nonnegative(), type: z.string(), message: z.string(), causedByCommandId: z.string().optional(), moduleId: z.string().optional(), payload: z.union([combatEventPayload, combatRewardEventPayload, overflowEventPayload, EncounterEventPayloadSchema]).optional() }).strict().superRefine((value, context) => {
+export const DomainEventSchema = z.object({ eventId: z.string(), revision: z.number().finite().int().nonnegative(), type: z.string(), message: z.string(), causedByCommandId: z.string().optional(), moduleId: z.string().optional(), payload: z.union([combatEventPayload, combatRewardEventPayload, overflowEventPayload, EncounterEventPayloadSchema, DiceRollEventPayloadSchema]).optional() }).strict().superRefine((value, context) => {
   if (value.type === 'COMBAT_EVALUATED' && value.payload?.kind !== 'combat-evaluation') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'COMBAT_EVALUATED requires a combat-evaluation payload.' });
   if (value.type !== 'COMBAT_EVALUATED' && value.payload?.kind === 'combat-evaluation') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'combat-evaluation payload requires COMBAT_EVALUATED event type.' });
   const encounterTypes = new Set(['ENCOUNTER_CREATED', 'ENEMY_TARGET_CREATED', 'ENEMY_ATTACHMENT_ADDED', 'ENEMY_TARGET_DAMAGED', 'ENEMY_TARGET_DEFEATED', 'ENEMY_TARGET_REMOVED', 'ENCOUNTER_COMPLETED']);
   if (encounterTypes.has(value.type) && value.payload?.kind !== 'encounter-resolution') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'Encounter event requires an encounter-resolution payload.' });
   if (!encounterTypes.has(value.type) && value.payload?.kind === 'encounter-resolution') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'encounter-resolution payload requires an encounter event type.' });
+  if (value.type === 'DIE_ROLLED' && value.payload?.kind !== 'dice-roll') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'DIE_ROLLED requires a dice-roll payload.' });
+  if (value.type !== 'DIE_ROLLED' && value.payload?.kind === 'dice-roll') context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: 'dice-roll payload requires DIE_ROLLED.' });
 });
 const pendingCommand = z.union([
   z.object({ schemaVersion: z.literal(1), kind: z.literal('command-before-lifecycle').optional(), envelope: CommandEnvelopeSchema, events: z.array(DomainEventSchema).default([]) }),
