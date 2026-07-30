@@ -45,3 +45,30 @@ test('legacy local save restores the persisted phase', async ({ page }) => {
   await page.reload();
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
 });
+
+test('replay runner reports malformed JSON without changing the live game', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Replay JSON').fill('{not-json');
+  await page.getByTestId('run-replay').click();
+  await expect(page.getByTestId('replay-report')).toContainText('Replay JSON 無法解析');
+  await expect(page.getByTestId('end-phase')).toBeEnabled();
+});
+
+test('replay runner completes the current exported audit without changing the live game', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '載入目前 Replay' }).click();
+  await page.getByTestId('run-replay').click();
+  await expect(page.getByTestId('replay-report')).toContainText('Replay 完成');
+  await expect(page.getByTestId('end-phase')).toBeEnabled();
+});
+
+test('replay runner reports the first assertion divergence without changing the live game', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '載入目前 Replay' }).click();
+  const bundle = JSON.parse(await page.getByLabel('Replay JSON').inputValue());
+  bundle.expectedFinalSnapshot.state.rngState += 1;
+  await page.getByLabel('Replay JSON').fill(JSON.stringify(bundle));
+  await page.getByTestId('run-replay').click();
+  await expect(page.getByTestId('replay-report')).toContainText('first divergence $.expectedFinalSnapshot.state.rngState');
+  await expect(page.getByTestId('end-phase')).toBeEnabled();
+});

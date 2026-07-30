@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, dispatch, replayGame, replayRegistryFingerprint, serializeSnapshot, validateReplayBundleAgainstRuleset } from '../src/index.js';
+import { createGame, dispatch, firstReplayDivergence, replayGame, replayRegistryFingerprint, serializeSnapshot, validateReplayBundleAgainstRuleset } from '../src/index.js';
 import { testRuleset } from './fixtures.js';
 import type { CommandEnvelope, ReplayBundle } from '@guildmaster/game-protocol';
 
@@ -37,5 +37,11 @@ describe('versioned command replay', () => {
     expect(replayGame({ ...bundle([{ protocolVersion: 1, gameId: initialConfig.gameId, commandId: 'event', actorId: 'p1', expectedRevision: 0, command: { type: 'END_PHASE', phase: 'action1' } }]), expectedEvents: [{ eventId: 'wrong', revision: 0, type: 'WRONG', message: 'wrong' }] }, testRuleset)).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'EXPECTED_EVENTS_MISMATCH' } });
     const cyclic: Record<string, unknown> = bundle(); cyclic.self = cyclic;
     expect(replayGame(cyclic, testRuleset)).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'MALFORMED_BUNDLE' } });
+  });
+
+  it('reports the first stable leaf for event and final-snapshot divergence', () => {
+    expect(firstReplayDivergence({ b: 2, a: [1, 3] }, { a: [1, 4], b: 2 })).toEqual({ path: '$.a[1]', expected: 3, actual: 4 });
+    const result = replayGame({ ...bundle(), expectedFinalSnapshot: { ...serializeSnapshot(createGame(initialConfig, testRuleset)), engineVersion: 'wrong' } }, testRuleset);
+    expect(result).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'EXPECTED_FINAL_SNAPSHOT_MISMATCH', divergence: { path: '$.expectedFinalSnapshot.engineVersion', expected: 'wrong', actual: '0.2.0' } } });
   });
 });
