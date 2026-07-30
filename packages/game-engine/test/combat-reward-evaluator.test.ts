@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RulesModule } from '../src/rules/ruleset.js';
-import type { CombatRewardPolicy, EffectDefinition } from '@guildmaster/game-protocol';
+import type { CombatRewardPolicy, EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { createGame, createRuleset, dispatch, envelope, evaluateCombatRewards, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import { testPack } from './fixtures.js';
@@ -45,5 +45,30 @@ describe('generic combat reward policy evaluation', () => {
     const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })); expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingCommand?.kind).toBe('combat-reward');
     const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', command));
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(4); expect(completed.state.players[0]!.turnCombatBonus).toBe(1); expect(completed.events.filter((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(2); expect(completed.events.filter((event) => event.type === 'ENEMY_DEFEATED')).toHaveLength(1);
+  });
+
+  it('preserves the original command transaction when command-before and combat reward both suspend', () => {
+    const beforeChoice: LifecycleHook = { schemaVersion: 1, moduleId: 'test:combined', hookId: 'before-choice', point: 'command-before', kind: 'trigger', priority: 1, effect: { schemaVersion: 1, effectId: 'effect:before-choice', body: { kind: 'choice', choiceId: 'before-choice', actor: { kind: 'controller' }, options: [{ id: 'continue', effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } }] } } };
+    const rewardChoice = reward('reward-choice', { kind: 'always', value: true }, 1, { kind: 'choice', choiceId: 'reward-choice', actor: { kind: 'controller' }, options: [{ id: 'accept', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 } }] });
+    const combined: RulesModule = { id: 'test:combined', version: '1', getPartyLimit: (_s, _p, limit) => limit, onSupplyDepleted: () => 'handled', lifecycleHooks: [beforeChoice], combatRewardPolicies: [{ ...rewardChoice, moduleId: 'test:combined' }] };
+    const ruleset = createRuleset([testPack], [baseRulesModule, combined]); const state = game(ruleset); const targetId = monster(state); const original = structuredClone(state);
+    const beforeSuspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
+    const beforeCommand = getLegalCommands(beforeSuspended.state, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE' && candidate.choiceId === 'before-choice')!;
+    const rewardSuspended = dispatch(beforeSuspended.state, ruleset, envelope(beforeSuspended.state, 'p1', beforeCommand));
+    expect(rewardSuspended.error).toBeUndefined(); expect(rewardSuspended.state.effectState.pendingCommand?.kind).toBe('combat-reward'); expect(rewardSuspended.state.revision).toBe(0);
+    const rewardCommand = getLegalCommands(rewardSuspended.state, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE' && candidate.choiceId === 'reward-choice')!;
+    const completed = dispatch(rewardSuspended.state, ruleset, envelope(rewardSuspended.state, 'p1', rewardCommand));
+    expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(5); expect(completed.events.filter((event) => event.type === 'ENEMY_DEFEATED')).toHaveLength(1);
+    expect(original.revision).toBe(0);
+  });
+
+  it('resumes an encounter node inside a CombatRewardPolicy effect without executing it twice', () => {
+    const encounterPolicy = { schemaVersion: 1 as const, policyId: 'reward-encounter', moduleId: 'test:rewards', priority: 1, ordering: 'explicit-priority' as const, completionCondition: { kind: 'explicit-only' as const }, defeatedTargetDisposition: { kind: 'removed' as const }, removedTargetDisposition: { kind: 'removed' as const }, attachmentDisposition: { kind: 'removed' as const }, reasonCode: { namespace: 'test:rewards', code: 'encounter' } };
+    const body: EffectDefinition['body'] = { kind: 'sequence', effects: [{ kind: 'create-enemy-encounter', encounterId: 'test:reward-encounter', encounterKind: 'test', rulesModuleId: 'test:rewards', policy: { moduleId: 'test:rewards', policyId: 'reward-encounter' } }, { kind: 'choice', choiceId: 'encounter-reward-choice', actor: { kind: 'controller' }, options: [{ id: 'continue', effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 1 } }] }] };
+    const combined: RulesModule = { ...module([reward('encounter', { kind: 'always', value: true }, 1, body)]), encounterResolutionPolicies: [encounterPolicy] };
+    const ruleset = createRuleset([testPack], [baseRulesModule, combined]); const state = game(ruleset); const targetId = monster(state);
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })); expect(suspended.state.effectState.pendingCommand?.kind).toBe('combat-reward'); expect(suspended.state.enemyEncounters.filter(({ encounterId }) => encounterId === 'test:reward-encounter')).toHaveLength(1);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset); const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE')!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', choice));
+    expect(completed.error).toBeUndefined(); expect(completed.state.enemyEncounters.filter(({ encounterId }) => encounterId === 'test:reward-encounter')).toHaveLength(1); expect(completed.events.filter(({ type }) => type === 'ENCOUNTER_CREATED')).toHaveLength(1);
   });
 });

@@ -8,8 +8,8 @@ import type {
   LifecycleRegistrySnapshot,
   PendingLifecycleDispatch
 } from '@guildmaster/game-protocol';
-import type { Ruleset } from '../rules/ruleset.js';
-import { executeEffect, resolveEffectOrder, resumeEffectChoice, type EffectExecutionResult } from './executor.js';
+import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
+import { executeEffect, resolveEffectOrder, resumeEffectChoice, validatePendingChoiceAgainstEffect, type EffectExecutionResult } from './executor.js';
 
 export type LifecycleFailureReason = 'ORDER_POLICY_REQUIRED' | 'UNKNOWN_HOOK' | 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH';
 export type LifecycleDispatchResult = {
@@ -31,8 +31,10 @@ const registrySnapshot = (state: GameState, ruleset: Ruleset): LifecycleRegistry
 const active = (hook: LifecycleHook, state: GameState): boolean => !hook.activation || hook.activation.kind === 'always' || (state.moduleState[hook.moduleId] as Record<string, unknown> | undefined)?.[hook.activation.key] === hook.activation.value;
 const findHook = (ruleset: Ruleset, ref: LifecycleHookRef): LifecycleHook | undefined => ruleset.modules.find((module) => module.id === ref.moduleId)?.lifecycleHooks?.find((hook) => hook.hookId === ref.hookId);
 const fail = (reason: LifecycleFailureReason, hookIds: readonly string[], evaluatedContinuousHookIds: readonly string[], error: string): LifecycleDispatchResult => ({ status: reason === 'ORDER_POLICY_REQUIRED' ? 'unsupported' : 'failed', hookIds, evaluatedContinuousHookIds, events: [], reason, error });
+const normalizedEffectEvents = (pending: PendingLifecycleDispatch, ref: LifecycleHookRef, events: readonly DomainEvent[], offset: number): DomainEvent[] => events.map((event, index) => ({ ...event, eventId: `${pending.dispatchId}:${ref.moduleId}:${ref.hookId}:${offset + index + 1}` }));
 
 function validateRegistry(registry: LifecycleRegistrySnapshot, state: GameState, ruleset: Ruleset): { reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH'; error: string } | undefined {
+  const compatibilityError = validateRulesetStateCompatibility(state, ruleset); if (compatibilityError) return { reason: 'REGISTRY_VERSION_MISMATCH', error: compatibilityError };
   if (state.rulesetVersion !== registry.rulesetVersion) return { reason: 'REGISTRY_VERSION_MISMATCH', error: `Lifecycle ruleset version mismatch: expected ${registry.rulesetVersion}, received ${state.rulesetVersion}.` };
   for (const expected of registry.modules) {
     const stateModule = state.rulesModules.find((module) => module.id === expected.id);
@@ -55,6 +57,7 @@ function validateHookRefs(ruleset: Ruleset, refs: readonly LifecycleHookRef[]): 
   }
   return undefined;
 }
+function canonicalRefs(state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHookRef[] | undefined { const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.kind !== 'continuous' && hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType) && active(hook, state)); const order = resolveEffectOrder(hooks.map((hook) => ({ id: refKey(hookRef(hook)), ...(hook.priority === undefined ? {} : { priority: hook.priority }) })), 'explicit-priority'); if (order.status !== 'ready') return undefined; return order.orderedIds.map((key) => hookRef(hooks.find((hook) => refKey(hookRef(hook)) === key)!)); }
 
 function continueHooks(state: GameState, ruleset: Ruleset, pending: PendingLifecycleDispatch, refs: readonly LifecycleHookRef[], priorEvents: DomainEvent[]): LifecycleDispatchResult {
   const next = structuredClone(state); const events = [...priorEvents];
@@ -63,7 +66,7 @@ function continueHooks(state: GameState, ruleset: Ruleset, pending: PendingLifec
     const ref = refs[index]!; const hook = findHook(ruleset, ref);
     if (!hook) { Object.assign(state, structuredClone(pending.rollbackState)); return fail('UNKNOWN_HOOK', refs.map(({ hookId }) => hookId), [], `Unknown lifecycle hook: ${ref.moduleId}/${ref.hookId}.`); }
     const effect = executeEffect(next, ruleset, hook.effect, pending.context, `${pending.dispatchId}:${ref.moduleId}:${ref.hookId}`);
-    events.push(...effect.events);
+    events.push(...normalizedEffectEvents(pending, ref, effect.events, events.length));
     if (effect.status === 'suspended') {
       next.effectState.pendingLifecycle = { ...pending, currentHook: ref, remainingHooks: refs.slice(index + 1) };
       Object.assign(state, next);
@@ -96,7 +99,7 @@ export function dispatchLifecycle(state: GameState, ruleset: Ruleset, payload: L
   if (!refs.length) return { status: 'completed', hookIds: [], evaluatedContinuousHookIds: continuousIds, events: [] };
   const pending: PendingLifecycleDispatch = {
     schemaVersion: 1,
-    dispatchId: `lifecycle:${payload.point}:${state.revision}`,
+    dispatchId: `lifecycle:${payload.point}:${state.revision}:${payload.metadata?.eventId ?? payload.metadata?.commandId ?? 'boundary'}`,
     payload: structuredClone(payload),
     context: structuredClone(context),
     currentHook: refs[0]!,
@@ -113,12 +116,15 @@ export function resumeLifecycleChoice(state: GameState, ruleset: Ruleset, actorI
   const pending = state.effectState.pendingLifecycle;
   if (!pending) return { status: 'failed', hookIds: [], evaluatedContinuousHookIds: [], events: [], error: 'No pending lifecycle dispatch.' };
   const hookIds = [pending.currentHook, ...pending.remainingHooks].map(({ hookId }) => hookId);
+  if (pending.rollbackState.gameId !== state.gameId || JSON.stringify(pending.rollbackState.contentPacks) !== JSON.stringify(state.contentPacks) || JSON.stringify(pending.rollbackState.rulesModules) !== JSON.stringify(state.rulesModules)) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: 'Lifecycle rollback checkpoint registry does not match current state.' };
   const registryError = validateRegistry(pending.registry, state, ruleset);
   if (registryError) return fail(registryError.reason, hookIds, [], registryError.error);
   const refError = validateHookRefs(ruleset, [pending.currentHook, ...pending.remainingHooks]);
   if (refError) return fail(refError.reason, hookIds, [], refError.error);
+  const canonical = canonicalRefs(pending.rollbackState, ruleset, pending.payload); const currentIndex = canonical?.findIndex((ref) => refKey(ref) === refKey(pending.currentHook)) ?? -1; if (!canonical || currentIndex < 0 || JSON.stringify(canonical.slice(currentIndex + 1)) !== JSON.stringify(pending.remainingHooks)) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: 'Pending lifecycle hook queue is not a canonical suffix for its payload.' };
+  const pendingChoice = state.effectState.pendingChoice; const currentHook = findHook(ruleset, pending.currentHook); const programError = pendingChoice && currentHook ? validatePendingChoiceAgainstEffect(pendingChoice, currentHook.effect) : 'Pending lifecycle choice or hook is missing.'; if (programError) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: programError };
   const next = structuredClone(state);
-  const effect = resumeEffectChoice(next, ruleset, actorId, executionId, choiceId, optionId);
+  const effect = resumeEffectChoice(next, ruleset, actorId, executionId, choiceId, optionId); effect.events = normalizedEffectEvents(pending, pending.currentHook, effect.events, 0);
   if (effect.status === 'failed' || effect.status === 'unsupported') return { status: effect.status, hookIds, evaluatedContinuousHookIds: [], events: [], effect, ...(effect.error ? { error: effect.error } : {}) };
   if (effect.status === 'suspended') { Object.assign(state, next); return { status: 'suspended', hookIds, evaluatedContinuousHookIds: [], events: effect.events, effect }; }
   delete next.effectState.pendingLifecycle;

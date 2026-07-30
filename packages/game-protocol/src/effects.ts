@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { isFiniteJsonValue } from './encounter.js';
+
 /** Versioned, JSON-only effect language. It carries no card presentation data. */
 export type EffectPlayerRef = { kind: 'controller' } | { kind: 'context-player'; key: string } | { kind: 'player-id'; playerId: string };
 export type EffectCardRef = { kind: 'context-card'; key: string } | { kind: 'card-instance'; cardInstanceId: string };
@@ -17,7 +20,14 @@ export type EffectNode =
   | { kind: 'remove-from-game'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
   | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] }
-  | { kind: 'refresh-supply-row'; refreshPolicyId: string };
+  | { kind: 'refresh-supply-row'; refreshPolicyId: string }
+  | { kind: 'create-enemy-encounter'; encounterId: string; encounterKind: string; rulesModuleId: string; policy: { moduleId: string; policyId: string }; moduleState?: Record<string, unknown> }
+  | { kind: 'create-enemy-target'; targetId: string; encounterId: string; card: EffectCardRef; from: EffectCardLocation; targetKind: string; partKey?: string; health?: { current: number; max: number }; moduleState?: Record<string, unknown> }
+  | { kind: 'attach-card-to-enemy-target'; targetId: string; card: EffectCardRef; from: EffectCardLocation; position?: 'top' | 'bottom' }
+  | { kind: 'damage-enemy-target'; targetId: string; amount: number; policy: { moduleId: string; policyId: string } }
+  | { kind: 'defeat-enemy-target'; targetId: string; policy: { moduleId: string; policyId: string } }
+  | { kind: 'remove-enemy-target'; targetId: string; policy: { moduleId: string; policyId: string } }
+  | { kind: 'finish-enemy-encounter'; encounterId: string; policy: { moduleId: string; policyId: string } };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
 export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };
@@ -64,18 +74,65 @@ export type ContinuousEffect = { schemaVersion: 1; continuousId: string; source:
 export type ReplacementEffect = { schemaVersion: 1; replacementId: string; eventType: string; effect: EffectDefinition; priority?: number };
 export type EffectRegistry = { triggers: readonly EffectTrigger[]; continuous: readonly ContinuousEffect[]; replacements: readonly ReplacementEffect[]; orderingPolicy?: 'explicit-priority' };
 
+const nonEmpty = z.string().trim().min(1);
+const playerRefSchema: z.ZodType<EffectPlayerRef> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('controller') }).strict(),
+  z.object({ kind: z.literal('context-player'), key: nonEmpty }).strict(),
+  z.object({ kind: z.literal('player-id'), playerId: nonEmpty }).strict()
+]);
+const cardRefSchema: z.ZodType<EffectCardRef> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('context-card'), key: nonEmpty }).strict(),
+  z.object({ kind: z.literal('card-instance'), cardInstanceId: nonEmpty }).strict()
+]);
+const locationSchema: z.ZodType<EffectCardLocation> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('player-zone'), player: playerRefSchema, zone: z.enum(['drawPile', 'hand', 'discardPile', 'playArea']) }).strict(),
+  z.object({ kind: z.literal('party'), player: playerRefSchema, position: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('equipment'), player: playerRefSchema, partyPosition: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('shared-zone'), zoneId: nonEmpty }).strict(),
+  z.object({ kind: z.literal('removed') }).strict()
+]);
+const conditionSchema: z.ZodType<EffectCondition> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
+  z.object({ kind: z.literal('has-card-at'), card: cardRefSchema, location: locationSchema }).strict()
+]);
+const valueTargetSchema: z.ZodType<EffectValueTarget> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('turn-purchase-bonus'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('turn-combat-bonus'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('player-counter'), player: playerRefSchema, resourceId: nonEmpty }).strict()
+]);
+const rewardSchema: z.ZodType<CombatReward> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('draw'), count: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('purchase-bonus'), amount: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('combat-bonus'), amount: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('counter'), resourceId: nonEmpty, amount: z.number().finite() }).strict()
+]);
+const policyRefSchema = z.object({ moduleId: nonEmpty, policyId: nonEmpty }).strict();
+const uniqueOptions = <T extends { id: string }>(values: readonly T[]): boolean => new Set(values.map(({ id }) => id)).size === values.length;
+
+export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
+  z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
+  z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
+  z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
+  z.object({ kind: z.literal('move-card'), card: cardRefSchema, from: locationSchema, to: locationSchema, position: z.union([z.enum(['top', 'bottom']), z.number().finite().int().nonnegative()]).optional(), permission: z.enum(['controller-only', 'system']).optional(), transferOwnership: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('draw'), player: playerRefSchema, count: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('discard-card'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),
+  z.object({ kind: z.literal('remove-from-game'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),
+  z.object({ kind: z.literal('modify-value'), target: valueTargetSchema, amount: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('grant-combat-reward'), recipient: playerRefSchema, rewards: z.array(rewardSchema).min(1) }).strict(),
+  z.object({ kind: z.literal('refresh-supply-row'), refreshPolicyId: nonEmpty }).strict(),
+  z.object({ kind: z.literal('create-enemy-encounter'), encounterId: nonEmpty, encounterKind: nonEmpty, rulesModuleId: nonEmpty, policy: policyRefSchema, moduleState: z.record(z.unknown()).optional() }).strict(),
+  z.object({ kind: z.literal('create-enemy-target'), targetId: nonEmpty, encounterId: nonEmpty, card: cardRefSchema, from: locationSchema, targetKind: nonEmpty, partKey: nonEmpty.optional(), health: z.object({ current: z.number().finite().int().nonnegative(), max: z.number().finite().int().nonnegative() }).refine(({ current, max }) => current <= max).optional(), moduleState: z.record(z.unknown()).optional() }).strict(),
+  z.object({ kind: z.literal('attach-card-to-enemy-target'), targetId: nonEmpty, card: cardRefSchema, from: locationSchema, position: z.enum(['top', 'bottom']).optional() }).strict(),
+  z.object({ kind: z.literal('damage-enemy-target'), targetId: nonEmpty, amount: z.number().finite().int().nonnegative(), policy: policyRefSchema }).strict(),
+  z.object({ kind: z.literal('defeat-enemy-target'), targetId: nonEmpty, policy: policyRefSchema }).strict(),
+  z.object({ kind: z.literal('remove-enemy-target'), targetId: nonEmpty, policy: policyRefSchema }).strict(),
+  z.object({ kind: z.literal('finish-enemy-encounter'), encounterId: nonEmpty, policy: policyRefSchema }).strict()
+] as const)) as unknown as z.ZodType<EffectNode>;
+export const EffectDefinitionSchema: z.ZodType<EffectDefinition> = z.object({ schemaVersion: z.literal(1), effectId: nonEmpty, body: EffectNodeSchema }).strict();
+
 export function validateEffectDefinition(effect: EffectDefinition): string[] {
-  const errors: string[] = []; const seen = new Set<EffectNode>();
-  const location = (value: EffectCardLocation, path: string) => { if ((value.kind === 'party' && value.position < 0) || (value.kind === 'equipment' && value.partyPosition < 0)) errors.push(`${path} has a negative party position.`); if (value.kind === 'shared-zone' && !value.zoneId.trim()) errors.push(`${path} requires a zone ID.`); };
-  const walk = (node: EffectNode, path: string): void => {
-    if (seen.has(node)) { errors.push(`${path} must not contain cyclic effect objects.`); return; } seen.add(node);
-    if (node.kind === 'sequence') { if (!node.effects.length) errors.push(`${path} sequence requires effects.`); node.effects.forEach((child, index) => walk(child, `${path}.effects[${index}]`)); }
-    if (node.kind === 'conditional') { walk(node.whenTrue, `${path}.whenTrue`); if (node.whenFalse) walk(node.whenFalse, `${path}.whenFalse`); }
-    if (node.kind === 'choice' || node.kind === 'random') { const options = node.kind === 'choice' ? node.options : node.outcomes; if (!options.length) errors.push(`${path} requires outcomes/options.`); const ids = new Set<string>(); options.forEach((option, index) => { if (!option.id.trim() || ids.has(option.id)) errors.push(`${path} has duplicate or empty option IDs.`); ids.add(option.id); walk(option.effect, `${path}.options[${index}]`); }); }
-    if (node.kind === 'move-card') { location(node.from, `${path}.from`); location(node.to, `${path}.to`); }
-    if (node.kind === 'discard-card' || node.kind === 'remove-from-game') location(node.from, `${path}.from`);
-    if (node.kind === 'draw' && (!Number.isInteger(node.count) || node.count < 0)) errors.push(`${path} draw count must be a non-negative integer.`); seen.delete(node);
-    if (node.kind === 'grant-combat-reward') { if (!node.rewards.length) errors.push(`${path} requires rewards.`); node.rewards.forEach((reward, index) => { if ((reward.kind === 'draw' && (!Number.isInteger(reward.count) || reward.count < 0)) || ((reward.kind === 'purchase-bonus' || reward.kind === 'combat-bonus' || reward.kind === 'counter') && !Number.isFinite(reward.amount)) || (reward.kind === 'counter' && !reward.resourceId.trim())) errors.push(`${path}.rewards[${index}] is invalid.`); }); }
-  };
-  if (effect.schemaVersion !== 1 || !effect.effectId.trim()) errors.push('Effect definition requires schema version 1 and an effect ID.'); walk(effect.body, 'body'); return errors;
+  if (!isFiniteJsonValue(effect)) return ['Effect definition must contain finite, acyclic, plain JSON data only.'];
+  const parsed = EffectDefinitionSchema.safeParse(effect);
+  return parsed.success ? [] : parsed.error.issues.map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`);
 }

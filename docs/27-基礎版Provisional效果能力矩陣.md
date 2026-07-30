@@ -19,7 +19,7 @@
 | --- | ---: | ---: | ---: | ---: |
 | 卡片／遊戲區移動 | 3 | 0 | 0 | 0 |
 | 供應 | 2 | 0 | 2 | 0 |
-| 討伐 | 3 | 1 | 0 | 0 |
+| 討伐 | 4 | 0 | 0 | 0 |
 | 隊伍、裝備與道具 | 4 | 0 | 0 | 0 |
 | 隨機與資訊 | 2 | 1 | 0 | 1 |
 | 時序與效果 | 3 | 1 | 0 | 0 |
@@ -38,6 +38,7 @@
 - generic CombatRewardPolicy runtime 與 choice continuation 已實作；preview 與 authoritative defeat 共用 evaluation，reward transaction 可跨 Snapshot 從 policy cursor 恢復，且不重複 reducer、events 或 RNG。未載入任何正式或 provisional 獎勵 policy。
 - 基礎討伐 target、前綴隊伍戰力、道具使用區／休息清理、單裝備欄位。
 - JSON-only combat conditions、戰力 modifier、target restriction 與 defeat/remove-target replacement 已由 query／dispatch 共用的確定性 evaluator 支援；尚未載入卡牌 policy。
+- generic multi-target encounter resolution 已 supported：JSON-only policy 可宣告 completion、target／attachment disposition 與 explicit registry ref；Effect AST、Snapshot、choice/lifecycle continuation 與 transaction rollback 均可重播。未載入正式或 provisional 多部位魔王內容，也不推導官方討伐獎勵、終局、下一階段或供應耗盡裁定。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
 - reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。

@@ -49,6 +49,9 @@ function previewAttackCommandBefore(state: GameState, ruleset: Ruleset, actorId:
 function attackIsLegalInAnyPreview(preview: AttackPreviewResult, ruleset: Ruleset, actorId: string, targetId: string): boolean {
   if (preview.indeterminate) return true;
   return preview.states.some((state) => {
+    const target = state.enemyTargets[targetId];
+    const encounter = target?.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
+    if (!target || target.status !== 'available' || encounter?.status === 'finished' || target.health) return false;
     const result = evaluateCombat(state, ruleset, actorId, targetId);
     return result.status === 'ready' && result.evaluation.eligible && getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
   });
@@ -63,6 +66,7 @@ export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: s
 export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number): { slotCount: number; power: number } | undefined {
   const player = getPlayer(state, playerId);
   let power = player.turnCombatBonus;
+  if (power >= required) return { slotCount: 0, power };
   for (let index = 0; index < player.party.length; index += 1) {
     const slot = player.party[index]!;
     power += getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0;
