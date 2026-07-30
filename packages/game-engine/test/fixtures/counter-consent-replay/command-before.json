@@ -1,0 +1,285 @@
+{
+  "fixtureVersion": 1,
+  "scenarios": [
+    {
+      "id": "request",
+      "gameId": "counter-replay-request",
+      "mode": "command-before",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-request",
+          "commandId": "request-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        }
+      ],
+      "expected": {
+        "phase": "action1",
+        "purchaseBonus": 1,
+        "counterVisibility": "allPlayersByConsent",
+        "pendingConsent": true,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 0,
+        "eventLogCursor": 0,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:e4d1afaf",
+        "orderedEvents": [
+          { "eventId": "transaction:request-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:request-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:request-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:request-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" }
+        ]
+      }
+    },
+    {
+      "id": "partial-accept",
+      "gameId": "counter-replay-partial",
+      "mode": "command-before",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0, 1],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-partial",
+          "commandId": "partial-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-partial",
+          "commandId": "partial-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "fixture-consent", "response": "accept" }
+        }
+      ],
+      "expected": {
+        "phase": "action1",
+        "purchaseBonus": 1,
+        "counterVisibility": "allPlayersByConsent",
+        "pendingConsent": true,
+        "acceptedActorIds": ["p2"],
+        "pendingChoice": false,
+        "revision": 0,
+        "eventLogCursor": 0,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:b7ced957",
+        "orderedEvents": [
+          { "eventId": "transaction:partial-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:partial-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:partial-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:partial-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:partial-start:5", "type": "COUNTER_CONSENT_ACCEPT_RECORDED", "causedByCommandId": null, "reasonCode": "ACCEPT_RECORDED" }
+        ]
+      }
+    },
+    {
+      "id": "unanimous-accept",
+      "gameId": "counter-replay-accept",
+      "mode": "command-before",
+      "players": ["p1", "p2", "p3"],
+      "snapshotAfterCommandIndexes": [0, 1],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-accept",
+          "commandId": "accept-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-accept",
+          "commandId": "accept-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "fixture-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-accept",
+          "commandId": "accept-p3",
+          "actorId": "p3",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "fixture-consent", "response": "accept" }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 14,
+        "counterVisibility": "public",
+        "pendingConsent": false,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 1,
+        "eventLogCursor": 10,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:f0d0255f",
+        "orderedEvents": [
+          { "eventId": "transaction:accept-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:accept-start:5", "type": "COUNTER_CONSENT_ACCEPT_RECORDED", "causedByCommandId": null, "reasonCode": "ACCEPT_RECORDED" },
+          { "eventId": "transaction:accept-start:6", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": null, "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
+          { "eventId": "transaction:accept-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:accept-start:10", "type": "PHASE_ENDED", "causedByCommandId": "accept-start", "reasonCode": null }
+        ]
+      }
+    },
+    {
+      "id": "decline",
+      "gameId": "counter-replay-decline",
+      "mode": "command-before",
+      "players": ["p1", "p2"],
+      "snapshotAfterCommandIndexes": [0],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-decline",
+          "commandId": "decline-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-decline",
+          "commandId": "decline-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "fixture-consent", "response": "decline" }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 24,
+        "counterVisibility": "allPlayersByConsent",
+        "pendingConsent": false,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 1,
+        "eventLogCursor": 9,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:4742c3a1",
+        "orderedEvents": [
+          { "eventId": "transaction:decline-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:decline-start:5", "type": "COUNTER_CONSENT_DECLINED", "causedByCommandId": null, "reasonCode": "REQUIRED_ACTOR_DECLINED" },
+          { "eventId": "transaction:decline-start:6", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:8", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:decline-start:9", "type": "PHASE_ENDED", "causedByCommandId": "decline-start", "reasonCode": null }
+        ]
+      }
+    },
+    {
+      "id": "cancel",
+      "gameId": "counter-replay-cancel",
+      "mode": "command-before",
+      "players": ["p1", "p2"],
+      "snapshotAfterCommandIndexes": [0],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-cancel",
+          "commandId": "cancel-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-cancel",
+          "commandId": "cancel-p1",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "CANCEL_COUNTER_CONSENT", "requestId": "fixture-consent" }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 34,
+        "counterVisibility": "allPlayersByConsent",
+        "pendingConsent": false,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 1,
+        "eventLogCursor": 9,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:08ec7394",
+        "orderedEvents": [
+          { "eventId": "transaction:cancel-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:cancel-start:5", "type": "COUNTER_CONSENT_CANCELLED", "causedByCommandId": null, "reasonCode": "REQUESTER_CANCELLED" },
+          { "eventId": "transaction:cancel-start:6", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:8", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:cancel-start:9", "type": "PHASE_ENDED", "causedByCommandId": "cancel-start", "reasonCode": null }
+        ]
+      }
+    },
+    {
+      "id": "explicit-expiration",
+      "gameId": "counter-replay-expire",
+      "mode": "command-before",
+      "players": ["p1", "p2"],
+      "snapshotAfterCommandIndexes": [0],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-expire",
+          "commandId": "expire-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-expire",
+          "commandId": "expire-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "EXPIRE_COUNTER_CONSENT", "requestId": "fixture-consent" }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 44,
+        "counterVisibility": "allPlayersByConsent",
+        "pendingConsent": false,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 1,
+        "eventLogCursor": 9,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:a70d4324",
+        "orderedEvents": [
+          { "eventId": "transaction:expire-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:expire-start:5", "type": "COUNTER_CONSENT_EXPIRED", "causedByCommandId": null, "reasonCode": "REQUEST_EXPIRED" },
+          { "eventId": "transaction:expire-start:6", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:8", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:expire-start:9", "type": "PHASE_ENDED", "causedByCommandId": "expire-start", "reasonCode": null }
+        ]
+      }
+    }
+  ]
+}

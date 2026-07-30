@@ -1,0 +1,67 @@
+{
+  "fixtureVersion": 1,
+  "scenarios": [
+    {
+      "id": "consent-to-choice",
+      "gameId": "counter-replay-choice",
+      "mode": "consent-choice",
+      "players": ["p1", "p2"],
+      "snapshotAfterCommandIndexes": [0, 1],
+      "commands": [
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-choice",
+          "commandId": "choice-start",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": { "type": "END_PHASE", "phase": "action1" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-choice",
+          "commandId": "choice-p2",
+          "actorId": "p2",
+          "expectedRevision": 0,
+          "command": { "type": "RESPOND_COUNTER_CONSENT", "requestId": "fixture-consent", "response": "accept" }
+        },
+        {
+          "protocolVersion": 1,
+          "gameId": "counter-replay-choice",
+          "commandId": "choice-p1",
+          "actorId": "p1",
+          "expectedRevision": 0,
+          "command": {
+            "type": "RESOLVE_EFFECT_CHOICE",
+            "executionId": "lifecycle:command-before:0:choice-start:test:counter-replay:counter-replay-command-before",
+            "choiceId": "fixture-choice",
+            "optionId": "confirm"
+          }
+        }
+      ],
+      "expected": {
+        "phase": "combat",
+        "purchaseBonus": 9,
+        "counterVisibility": "public",
+        "pendingConsent": false,
+        "acceptedActorIds": [],
+        "pendingChoice": false,
+        "revision": 1,
+        "eventLogCursor": 10,
+        "rngState": 12182925,
+        "stateFingerprint": "fnv1a32:3648b507",
+        "orderedEvents": [
+          { "eventId": "transaction:choice-start:1", "type": "EFFECT_STARTED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:3", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:4", "type": "COUNTER_CONSENT_REQUESTED", "causedByCommandId": null, "reasonCode": "CONSENT_REQUESTED" },
+          { "eventId": "transaction:choice-start:5", "type": "COUNTER_CONSENT_ACCEPTED", "causedByCommandId": null, "reasonCode": "ALL_REQUIRED_ACTORS_ACCEPTED" },
+          { "eventId": "transaction:choice-start:6", "type": "EFFECT_SUSPENDED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:7", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:8", "type": "EFFECT_VALUE_MODIFIED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:9", "type": "EFFECT_COMPLETED", "causedByCommandId": null, "reasonCode": null },
+          { "eventId": "transaction:choice-start:10", "type": "PHASE_ENDED", "causedByCommandId": "choice-start", "reasonCode": null }
+        ]
+      }
+    }
+  ]
+}
