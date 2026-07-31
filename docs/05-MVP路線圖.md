@@ -93,12 +93,12 @@
 
 ### M3 — 完整基礎內容
 
-- 逐張建立結構化基礎卡牌定義與份數
+- 逐張建立結構化基礎卡牌定義與數位 Content Pack 組成
 - 內容 schema validation
 - 個別例外 handler 與測試
 - 核對官方說明書、卡表、勘誤與 FAQ
 
-驗收：張數符合官方說明書；所有基礎 effect 類型有測試；未實作效果數為零；engine 不含基礎卡 ID。
+驗收：Content Pack 組成通過一致性驗證；未知的官方逐種類張數不標示為官方配比，也不阻擋數位 playtest；所有基礎 effect 類型有測試；未實作效果數為零；engine 不含基礎卡 ID。
 
 ### M4 — 可玩的單機人機 UI
 
@@ -118,7 +118,7 @@
 - 保存 engine/ruleset/protocol、content manifests/hash、module versions、revision 與 RNG state
 - Versioned deterministic Command Replay、錯誤 diagnostic 與 LocalGameSession JSON export 已完成；這是 runtime 能力，並不代表正式或 provisional 卡牌內容已載入。
 
-M3 完整基礎內容仍被可稽核官方資料阻擋；物資／魔物逐種份數與基礎供應耗盡 official ruling 保持 `blocked-by-rule-exception`。通用 dice primitive 只在有已驗證卡牌需求時才加入。
+物資／魔物逐種份數已降為非阻擋的來源 metadata 缺口；基礎供應耗盡已採用 2026-07-31 核准的專案 policy，不再是 `blocked-by-rule-exception`。M3 是否載入正式內容仍取決於各卡名稱、數值、效果與時序的內容稽核，不能把 provisional catalog 直接標為 production verified。
 
 驗收：所有起始座位終局邊界有測試；重新整理可繼續；相同 registry/seed/Commands 重播結果一致；不相容內容明確拒絕。
 
