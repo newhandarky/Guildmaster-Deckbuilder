@@ -129,6 +129,7 @@
 - 已建立 deterministic Playwright full-game journey：真人合法討伐、招募、休息、AI 回合、v3 local save reload 與恢復後繼續合法操作；它只覆蓋原創示範內容與既有 runtime contracts。
 - 已建立 e2e-mode 的 typed、validated 原創示範 scenario registry；它透過一般 `LocalGameSession`、合法 Commands 與 Rules Module 觸發「全魔王擊敗」及「全羈絆完成」兩種已註冊終局，覆蓋 final round、單次結算、scoreboard 與重新開局的空白 replay history。這是 runtime／測試能力，不表示正式基礎卡表或其全部終局觸發資料已完成。
 - 無障礙鍵盤操作、色彩與文字替代
+- WCAG A／AA automated gate、skip link、44px 觸控目標、320px reflow／200% 文字放大、reduced motion、forced colors 與破壞性重新開局確認
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單
 - Presentation asset manifest、尺寸／hash／權利檢查，以及逐批小型素材 PR

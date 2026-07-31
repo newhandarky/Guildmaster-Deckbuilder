@@ -56,7 +56,7 @@
 2. **已完成 P1：lifecycle interaction dock。** pending choice／counter consent 共用非 modal dock；stale／矛盾資料不猜測指令，explicit expiration 不使用 wall-clock timer。
 3. **已完成 P2：responsive game table shell。** 固定單頁 DOM／鍵盤順序、interaction rail、收合式 Replay 診斷與五種 viewport regression；規則仍由 session authority 提供。
 4. **已完成 P3a：incremental presentation asset pipeline。** Demo 顯示資料已與 core contract 分離；完整 pack 可搭配部分素材覆蓋，approved responsive WebP、焦點、權利與 hash 由獨立 manifest 驗證，缺圖維持 CSS placeholder。
-5. **下一步 P3b：原創 demo assets／可用性驗證。** 素材依 starter＋冒險者、道具＋裝備、魔物、魔王分批核准；若美術決策尚未完成，先做 accessibility／可用性 audit，不載入官方圖像。
+5. **進行中 P3b：原創 demo assets／可用性驗證。** Accessibility／usability baseline 已完成 WCAG A／AA gate、鍵盤焦點、44px target、reflow、reduced-motion 與 forced-colors regression；素材依 starter＋冒險者、道具＋裝備、魔物、魔王分批核准，不載入官方圖像。
 6. **P4：內容接線與 Vol.1。** 只有在個別卡牌資料與時序確認後才載入既有 runtime；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目

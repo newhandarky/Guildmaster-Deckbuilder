@@ -47,6 +47,7 @@ export function CardStateRing({ card }: { card: CardVisualViewModel }) {
 /** Inspectable presentation surface. Authoritative commands are executed only from CardDetailsPanel. */
 export function Card({ card, onInspect, testId }: Props) {
   const inspect = (event: MouseEvent<HTMLButtonElement>) => onInspect(card, event.currentTarget);
+  const metricSummary = card.metrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
   return <button
     type="button"
     data-testid={testId}
@@ -57,7 +58,7 @@ export function Card({ card, onInspect, testId }: Props) {
     data-legal-action={card.action ? 'true' : 'false'}
     className={`card card-${card.template} card-state-${card.interactionState}`}
     aria-haspopup="dialog"
-    aria-label={`${card.displayName}，${card.cardTypeLabel}，${card.stateDescription}，開啟卡牌詳情`}
+    aria-label={`${card.displayName}，${card.cardTypeLabel}${metricSummary ? `，${metricSummary}` : ''}，${card.stateDescription}，開啟卡牌詳情`}
     onClick={inspect}
   >
     <CardArt card={card} />

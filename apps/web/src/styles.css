@@ -16,6 +16,23 @@
 html { scroll-padding-bottom: 12rem; }
 body { margin: 0; min-width: 320px; overflow-x: clip; background: radial-gradient(circle at top, #23344f, #101827 56%); }
 button { font: inherit; }
+button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
+:where(a[href], button, summary, textarea):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  inset: .5rem auto auto .5rem;
+  padding: .7rem 1rem;
+  color: #18120d;
+  background: var(--focus);
+  border-radius: .65rem;
+  font-weight: 800;
+  transform: translateY(calc(-100% - 1rem));
+}
+.skip-link:focus { transform: translateY(0); }
 .app-shell { width: min(1440px, calc(100% - (2 * var(--shell-gutter)))); min-width: 0; margin: 0 auto; padding: 2rem 0 4rem; }
 .hero { display: flex; justify-content: space-between; gap: 1rem; align-items: end; padding: 1.5rem; border: 1px solid #5b7095; border-radius: 1.25rem; background: var(--surface); }
 .hero, .player-summary { margin-bottom: 1.25rem; }
@@ -70,7 +87,6 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 }
 
 .card:hover { border-color: #9cb9de; transform: translateY(-2px); }
-.card:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .card-state-legal { border-color: #69d5a0; box-shadow: 0 0 0 1px rgb(105 213 160 / .35), 0 .45rem 1.15rem rgb(0 0 0 / .24); }
 .card-state-selected { border-color: #ffd27d; box-shadow: 0 0 0 3px rgb(255 210 125 / .26); }
 .card-state-target { border-color: #8fddff; box-shadow: 0 0 0 3px rgb(143 221 255 / .3); }
@@ -140,12 +156,13 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .turn-control-copy h2 { margin-bottom: .3rem; }
 .turn-control-copy p { margin: 0; color: #d7e3f3; }
 .controls { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0; }
-.controls [role="status"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .controls button, .primary, .card-details footer button { border: 0; border-radius: .65rem; padding: .7rem 1rem; background: #405878; color: white; cursor: pointer; }
 .primary, .card-details footer .primary { background: #e5a45f; color: #18120d; font-weight: 800; }
+.danger { color: #fff; background: #8d394a; }
 .controls button:disabled { opacity: .45; cursor: not-allowed; }
-.log p { padding: .5rem 0; margin: 0; border-bottom: 1px solid #304664; }
-.log p:last-child { border: 0; }
+.log p, .event-list li { padding: .5rem 0; margin: 0; border-bottom: 1px solid #304664; }
+.log p:last-child, .event-list li:last-child { border: 0; }
+.event-list { margin: 0; padding: 0; list-style: none; }
 .warning, .error { padding: .9rem 1rem; border-radius: .65rem; margin-bottom: 1rem; }
 .warning { background: #71451e; }
 .error { background: #6b2633; }
@@ -154,7 +171,6 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 
 .replay-diagnostics { min-width: 0; border: 1px solid #304664; border-radius: .9rem; background: rgb(14 25 43 / .8); }
 .replay-diagnostics > summary { padding: 1rem; color: #e3ebf7; cursor: pointer; font-weight: 800; }
-.replay-diagnostics > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .replay-diagnostics[open] > summary { border-bottom: 1px solid #304664; }
 .replay-runner { min-width: 0; padding: 1rem; }
 .replay-runner p { color: #c6d1e4; }
@@ -179,7 +195,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   background: rgb(20 33 55 / .97);
   box-shadow: 0 .8rem 2.4rem rgb(0 0 0 / .42);
 }
-.lifecycle-dock h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.lifecycle-dock h2:focus-visible, .controls [role="status"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .lifecycle-dock-copy { min-width: 0; }
 .lifecycle-dock-copy .eyebrow { margin-bottom: .25rem; }
 .lifecycle-dock-copy h2 { margin-bottom: .35rem; font-size: 1.25rem; }
@@ -228,7 +244,8 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .card-details header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .card-details h2 { margin: 0; font-size: 1.55rem; }
 .card-details-type { margin-bottom: .25rem; color: #9eb6d7; font-size: .75rem; letter-spacing: .08em; }
-.icon-button { width: 2.5rem; height: 2.5rem; flex: 0 0 auto; color: #fff; background: #2a3d5b; border: 0; border-radius: 50%; cursor: pointer; font-size: 1.5rem; }
+.icon-button { width: 2.75rem; height: 2.75rem; flex: 0 0 auto; color: #fff; background: #2a3d5b; border: 0; border-radius: 50%; cursor: pointer; font-size: 1.5rem; }
+.restart-confirmation p { flex: 1 1 100%; margin: 0; color: #ffe1e6; }
 .card-details-art { position: relative; width: min(100%, 252px); aspect-ratio: 3 / 4; justify-self: center; overflow: hidden; border: 1px solid #526987; border-radius: 1rem; background: #263852; }
 .card-details-art img, .card-details-art .card-art-placeholder { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .card-details-copy { margin: 0; color: #e1e9f5; line-height: 1.6; }
@@ -273,6 +290,15 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .lifecycle-actions button, .lifecycle-confirmation button { flex: 1 1 8rem; }
 }
 
+@media (max-width: 359px) {
+  .card-details { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .card-details header, .card-details-art, .card-details-copy, .card-details-metrics, .card-details-meta, .card-details footer {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .card-details-art { width: min(60vw, 10rem); }
+}
+
 @media (min-width: 900px) {
   .public-table-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .results-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
@@ -312,4 +338,15 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .card:hover { transform: none; }
+}
+
+@media (forced-colors: active) {
+  .card, .turn-control-dock, .lifecycle-dock, .card-details-dialog, .warning, .error {
+    border: 2px solid CanvasText;
+  }
+  .card-state-marker { forced-color-adjust: none; background: CanvasText; }
+  .card-state-selected .card-state-marker { background: Highlight; }
+  .card-state-target .card-state-marker { background: LinkText; }
+  .primary, .danger { border: 2px solid ButtonText; }
 }
