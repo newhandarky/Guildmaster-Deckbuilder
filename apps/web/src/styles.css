@@ -126,6 +126,50 @@ h2 { font-size: 1.05rem; margin-bottom: .65rem; }
 .replay-failure { background: #6b2633; }
 .replay-success span, .replay-failure span { color: #e1e9f5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; overflow-wrap: anywhere; }
 
+.lifecycle-dock {
+  position: sticky;
+  z-index: 20;
+  bottom: .75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  width: min(100%, 900px);
+  min-width: 0;
+  margin: 1rem auto 1.25rem;
+  padding: 1rem;
+  border: 1px solid #7fa8d8;
+  border-radius: 1rem;
+  background: rgb(20 33 55 / .97);
+  box-shadow: 0 .8rem 2.4rem rgb(0 0 0 / .42);
+}
+.lifecycle-dock h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.lifecycle-dock-copy { min-width: 0; }
+.lifecycle-dock-copy .eyebrow { margin-bottom: .25rem; }
+.lifecycle-dock-copy h2 { margin-bottom: .35rem; font-size: 1.25rem; }
+.lifecycle-dock-copy > p:last-child { margin: 0; color: #d7e3f3; line-height: 1.5; }
+.lifecycle-actions, .lifecycle-confirmation { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: .65rem; }
+.lifecycle-actions button, .lifecycle-confirmation button {
+  border: 0;
+  border-radius: .65rem;
+  padding: .7rem 1rem;
+  color: white;
+  background: #405878;
+  cursor: pointer;
+}
+.lifecycle-actions button:disabled, .lifecycle-confirmation button:disabled { opacity: .48; cursor: wait; }
+.lifecycle-actions .primary { color: #18120d; background: #e5a45f; font-weight: 800; }
+.lifecycle-actions .danger, .lifecycle-confirmation .danger { background: #8d394a; }
+.lifecycle-confirmation { grid-column: 1 / -1; justify-content: start; padding-top: .75rem; border-top: 1px solid #405878; }
+.lifecycle-confirmation p { flex: 1 1 100%; margin: 0; color: #ffe1e6; }
+.lifecycle-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.lifecycle-progress li { display: inline-grid; grid-template-columns: auto auto; gap: .05rem .4rem; align-items: center; padding: .4rem .6rem; border: 1px solid #526987; border-radius: .65rem; background: #1b2c46; }
+.lifecycle-progress small { grid-column: 2; }
+.lifecycle-progress .progress-accepted { border-color: #69d5a0; }
+.lifecycle-diagnostic { grid-column: 1 / -1; margin: 0; padding: .65rem; border-radius: .65rem; color: #ffe1e6; background: #6b2633; }
+.lifecycle-result-success, .lifecycle-result-neutral { align-self: center; padding: .4rem .6rem; border-radius: .5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
+.lifecycle-result-success { background: #1d543f; }
+.lifecycle-result-neutral { background: #405878; }
+
 .card-details-dialog {
   position: fixed;
   inset: 0 0 0 auto;
@@ -183,6 +227,9 @@ h2 { font-size: 1.05rem; margin-bottom: .65rem; }
   .card-details-metrics { grid-row: 3; grid-template-columns: 1fr; }
   .card-details-meta { grid-row: 4; }
   .card-details footer { grid-row: 6; }
+  .lifecycle-dock { grid-template-columns: minmax(0, 1fr); max-height: 55dvh; bottom: .35rem; margin-bottom: .75rem; overflow-y: auto; }
+  .lifecycle-actions, .lifecycle-confirmation { justify-content: stretch; }
+  .lifecycle-actions button, .lifecycle-confirmation button { flex: 1 1 8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

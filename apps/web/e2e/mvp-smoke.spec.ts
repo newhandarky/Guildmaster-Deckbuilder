@@ -1,4 +1,42 @@
 import { expect, test } from '@playwright/test';
+import { createGame, dispatch, serializeSnapshot } from '@guildmaster/game-engine';
+import type { CommandEnvelope } from '@guildmaster/game-protocol';
+import { createWebRuleset } from '../src/app/ruleset.js';
+
+const localSaveKey = 'guildmaster-mvp-save-v2';
+
+function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
+  const ruleset = createWebRuleset('lifecycle-consent');
+  const state = createGame({
+    gameId: `e2e-consent-${requesterId}`,
+    seed: 20260731,
+    players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }],
+    startingPlayerId: 'human-1',
+  }, ruleset);
+  state.activePlayerId = requesterId;
+  state.phase = requesterId === 'ai-1' ? 'rest' : 'action1';
+  state.players.find(({ id }) => id === requesterId)!.counters.push({
+    resourceId: 'e2e:private-counter',
+    amount: 73,
+    visibility: 'allPlayersByConsent',
+  });
+  const envelope: CommandEnvelope = {
+    protocolVersion: 1,
+    gameId: state.gameId,
+    commandId: `e2e-consent-root-${requesterId}`,
+    actorId: requesterId,
+    expectedRevision: 0,
+    command: { type: 'END_PHASE', phase: state.phase },
+  };
+  const suspended = dispatch(state, ruleset, envelope);
+  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error('Failed to create pending E2E consent state.');
+  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] });
+}
+
+async function installPendingConsent(page: import('@playwright/test').Page, requesterId: 'human-1' | 'ai-1'): Promise<void> {
+  const save = pendingConsentSave(requesterId);
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
+}
 
 test('opening game shows the human guild, hand, and a valid action', async ({ page }) => {
   await page.goto('/');
@@ -18,6 +56,107 @@ test('empty adventurer and item supplies show approved copy while monsters remai
   await expect(monsterRow.getByRole('button')).toHaveCount(3);
   await expect(monsterRow).not.toContainText(/沒有|耗盡/);
   await expect(page.getByTestId('end-phase')).toBeEnabled();
+});
+
+test('lifecycle choice uses the dock, keeps cards inspectable, and commits once', async ({ page }) => {
+  await page.goto('/?e2eScenario=lifecycle-choice');
+  const card = page.getByTestId('hand').getByRole('button').first();
+  await card.click();
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+
+  const dock = page.getByTestId('lifecycle-dock');
+  await expect(dock).toContainText('請選擇如何繼續');
+  await expect(page.getByTestId('card-details')).not.toBeVisible();
+  await expect(dock.getByRole('heading')).toBeFocused();
+  await expect(page.getByTestId('end-phase')).toBeDisabled();
+
+  await card.click();
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
+  await expect(card).toBeFocused();
+
+  const continueAction = dock.getByRole('button', { name: '繼續', exact: true });
+  await continueAction.focus();
+  await continueAction.press('Enter');
+  await expect(page.getByText('版本 1')).toBeVisible();
+  await expect(page.getByTestId('phase-status')).toContainText('準備行動');
+  await expect(dock).toHaveCount(0);
+  await expect(page.getByTestId('interaction-hint')).toBeFocused();
+
+  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), localSaveKey);
+  expect(saved.snapshot.state.revision).toBe(1);
+  expect(saved.snapshot.state.eventLogCursor).toBe(saved.events.length);
+  expect(new Set(saved.events.map((event: { eventId: string }) => event.eventId)).size).toBe(saved.events.length);
+});
+
+test('counter consent survives reload, hides the counter value, and accepts through the dock', async ({ page }) => {
+  await installPendingConsent(page, 'ai-1');
+  await page.goto('/?e2eScenario=lifecycle-consent');
+
+  const dock = page.getByTestId('lifecycle-dock');
+  await expect(dock).toContainText('星塵 AI 要求公開');
+  await expect(dock).toContainText('你');
+  await expect(page.getByText('73', { exact: true })).toHaveCount(0);
+  await expect(dock.getByRole('button', { name: '同意公開' })).toBeVisible();
+  await expect(dock.getByRole('button', { name: '不同意' })).toBeVisible();
+  await expect(dock.getByRole('button', { name: '依規則結束等待' })).toBeVisible();
+  await expect(dock.getByRole('button', { name: '取消公開請求' })).toHaveCount(0);
+
+  await page.reload();
+  await expect(dock).toContainText('星塵 AI 要求公開');
+  await dock.getByRole('button', { name: '同意公開' }).click();
+  await expect(dock).toContainText('ALL_REQUIRED_ACTORS_ACCEPTED');
+  await expect(page.getByText('版本 1')).toBeVisible();
+
+  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), localSaveKey);
+  expect(saved.snapshot.state.revision).toBe(1);
+  expect(saved.snapshot.state.eventLogCursor).toBe(saved.events.length);
+  expect(saved.events.every((event: { causedByCommandId?: string }) => event.causedByCommandId === 'e2e-consent-root-ai-1')).toBe(true);
+});
+
+test('decline confirmation is reversible with Escape and commits only after confirmation', async ({ page }) => {
+  await installPendingConsent(page, 'ai-1');
+  await page.goto('/?e2eScenario=lifecycle-consent');
+  const dock = page.getByTestId('lifecycle-dock');
+
+  await dock.getByRole('button', { name: '不同意', exact: true }).click();
+  await expect(dock.getByRole('button', { name: '確認不同意' })).toBeFocused();
+  await dock.press('Escape');
+  await expect(dock.getByRole('button', { name: '確認不同意' })).toHaveCount(0);
+  await dock.getByRole('button', { name: '不同意', exact: true }).click();
+  await dock.getByRole('button', { name: '確認不同意' }).click();
+  await expect(dock).toContainText('REQUIRED_ACTOR_DECLINED');
+  await expect(page.getByText('版本 1')).toBeVisible();
+});
+
+test('requester can cancel but cannot answer their own counter consent', async ({ page }) => {
+  await installPendingConsent(page, 'human-1');
+  await page.goto('/?e2eScenario=lifecycle-consent');
+  const dock = page.getByTestId('lifecycle-dock');
+
+  await expect(dock.getByRole('button', { name: '同意公開' })).toHaveCount(0);
+  await expect(dock.getByRole('button', { name: '不同意' })).toHaveCount(0);
+  await dock.getByRole('button', { name: '取消公開請求' }).click();
+  await dock.getByRole('button', { name: '確認取消公開請求' }).click();
+  await expect(dock).toContainText('REQUESTER_CANCELLED');
+  await expect(page.getByText('版本 1')).toBeVisible();
+});
+
+test('explicit expiration uses confirmation without a wall-clock timer and remains mobile-safe', async ({ page }) => {
+  await installPendingConsent(page, 'ai-1');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?e2eScenario=lifecycle-consent');
+  const dock = page.getByTestId('lifecycle-dock');
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await dock.getByRole('button', { name: '依規則結束等待' }).click();
+  await expect(dock).toContainText('不會啟動或等待倒數計時');
+  await dock.getByRole('button', { name: '確認依規則結束等待' }).click();
+  await expect(dock).toContainText('REQUEST_EXPIRED');
+  await expect(dock).toContainText('不使用倒數計時');
+  await expect(page.getByText('版本 1')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('a completed human turn lets the AI finish and returns control to the human', async ({ page }) => {

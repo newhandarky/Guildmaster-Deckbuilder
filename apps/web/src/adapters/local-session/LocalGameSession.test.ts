@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack } from '@guildmaster/content-base';
-import { baseRulesModule, createGame, createRuleset, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
+import { baseRulesModule, createGame, createRuleset, dispatch, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
 
@@ -66,6 +66,28 @@ function seedConsentSave(ruleset: ReturnType<typeof createRuleset>): void {
   localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(state), events: [] }));
 }
 
+function seedPendingConsentSave(ruleset: ReturnType<typeof createRuleset>): void {
+  const state = createGame({
+    gameId: 'local-pending-consent',
+    seed: 20260726,
+    players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }],
+    startingPlayerId: 'human-1'
+  }, ruleset);
+  state.activePlayerId = 'ai-1';
+  state.phase = 'rest';
+  state.players[1]!.counters.push({ resourceId: 'test:session/token', amount: 3, visibility: 'allPlayersByConsent' });
+  const suspended = dispatch(state, ruleset, {
+    protocolVersion: 1,
+    gameId: state.gameId,
+    commandId: 'pending-consent-root',
+    actorId: 'ai-1',
+    expectedRevision: 0,
+    command: { type: 'END_PHASE', phase: 'rest' }
+  });
+  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error('Expected a pending consent fixture.');
+  localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] }));
+}
+
 describe('LocalGameSession transactional boundary', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage());
@@ -104,6 +126,25 @@ describe('LocalGameSession transactional boundary', () => {
     expect(completed.view.pendingCounterConsent).toBeUndefined();
     expect(completed.events.filter(({ type }) => type === 'COUNTER_CONSENT_ACCEPTED')).toHaveLength(1);
     expect(completed.events.every(({ causedByCommandId }) => causedByCommandId === 'human-1-1-1')).toBe(true);
+  });
+
+  it('restores pending consent and commits the original command once after a human decline', () => {
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule, module([hook('command-before', consent(modify(4)))])]);
+    seedPendingConsentSave(ruleset);
+    const session = new LocalGameSession(ruleset);
+    const pending = session.current();
+    expect(pending.view).toMatchObject({ revision: 0, pendingCounterConsent: { requestId: 'session-consent', requesterId: 'ai-1' } });
+    expect(pending.legalCommands).toContainEqual({ type: 'RESPOND_COUNTER_CONSENT', requestId: 'session-consent', response: 'decline' });
+    expect(pending.legalCommands.some(({ type }) => type === 'END_PHASE')).toBe(false);
+
+    const completed = session.submit({ type: 'RESPOND_COUNTER_CONSENT', requestId: 'session-consent', response: 'decline' });
+    expect(completed.error).toBeUndefined();
+    expect(completed.view).toMatchObject({ revision: 1, activePlayerId: 'human-1' });
+    expect(completed.view.pendingCounterConsent).toBeUndefined();
+    expect(completed.events.filter(({ type }) => type === 'COUNTER_CONSENT_DECLINED')).toHaveLength(1);
+    expect(completed.events.every(({ causedByCommandId }) => causedByCommandId === 'pending-consent-root')).toBe(true);
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+    expect(saved.snapshot.state.eventLogCursor).toBe(saved.events.length);
   });
 
   it('persists the engine rollback checkpoint and removes the abandoned transaction history', () => {
