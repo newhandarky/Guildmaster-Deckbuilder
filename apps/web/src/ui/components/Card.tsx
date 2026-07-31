@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import type { CardMetric, CardVisualViewModel } from '../cards/card-visual-model.js';
+import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
   card: CardVisualViewModel;
@@ -8,10 +9,8 @@ type Props = {
 };
 
 export function CardArt({ card }: { card: CardVisualViewModel }) {
-  return <span className="card-art" data-asset-key={card.art.key} aria-hidden={card.art.src ? undefined : true}>
-    {card.art.src
-      ? <img src={card.art.src} alt={card.art.altText} width={card.art.width} height={card.art.height} />
-      : <span className="card-art-placeholder" />}
+  return <span className="card-art" data-asset-key={card.art.key}>
+    <CardPresentationImage art={card.art} sizes="(max-width: 767px) 112px, 146px" />
   </span>;
 }
 

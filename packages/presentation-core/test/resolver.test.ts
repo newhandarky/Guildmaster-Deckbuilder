@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createPresentationResolver, neutralPlaceholderPresentationPack, validatePresentationPack, type PresentationPack } from '../src/index.js';
+import { createPresentationResolver, validatePresentationPack, type PresentationPack } from '../src/index.js';
 
 const alternatePack: PresentationPack = { manifest: { id: 'presentation:alternate', version: '1.0.0', theme: 'alternate', locale: 'en' }, entries: [{ definitionId: 'base:starter/newcomer', displayName: 'Alternate starter', portraitAssetKey: 'placeholder:alternate-01', portraitAltText: 'Alternate starter portrait', shortDisplayText: 'Alternative client-only text.', detailDisplayText: 'Alternative client-only detail text.' }] };
+const neutralPack: PresentationPack = { manifest: { id: 'presentation:test-neutral', version: '1.0.0', theme: 'neutral', locale: 'zh-TW' }, entries: [{ definitionId: 'base:starter/newcomer', displayName: '起始牌 A', portraitAssetKey: 'placeholder:text-card-1', portraitAltText: '起始牌 A的中性文字卡牌 placeholder', shortDisplayText: '原創文字 placeholder。', detailDisplayText: '中性測試詳情。' }] };
 
 describe('Presentation Pack resolver', () => {
   it('resolves a stable definition ID without accessing game state', () => {
-    const resolver = createPresentationResolver([neutralPlaceholderPresentationPack]);
+    const resolver = createPresentationResolver([neutralPack]);
     expect(resolver.resolve('base:starter/newcomer')).toMatchObject({ definitionId: 'base:starter/newcomer', displayName: '起始牌 A', portraitAsset: { key: 'placeholder:text-card-1', altText: '起始牌 A的中性文字卡牌 placeholder' }, detailDisplayText: expect.any(String), source: 'pack' });
   });
 
@@ -39,12 +40,12 @@ describe('Presentation Pack resolver', () => {
   it('changing client packs cannot change authoritative state, commands, score, snapshot, or replay', () => {
     const authoritative = Object.freeze({ revision: 7, zones: { hand: ['card-1'] }, legalCommands: [{ type: 'END_PHASE' }], score: [{ playerId: 'p1', honor: 4 }], snapshot: { version: 2 }, replay: [{ command: 'END_PHASE' }] });
     const before = JSON.stringify(authoritative);
-    expect(createPresentationResolver([neutralPlaceholderPresentationPack]).resolve('base:starter/newcomer').displayName).not.toBe(createPresentationResolver([alternatePack]).resolve('base:starter/newcomer').displayName);
+    expect(createPresentationResolver([neutralPack]).resolve('base:starter/newcomer').displayName).not.toBe(createPresentationResolver([alternatePack]).resolve('base:starter/newcomer').displayName);
     expect(JSON.stringify(authoritative)).toBe(before);
   });
 
   it('allows different clients to choose different presentations for the same authority', () => {
-    const clientA = createPresentationResolver([neutralPlaceholderPresentationPack]);
+    const clientA = createPresentationResolver([neutralPack]);
     const clientB = createPresentationResolver([alternatePack]);
     expect(clientA.resolve('base:starter/newcomer').definitionId).toBe(clientB.resolve('base:starter/newcomer').definitionId);
     expect(clientA.resolve('base:starter/newcomer').displayName).not.toBe(clientB.resolve('base:starter/newcomer').displayName);

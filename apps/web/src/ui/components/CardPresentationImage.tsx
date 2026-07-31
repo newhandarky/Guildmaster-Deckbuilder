@@ -1,0 +1,34 @@
+import { useState } from 'react';
+import type { PresentationViewModel } from '@guildmaster/presentation-core';
+
+type Props = {
+  art: PresentationViewModel['portraitAsset'];
+  sizes: string;
+  placeholderAccessible?: boolean;
+};
+
+export function CardPresentationImage({ art, sizes, placeholderAccessible = false }: Props) {
+  const [failedSource, setFailedSource] = useState<string>();
+  const showImage = Boolean(art.src && failedSource !== art.src);
+  return <>
+    <span
+      className="card-art-placeholder"
+      data-image-fallback={showImage ? 'hidden' : 'visible'}
+      role={!showImage && placeholderAccessible ? 'img' : undefined}
+      aria-label={!showImage && placeholderAccessible ? `${art.altText}（目前使用中性 placeholder）` : undefined}
+      aria-hidden={!placeholderAccessible ? true : undefined}
+    />
+    {showImage ? <img
+      src={art.src}
+      srcSet={art.srcSet}
+      sizes={sizes}
+      alt={art.altText}
+      width={art.width}
+      height={art.height}
+      loading="lazy"
+      decoding="async"
+      style={{ objectPosition: art.objectPosition ?? '50% 50%' }}
+      onError={() => setFailedSource(art.src)}
+    /> : null}
+  </>;
+}

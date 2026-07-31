@@ -44,8 +44,10 @@ export type PresentationViewModel = {
     key: string;
     altText: string;
     src?: string;
+    srcSet?: string;
     width?: number;
     height?: number;
+    objectPosition?: string;
   };
   shortDisplayText: string;
   detailDisplayText: string;
