@@ -22,7 +22,50 @@ test('unavailable actions show a clear phase-specific hint', async ({ page }) =>
   await page.goto('/');
   await page.getByTestId('end-phase').click();
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
-  await expect(page.getByTestId('hand').getByRole('button').first()).toBeDisabled();
+  const unavailable = page.getByTestId('hand').getByRole('button').first();
+  await expect(unavailable).toBeEnabled();
+  await unavailable.click();
+  await expect(page.getByTestId('card-details')).toContainText('目前不可執行');
+  await expect(page.getByTestId('card-details').locator('footer .primary')).toHaveCount(0);
+});
+
+test('card details support keyboard inspection, Escape, and focus restoration', async ({ page }) => {
+  await page.goto('/');
+  const card = page.getByTestId('hand').getByRole('button').first();
+  await card.focus();
+  await card.press('Enter');
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  await page.getByTestId('card-details').press('Escape');
+  await expect(page.getByTestId('card-details')).not.toBeVisible();
+  await expect(card).toBeFocused();
+  await card.press('Space');
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
+  await expect(card).toBeFocused();
+});
+
+test('art-first cards keep their desktop and mobile ratio without page overflow', async ({ page }) => {
+  await page.goto('/?e2eScenario=tagged-card-layout');
+  const desktopCard = page.getByTestId('hand').getByRole('button').first();
+  const desktopBox = await desktopCard.boundingBox();
+  expect(desktopBox?.width).toBeCloseTo(146, 0);
+  expect((desktopBox?.width ?? 0) / (desktopBox?.height ?? 1)).toBeCloseTo(63 / 88, 2);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const compactCard = page.getByTestId('hand').getByRole('button').first();
+  const compactBox = await compactCard.boundingBox();
+  expect(compactBox?.width).toBeCloseTo(112, 0);
+  expect((compactBox?.width ?? 0) / (compactBox?.height ?? 1)).toBeCloseTo(63 / 88, 2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await compactCard.click();
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  const dialogBox = await page.getByRole('dialog').boundingBox();
+  expect(dialogBox?.width).toBeLessThanOrEqual(390);
+  expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(844, 0);
+  await expect(page.locator('.card-tags')).toContainText('e2e-layout-tag');
+  const tagsBox = await page.locator('.card-tags').boundingBox();
+  const stateBox = await page.locator('.card-details-state').boundingBox();
+  expect((tagsBox?.y ?? 0) + (tagsBox?.height ?? 0)).toBeLessThanOrEqual(stateBox?.y ?? 0);
 });
 
 test('malformed local save is cleared and starts a playable new game', async ({ page }) => {
@@ -80,23 +123,31 @@ test('deterministic full-game journey defeats, recruits, rests, restores v3 save
 
   await endPhase.click();
   const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
-  const legalMonster = monsterRow.locator('button:not([disabled])').first();
+  const legalMonster = monsterRow.locator('[data-legal-action="true"]').first();
   await expect(legalMonster).toBeEnabled();
-  await legalMonster.click();
+  await runCardAction(page, legalMonster, '討伐');
   await expect(page.locator('.log')).toContainText('討伐了');
+  await expect(page.getByTestId('interaction-hint')).toBeFocused();
 
   await endPhase.click();
   await endPhase.click();
   const recruitRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /招募區/ }) });
-  const legalRecruit = recruitRow.locator('button:not([disabled])').first();
+  const legalRecruit = recruitRow.locator('[data-legal-action="true"]').first();
   await expect(legalRecruit).toBeEnabled();
-  await legalRecruit.click();
+  await runCardAction(page, legalRecruit, '招募');
   await expect(page.locator('.log')).toContainText('取得了');
 
   await endPhase.click();
   await endPhase.click();
   await expect(page.getByText(/第 \d+ 輪 · 行動一階段/)).toBeVisible();
   await expect(page.getByText('你的回合')).toBeVisible();
+  const playableAdventurer = page.getByTestId('hand').locator('[data-card-type="adventurer"][data-legal-action="true"]').first();
+  for (let drawAttempt = 0; drawAttempt < 3 && await playableAdventurer.count() === 0; drawAttempt += 1) {
+    for (let phase = 0; phase < 5; phase += 1) await endPhase.click();
+  }
+  await expect(playableAdventurer).toBeVisible();
+  await runCardAction(page, playableAdventurer, '加入隊伍');
+  await expect(page.locator('.log')).toContainText('加入了一名冒險者');
   await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(3);
 
   await page.reload();
@@ -117,7 +168,7 @@ async function finishAllBossesGame(page: import('@playwright/test').Page): Promi
   const endPhase = page.getByTestId('end-phase');
   await endPhase.click();
   const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
-  await bossRow.locator('button:not([disabled])').first().click();
+  await runCardAction(page, bossRow.locator('[data-legal-action="true"]').first(), '討伐');
   await finishTriggeredFinalRound(page);
 }
 
@@ -127,9 +178,9 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
 
   await endPhase.click();
   const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
-  const legalBoss = bossRow.locator('button:not([disabled])').first();
+  const legalBoss = bossRow.locator('[data-legal-action="true"]').first();
   await expect(legalBoss).toBeEnabled();
-  await legalBoss.click();
+  await runCardAction(page, legalBoss, '討伐');
 
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await expect(page.getByTestId('game-app')).toBeVisible();
@@ -164,9 +215,9 @@ test('deterministic all-bonds journey triggers the registered bond end condition
 
   await endPhase.click();
   const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
-  const legalBoss = bossRow.locator('button:not([disabled])').first();
+  const legalBoss = bossRow.locator('[data-legal-action="true"]').first();
   await expect(legalBoss).toBeEnabled();
-  await legalBoss.click();
+  await runCardAction(page, legalBoss, '討伐');
 
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await finishTriggeredFinalRound(page);
@@ -179,3 +230,90 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await expect(rows.filter({ hasText: '你' })).toContainText('5 榮譽');
   await expect(rows.filter({ hasText: '你' })).toContainText('魔王 1／魔物 0');
 });
+
+test('equipment uses details-driven selection and only exposes legal party targets', async ({ page }) => {
+  await page.goto('/');
+  const equipmentInHand = await buyEquipmentIntoHand(page);
+  await equipmentInHand.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
+
+  const party = page.locator('section').filter({ has: page.getByRole('heading', { name: /隊伍/ }) });
+  const legalTargets = party.locator('[data-card-state="target"]');
+  await expect(legalTargets).toHaveCount(5);
+  await legalTargets.first().click();
+  await page.getByTestId('card-details').getByRole('button', { name: '配戴至此隊員', exact: true }).click();
+  await expect(page.locator('.log')).toContainText('配戴');
+  await expect(page.getByTestId('hand').locator('[data-card-type="equipment"]')).toHaveCount(0);
+});
+
+test('restart clears an in-progress equipment selection', async ({ page }) => {
+  await page.goto('/');
+  const equipmentInHand = await buyEquipmentIntoHand(page);
+  await equipmentInHand.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
+  await expect(page.locator('[data-card-state="target"]')).toHaveCount(5);
+  await expect(page.getByRole('button', { name: '取消配戴' })).toBeVisible();
+
+  await page.getByRole('button', { name: '重新開始' }).click();
+  await expect(page.getByText('版本 0')).toBeVisible();
+  await expect(page.getByRole('button', { name: '取消配戴' })).toHaveCount(0);
+  await expect(page.locator('[data-card-state="target"]')).toHaveCount(0);
+  await expect(page.getByTestId('hand').locator('[data-card-type="equipment"]')).toHaveCount(0);
+});
+
+test('an authoritative revision invalidates an open details action', async ({ page }) => {
+  await page.goto('/');
+  const equipmentInHand = await buyEquipmentIntoHand(page);
+  await equipmentInHand.click();
+  await expect(page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true })).toBeVisible();
+
+  await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.getByTestId('card-details')).not.toBeVisible();
+  await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
+  await expect(equipmentInHand).toBeFocused();
+  await equipmentInHand.click();
+  await expect(page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true })).toHaveCount(0);
+});
+
+test('item use is dispatched only from the current details action', async ({ page }) => {
+  await page.goto('/');
+  const endPhase = page.getByTestId('end-phase');
+  for (let phase = 0; phase < 3; phase += 1) await endPhase.click();
+  const store = page.locator('section').filter({ has: page.getByRole('heading', { name: /商店/ }) });
+  const itemForSale = store.locator('[data-card-type="item"][data-legal-action="true"]').first();
+  await expect(itemForSale).toBeVisible();
+  await runCardAction(page, itemForSale, '購買');
+  await endPhase.click();
+  await endPhase.click();
+
+  const itemInHand = page.getByTestId('hand').locator('[data-card-type="item"][data-legal-action="true"]');
+  await expect(itemInHand).toHaveCount(1);
+  await itemInHand.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '使用道具', exact: true }).click();
+  await expect(page.locator('.log')).toContainText('使用了道具');
+  await expect(page.getByTestId('hand').locator('[data-card-type="item"]')).toHaveCount(0);
+});
+
+async function buyEquipmentIntoHand(page: import('@playwright/test').Page): Promise<import('@playwright/test').Locator> {
+  const endPhase = page.getByTestId('end-phase');
+  for (let phase = 0; phase < 3; phase += 1) await endPhase.click();
+  const store = page.locator('section').filter({ has: page.getByRole('heading', { name: /商店/ }) });
+  const equipmentForSale = store.locator('[data-card-type="equipment"][data-legal-action="true"]').first();
+  await expect(equipmentForSale).toBeVisible();
+  await runCardAction(page, equipmentForSale, '購買');
+  await endPhase.click();
+  await endPhase.click();
+  const equipmentInHand = page.getByTestId('hand').locator('[data-card-type="equipment"]');
+  await expect(equipmentInHand).toHaveCount(1);
+  return equipmentInHand;
+}
+
+async function runCardAction(
+  page: import('@playwright/test').Page,
+  card: import('@playwright/test').Locator,
+  actionName: string,
+): Promise<void> {
+  await card.click();
+  await expect(page.getByTestId('card-details')).toBeVisible();
+  await page.getByTestId('card-details').getByRole('button', { name: actionName, exact: true }).click();
+}

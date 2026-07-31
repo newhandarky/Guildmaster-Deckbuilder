@@ -1,18 +1,20 @@
 import { baseDemoContentPack } from '@guildmaster/content-base';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
-const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame'] as const;
+const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout'] as const;
 
 export type E2EScenario = (typeof scenarioIds)[number];
 
 type ScenarioSetup = { bossCopies: number; bonds: NonNullable<ContentPack['bonds']> };
+const taggedDefinitionId = baseDemoContentPack.starter?.summonStoneDefinitionId;
 
 const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
   'all-bosses-endgame': { bossCopies: 1, bonds: baseDemoContentPack.bonds! },
   'all-bonds-endgame': {
     bossCopies: 2,
     bonds: [{ id: 'e2e:bond/final-victory', name: '終局驗證', honor: 2, requiredBosses: 1 }]
-  }
+  },
+  'tagged-card-layout': { bossCopies: 2, bonds: baseDemoContentPack.bonds! }
 };
 
 /**
@@ -25,6 +27,9 @@ function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): Conte
     ...baseDemoContentPack,
     manifest: { ...baseDemoContentPack.manifest, id: `base:e2e-${id}`, hash: `base-e2e-${id}-v1` },
     definitions: baseDemoContentPack.definitions.map((definition) => {
+      if (id === 'tagged-card-layout' && taggedDefinitionId && definition.id === taggedDefinitionId) {
+        return { ...definition, tags: ['e2e-layout-tag'] };
+      }
       if (definition.type !== 'boss') return definition;
       return definition.id === 'base:boss/ruin-warden'
         ? { ...definition, copies: setup.bossCopies, combat: 5 }

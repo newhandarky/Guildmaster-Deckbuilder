@@ -1,18 +1,69 @@
-import type { CardDefinition, CardInstance } from '@guildmaster/game-protocol';
-import type { PresentationViewModel } from '@guildmaster/presentation-core';
+import type { MouseEvent } from 'react';
+import type { CardMetric, CardVisualViewModel } from '../cards/card-visual-model.js';
 
-type Props = { instance?: CardInstance | undefined; definition?: CardDefinition | undefined; presentation?: PresentationViewModel | undefined; onClick?: (() => void) | undefined; selected?: boolean | undefined; label?: string | undefined; testId?: string | undefined };
+type Props = {
+  card: CardVisualViewModel;
+  onInspect: (card: CardVisualViewModel, trigger: HTMLButtonElement) => void;
+  testId?: string;
+};
 
-/** UI adapter: rules definition supplies mechanics; presentation supplies all player-facing card copy. */
-export function Card({ instance, definition, presentation, onClick, selected = false, label, testId }: Props) {
-  const disabled = !onClick;
-  return <button type="button" data-testid={testId} className={`card ${definition?.type ?? 'unknown'} ${selected ? 'selected' : ''}`} disabled={disabled} onClick={onClick}>
-    {presentation?.portraitAsset.src ? <img className="card-portrait" src={presentation.portraitAsset.src} alt={presentation.portraitAsset.altText} width={presentation.portraitAsset.width} height={presentation.portraitAsset.height} /> : null}
-    <span className="card-type">{label ?? definition?.type ?? '未知'}</span>
-    <strong>{presentation?.displayName ?? instance?.definitionId ?? '隱藏卡'}</strong>
-    <small>{presentation?.shortDisplayText}</small>
-    <span>⚔ {definition?.combat ?? '—'} / ✦ {definition?.honor ?? 0}</span>
-    {definition?.cost !== undefined ? <span>費用 {definition.cost}</span> : null}
-    {definition?.purchasePower ? <span>購買力 {definition.purchasePower}</span> : null}
+export function CardArt({ card }: { card: CardVisualViewModel }) {
+  return <span className="card-art" data-asset-key={card.art.key} aria-hidden={card.art.src ? undefined : true}>
+    {card.art.src
+      ? <img src={card.art.src} alt={card.art.altText} width={card.art.width} height={card.art.height} />
+      : <span className="card-art-placeholder" />}
+  </span>;
+}
+
+export function CardTitleScrim({ card }: { card: CardVisualViewModel }) {
+  return <span className="card-title-scrim">
+    <span className="card-type">{card.cardTypeLabel}</span>
+    <strong>{card.displayName}</strong>
+  </span>;
+}
+
+export function CardMetricRail({ metrics }: { metrics: readonly CardMetric[] }) {
+  return <span className="card-metric-rail">
+    {metrics.map((metric) => <span className={`card-metric card-metric-${metric.kind}`} key={metric.kind} aria-label={`${metric.label} ${metric.value}`}>
+      <span aria-hidden="true">{metric.icon}</span>
+      <strong>{metric.value}</strong>
+    </span>)}
+  </span>;
+}
+
+export function CardSummaryBand({ card }: { card: CardVisualViewModel }) {
+  return <span className="card-summary-band">
+    <span>{card.shortDisplayText}</span>
+    {card.contextLabel ? <small>{card.contextLabel}</small> : null}
+  </span>;
+}
+
+export function CardStateRing({ card }: { card: CardVisualViewModel }) {
+  return <span className="card-state-label">
+    <span className="card-state-marker" aria-hidden="true" />
+    {card.stateLabel}
+  </span>;
+}
+
+/** Inspectable presentation surface. Authoritative commands are executed only from CardDetailsPanel. */
+export function Card({ card, onInspect, testId }: Props) {
+  const inspect = (event: MouseEvent<HTMLButtonElement>) => onInspect(card, event.currentTarget);
+  return <button
+    type="button"
+    data-testid={testId}
+    data-card-type={card.cardType}
+    data-card-template={card.template}
+    data-card-state={card.interactionState}
+    data-legal-action={card.action ? 'true' : 'false'}
+    className={`card card-${card.template} card-state-${card.interactionState}`}
+    aria-haspopup="dialog"
+    aria-label={`${card.displayName}，${card.cardTypeLabel}，${card.stateDescription}，開啟卡牌詳情`}
+    onClick={inspect}
+  >
+    <CardArt card={card} />
+    <CardTitleScrim card={card} />
+    <CardMetricRail metrics={card.metrics} />
+    <CardSummaryBand card={card} />
+    <CardStateRing card={card} />
   </button>;
 }
