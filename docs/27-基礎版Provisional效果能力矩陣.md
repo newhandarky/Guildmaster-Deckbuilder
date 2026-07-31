@@ -54,8 +54,9 @@
 
 1. **已完成 P0：基礎供應連續性。** 冒險者／物資允許 partial／empty 且事件不重複；魔物循環在 reward、choice／consent、post-command、Snapshot／Replay 與 rollback 後恆為 3。
 2. **已完成 P1：lifecycle interaction dock。** pending choice／counter consent 共用非 modal dock；stale／矛盾資料不猜測指令，explicit expiration 不使用 wall-clock timer。
-3. **下一步 P2：responsive game table shell。** 重整資訊層級與手機／平板／桌面 layout regression，規則仍由 session authority 提供。
-4. **P3：內容接線與 Vol.1。** 只有在個別卡牌資料與時序確認後才載入既有 runtime；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
+3. **已完成 P2：responsive game table shell。** 固定單頁 DOM／鍵盤順序、interaction rail、收合式 Replay 診斷與五種 viewport regression；規則仍由 session authority 提供。
+4. **下一步 P3：原創 demo presentation assets／可用性驗證。** 先確認原創美術方向、palette、角色設定與授權紀錄；若素材決策尚未完成，先做 accessibility／可用性 audit，不載入官方圖像。
+5. **P4：內容接線與 Vol.1。** 只有在個別卡牌資料與時序確認後才載入既有 runtime；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目
 

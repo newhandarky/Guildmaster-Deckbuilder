@@ -106,9 +106,9 @@
 - 合法操作高亮、只消費 PlayerView／legal Commands 的 lifecycle interaction dock、討伐預覽
 - AI 行動後的事件紀錄與人類玩家可見資訊
 - 操作紀錄、規則提示與 placeholder 卡面
-- 響應式平板／桌面版面
+- 響應式手機橫向／平板／桌面牌桌：固定單頁空間順序、各牌列自行捲動、sticky interaction rail 與收合式 Replay 診斷
 
-驗收：不開 debug panel 也能完整遊玩；AI 只透過合法 Commands 行動，UI 不持有完整 GameState。pending choice／counter consent 使用同一非 modal dock，取消／拒絕／explicit expiration 先做本機確認且不加入 wall-clock timer。
+驗收：不開 debug panel 也能完整遊玩；AI 只透過合法 Commands 行動，UI 不持有完整 GameState。pending choice／counter consent 使用同一非 modal dock，取消／拒絕／explicit expiration 先做本機確認且不加入 wall-clock timer。`390×844`、`844×390`、`768×1024`、`1024×768` 與 `1440×900` 皆不得產生 document overflow。
 
 ### M5 — 終局、計分、Snapshot 與 Replay
 

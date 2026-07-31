@@ -240,6 +240,7 @@ test('legacy local save restores the persisted phase', async ({ page }) => {
 
 test('replay runner reports malformed JSON without changing the live game', async ({ page }) => {
   await page.goto('/');
+  await openReplayDiagnostics(page);
   await page.getByLabel('Replay JSON').fill('{not-json');
   await page.getByTestId('run-replay').click();
   await expect(page.getByTestId('replay-report')).toContainText('Replay JSON 無法解析');
@@ -248,6 +249,7 @@ test('replay runner reports malformed JSON without changing the live game', asyn
 
 test('replay runner does not expose the current unfinished authoritative game', async ({ page }) => {
   await page.goto('/');
+  await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   await expect(page.getByTestId('replay-report')).toContainText('只能在對局結束後匯出');
   await expect(page.getByLabel('Replay JSON')).toHaveValue('');
@@ -257,6 +259,7 @@ test('replay runner does not expose the current unfinished authoritative game', 
 test('replay runner reports the first assertion divergence without changing the live game', async ({ page }) => {
   await page.goto('/?e2eScenario=all-bosses-endgame');
   await finishAllBossesGame(page);
+  await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   const bundle = JSON.parse(await page.getByLabel('Replay JSON').inputValue());
   bundle.expectedFinalSnapshot.state.rngState += 1;
@@ -345,6 +348,7 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(rows.nth(1)).toContainText(/\d+ 榮譽/);
   await expect(rows.nth(1)).toContainText('魔王 0');
 
+  await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   await page.getByTestId('run-replay').click();
   await expect(page.getByTestId('replay-report')).toContainText('Replay 完成');
@@ -354,6 +358,7 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(page.getByText('版本 0')).toBeVisible();
   await expect(page.locator('.log')).toContainText('等待你的第一個行動。');
   await expect(endPhase).toBeEnabled();
+  await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   await expect(page.getByTestId('replay-report')).toContainText('只能在對局結束後匯出');
 });
@@ -465,4 +470,12 @@ async function runCardAction(
   await card.click();
   await expect(page.getByTestId('card-details')).toBeVisible();
   await page.getByTestId('card-details').getByRole('button', { name: actionName, exact: true }).click();
+}
+
+async function openReplayDiagnostics(page: import('@playwright/test').Page): Promise<void> {
+  const diagnostics = page.getByTestId('replay-diagnostics');
+  if (await diagnostics.getAttribute('open') === null) {
+    await diagnostics.locator('summary').click();
+  }
+  await expect(diagnostics).toHaveAttribute('open', '');
 }

@@ -15,7 +15,9 @@ type Props = {
 };
 
 export function PartyPanel({ player, partyLimit, definitions, cardDefinitions, presentation, legalEquipCommands, onInspect, equipCardId }: Props) {
-  return <section><h2>隊伍（{player.party.length}/{partyLimit}）</h2><div className="card-row">
+  return <section className="party-panel" aria-labelledby="party-title">
+    <h3 id="party-title">隊伍（{player.party.length}/{partyLimit}）</h3>
+    <div className="card-row" aria-label="隊伍卡片">
     {player.party.map((slot, index) => {
       const definitionId = cardDefinitions[slot.adventurerId] ?? '';
       const command = equipCardId
@@ -35,5 +37,6 @@ export function PartyPanel({ player, partyLimit, definitions, cardDefinitions, p
         {slot.equipmentId ? <small>裝備：{presentation.resolve(cardDefinitions[slot.equipmentId] ?? '').displayName}</small> : <small>未配戴</small>}
       </div>;
     })}
-  </div></section>;
+    </div>
+  </section>;
 }
