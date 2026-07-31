@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
-import { createPresentationResolver, neutralPlaceholderPresentationPack } from '@guildmaster/presentation-core';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
@@ -24,6 +23,7 @@ import {
 import { defaultLifecycleCopyResolver } from '../ui/lifecycle/lifecycle-copy.js';
 import { buildLifecycleInteractionModel } from '../ui/lifecycle/lifecycle-interaction-model.js';
 import { useGameStore } from '../store/game-store.js';
+import { presentationResolver } from './presentation.js';
 
 type CardInspection = {
   gameId: string;
@@ -42,7 +42,6 @@ export function App() {
   const appRootRef = useRef<HTMLElement>(null);
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
-  const presentation = useMemo(() => createPresentationResolver([neutralPlaceholderPresentationPack]), []);
   const cardDefinitions = useMemo(
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
@@ -139,7 +138,7 @@ export function App() {
       targets={view.enemyTargets}
       definitions={definitions}
       cards={view.cards}
-      presentation={presentation}
+      presentation={presentationResolver}
       legalCommands={legalCommands}
       onInspect={inspectCard}
     />}
@@ -148,7 +147,7 @@ export function App() {
       partyLimit={view.partyLimit}
       definitions={definitions}
       cardDefinitions={cardDefinitions}
-      presentation={presentation}
+      presentation={presentationResolver}
       equipCardId={equipmentCardId}
       legalEquipCommands={legalEquipCommands}
       onInspect={inspectCard}
@@ -157,7 +156,7 @@ export function App() {
       cardIds={view.self.hand}
       definitions={definitions}
       cards={view.cards}
-      presentation={presentation}
+      presentation={presentationResolver}
       legalCommands={legalCommands}
       legalEquipCommands={legalEquipCommands}
       equipmentCardId={equipmentCardId}

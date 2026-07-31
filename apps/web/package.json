@@ -16,6 +16,7 @@
     "@guildmaster/game-engine": "workspace:*",
     "@guildmaster/game-protocol": "workspace:*",
     "@guildmaster/presentation-core": "workspace:*",
+    "@guildmaster/presentation-demo": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.2"

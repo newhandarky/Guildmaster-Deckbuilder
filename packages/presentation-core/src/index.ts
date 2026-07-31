@@ -1,3 +1,3 @@
 export * from './schema.js';
 export * from './resolver.js';
-export * from './placeholder-pack.js';
+export * from './asset-manifest.js';

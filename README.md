@@ -20,6 +20,7 @@ pnpm typecheck
 pnpm test
 pnpm lint
 pnpm build
+pnpm check:presentation-assets
 pnpm check
 ```
 
@@ -36,6 +37,7 @@ pnpm check
 - e2e mode 的 typed、validated 原創示範 scenario registry 也會以正常 UI 操作觸發已註冊的全魔王／全羈絆終局，驗證 final round、AI 收尾、單次 scoreboard、排名／榮譽／討伐統計，以及「開啟新遠征」後 revision、事件與 replay history 歸零；它不修改 engine state，也不增加 production debug 捷徑。
 - 規則核心 Vitest 回歸測試，涵蓋抽牌途中洗牌、展示不洗牌、隊伍滿員、過量派遣、道具休息棄置、供應牌庫耗盡與 Snapshot round-trip。
 - 單頁 responsive game table shell 支援手機橫向、平板與桌面；Replay 診斷預設收合，所有指令仍只來自 LocalGameSession 提供的 legal Commands。
+- 增量 Presentation asset pipeline 支援完整 demo 顯示資料搭配部分或零插畫覆蓋；只有 manifest 已核准的 `384×512`／`768×1024` WebP 會進入 runtime，缺圖安全回到 CSS placeholder。
 
 ## 有意保留的限制
 
@@ -53,6 +55,8 @@ apps/web                 React/Vite 介面與 LocalGameSession adapter
 packages/game-protocol   可序列化 state、command、event、snapshot 型別
 packages/game-engine     純 TypeScript 規則引擎、查詢與計分
 packages/content-base    可替換的原創 MVP Content Pack
+packages/presentation-core  純呈現 schema、resolver 與 asset manifest contract
+packages/presentation-demo  原創 demo 顯示資料與已核准素材 manifest
 packages/game-ai         可替換 AI Strategy
 docs/                    規則、架構、未決事項與 Roadmap
 ```

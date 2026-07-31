@@ -1,6 +1,12 @@
 import { validatePresentationPack, type PresentationPack, type PresentationPreferences, type PresentationViewModel } from './schema.js';
 
-export type PresentationAssetSource = { src: string; width?: number; height?: number };
+export type PresentationAssetSource = {
+  src: string;
+  srcSet?: string;
+  width?: number;
+  height?: number;
+  objectPosition?: string;
+};
 export type PresentationResolverOptions = {
   contentHash?: string;
   /** Client-only mapping from a stable pack asset key to a deployable asset. */

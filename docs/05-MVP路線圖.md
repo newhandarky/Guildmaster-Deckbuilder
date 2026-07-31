@@ -107,6 +107,7 @@
 - AI 行動後的事件紀錄與人類玩家可見資訊
 - 操作紀錄、規則提示與 placeholder 卡面
 - 響應式手機橫向／平板／桌面牌桌：固定單頁空間順序、各牌列自行捲動、sticky interaction rail 與收合式 Replay 診斷
+- 漸進式插畫接入：完整 Presentation Pack 可搭配部分素材覆蓋；缺圖使用 CSS placeholder，已核准素材由獨立 manifest 提供 responsive WebP。
 
 驗收：不開 debug panel 也能完整遊玩；AI 只透過合法 Commands 行動，UI 不持有完整 GameState。pending choice／counter consent 使用同一非 modal dock，取消／拒絕／explicit expiration 先做本機確認且不加入 wall-clock timer。`390×844`、`844×390`、`768×1024`、`1024×768` 與 `1440×900` 皆不得產生 document overflow。
 
@@ -130,6 +131,7 @@
 - 無障礙鍵盤操作、色彩與文字替代
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單
+- Presentation asset manifest、尺寸／hash／權利檢查，以及逐批小型素材 PR
 
 驗收：MVP 成功標準全部達成，沒有已知 P0/P1 缺陷；沒有為基礎版繞過最終架構 contracts。
 

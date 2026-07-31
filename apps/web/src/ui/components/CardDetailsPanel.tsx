@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
+import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
   card: CardVisualViewModel | undefined;
@@ -67,10 +68,12 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
         </div>
         <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={close}>×</button>
       </header>
-      <div className={`card-details-art card-${card.template}`}>
-        {card.art.src
-          ? <img src={card.art.src} alt={card.art.altText} width={card.art.width} height={card.art.height} />
-          : <span className="card-art-placeholder" role="img" aria-label={card.art.altText} />}
+      <div className={`card-details-art card-${card.template}`} data-asset-key={card.art.key}>
+        <CardPresentationImage
+          art={card.art}
+          sizes="(max-width: 767px) 112px, 252px"
+          placeholderAccessible
+        />
       </div>
       <p className="card-details-copy">{card.detailDisplayText}</p>
       {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
