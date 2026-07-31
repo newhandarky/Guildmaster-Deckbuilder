@@ -103,12 +103,12 @@
 ### M4 — 可玩的單機人機 UI
 
 - 對局設定、羈絆選擇、酒館與玩家公會
-- 合法操作高亮、選擇視窗、討伐預覽
+- 合法操作高亮、只消費 PlayerView／legal Commands 的 lifecycle interaction dock、討伐預覽
 - AI 行動後的事件紀錄與人類玩家可見資訊
 - 操作紀錄、規則提示與 placeholder 卡面
 - 響應式平板／桌面版面
 
-驗收：不開 debug panel 也能完整遊玩；AI 只透過合法 Commands 行動，UI 不持有完整 GameState。
+驗收：不開 debug panel 也能完整遊玩；AI 只透過合法 Commands 行動，UI 不持有完整 GameState。pending choice／counter consent 使用同一非 modal dock，取消／拒絕／explicit expiration 先做本機確認且不加入 wall-clock timer。
 
 ### M5 — 終局、計分、Snapshot 與 Replay
 

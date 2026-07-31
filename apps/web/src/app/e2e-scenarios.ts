@@ -1,7 +1,7 @@
 import { baseDemoContentPack } from '@guildmaster/content-base';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
-const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies'] as const;
+const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent'] as const;
 
 export type E2EScenario = (typeof scenarioIds)[number];
 
@@ -15,7 +15,9 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
     bonds: [{ id: 'e2e:bond/final-victory', name: '終局驗證', honor: 2, requiredBosses: 1 }]
   },
   'tagged-card-layout': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
-  'empty-partial-supplies': { bossCopies: 2, bonds: baseDemoContentPack.bonds!, emptyPartialSupplies: true }
+  'empty-partial-supplies': { bossCopies: 2, bonds: baseDemoContentPack.bonds!, emptyPartialSupplies: true },
+  'lifecycle-choice': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
+  'lifecycle-consent': { bossCopies: 2, bonds: baseDemoContentPack.bonds! }
 };
 
 /**

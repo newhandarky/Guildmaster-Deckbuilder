@@ -45,6 +45,7 @@
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch、continuous runtime、supply refresh、multi-target encounter、Snapshot resume 與 versioned Command Replay diagnostic export 均已 supported；不代表任何正式或 provisional 卡牌內容已載入。
 - generic dice roll runtime 已 supported：Rules Module 只註冊 JSON-only sides，Effect AST 以明確 face outcome 執行；DIE_ROLLED payload、Snapshot 與 choice resume 可重播且不重擲。未載入任何卡牌骰子內容。
 - generic counter consent lifecycle 已 supported：Rules Module JSON-only policy、純 evaluator、Effect AST 與專用 Commands 管理 request／accept／decline／cancel／deterministic explicit expiration；PlayerView 只在全體接受後投影公開 counter。固定 JSON replay compatibility fixtures 鎖定 Snapshot 精確 cursor、structured events／reason codes、event IDs、RNG、revision／event cursor 與 registry／actor-list 防竄改；command transaction resume 不重跑 reducer、effects、events 或 RNG，未載入任何 Vol.1 HP／卡牌內容。
+- lifecycle interaction dock 已 supported：UI-local model 只組合 PlayerView、完整 legal Commands 與目前 revision 的 structured consent reason code；choice／consent、actor progress、waiting、terminal result、safe diagnostic、二次確認與鍵盤焦點不寫回 GameState，也不推導 Effect AST 或 counter 私密值。
 - command-before 與 post-command lifecycle choice continuation 均已實作；command transaction 可跨 Snapshot 從精確 fact/boundary cursor 恢復，且 reducer、facts、hooks、events 與 RNG 不重複，後段失敗回到 command 起點。
 - continuation 能力不代表任何正式或 provisional 卡牌內容已載入。
 - Snapshot、Command、Event／Reducer 與 stale revision 邊界均維持在純 TypeScript engine；本矩陣不新增 UI 或網路依賴。
@@ -52,8 +53,8 @@
 ## 缺口與建議優先順序
 
 1. **已完成 P0：基礎供應連續性。** 冒險者／物資允許 partial／empty 且事件不重複；魔物循環在 reward、choice／consent、post-command、Snapshot／Replay 與 rollback 後恆為 3。
-2. **下一步 P1：lifecycle interaction dock。** 只消費 PlayerView、legal Commands 與 stable reason codes，為 pending choice／counter consent 提供通用 UI，不新增 runtime lifecycle。
-3. **P2：responsive game table shell。** 重整資訊層級與手機／平板／桌面 layout regression，規則仍由 session authority 提供。
+2. **已完成 P1：lifecycle interaction dock。** pending choice／counter consent 共用非 modal dock；stale／矛盾資料不猜測指令，explicit expiration 不使用 wall-clock timer。
+3. **下一步 P2：responsive game table shell。** 重整資訊層級與手機／平板／桌面 layout regression，規則仍由 session authority 提供。
 4. **P3：內容接線與 Vol.1。** 只有在個別卡牌資料與時序確認後才載入既有 runtime；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目
