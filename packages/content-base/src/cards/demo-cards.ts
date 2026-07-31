@@ -16,7 +16,7 @@ export const demoCards: readonly CardDefinition[] = [
   { id: 'base:equipment/star-cloak', name: '星紋披風', type: 'equipment', copies: 2, cost: 3, combat: 2, honor: 2, source: 'mvp-demo' },
   { id: 'base:item/trail-rations', name: '遠行口糧', type: 'item', copies: 3, cost: 2, honor: 0, itemEffect: 'combat+2', source: 'mvp-demo' },
   { id: 'base:item/trade-token', name: '商會代幣', type: 'item', copies: 3, cost: 2, honor: 0, itemEffect: 'purchase+2', source: 'mvp-demo' },
-  { id: 'base:monster/mire-wolf', name: '沼地狼', type: 'monster', copies: 3, combat: 3, purchasePower: 1, honor: 1, source: 'mvp-demo' },
+  { id: 'base:monster/mire-wolf', name: '沼地狼', type: 'monster', copies: 3, combat: 3, purchasePower: 1, honor: 1, source: 'mvp-demo', tags: ['base:supply-cycle-anchor'] },
   { id: 'base:monster/cave-giant', name: '洞穴巨人', type: 'monster', copies: 3, combat: 5, purchasePower: 2, honor: 2, source: 'mvp-demo' },
   { id: 'base:monster/ash-drake', name: '灰燼飛龍', type: 'monster', copies: 2, combat: 7, purchasePower: 3, honor: 3, source: 'mvp-demo' },
   { id: 'base:boss/ruin-warden', name: '遺跡守望者', type: 'boss', copies: 1, combat: 6, purchasePower: 2, honor: 3, source: 'mvp-demo' },

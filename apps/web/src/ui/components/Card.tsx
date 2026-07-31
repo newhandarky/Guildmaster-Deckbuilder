@@ -51,6 +51,7 @@ export function Card({ card, onInspect, testId }: Props) {
   return <button
     type="button"
     data-testid={testId}
+    data-card-instance-id={card.instanceId}
     data-card-type={card.cardType}
     data-card-template={card.template}
     data-card-state={card.interactionState}

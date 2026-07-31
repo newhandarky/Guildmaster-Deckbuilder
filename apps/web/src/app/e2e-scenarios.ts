@@ -1,11 +1,11 @@
 import { baseDemoContentPack } from '@guildmaster/content-base';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
-const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout'] as const;
+const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies'] as const;
 
 export type E2EScenario = (typeof scenarioIds)[number];
 
-type ScenarioSetup = { bossCopies: number; bonds: NonNullable<ContentPack['bonds']> };
+type ScenarioSetup = { bossCopies: number; bonds: NonNullable<ContentPack['bonds']>; emptyPartialSupplies?: boolean };
 const taggedDefinitionId = baseDemoContentPack.starter?.summonStoneDefinitionId;
 
 const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
@@ -14,7 +14,8 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
     bossCopies: 2,
     bonds: [{ id: 'e2e:bond/final-victory', name: '終局驗證', honor: 2, requiredBosses: 1 }]
   },
-  'tagged-card-layout': { bossCopies: 2, bonds: baseDemoContentPack.bonds! }
+  'tagged-card-layout': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
+  'empty-partial-supplies': { bossCopies: 2, bonds: baseDemoContentPack.bonds!, emptyPartialSupplies: true }
 };
 
 /**
@@ -30,6 +31,7 @@ function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): Conte
       if (id === 'tagged-card-layout' && taggedDefinitionId && definition.id === taggedDefinitionId) {
         return { ...definition, tags: ['e2e-layout-tag'] };
       }
+      if (setup.emptyPartialSupplies && ['adventurer', 'equipment', 'item'].includes(definition.type)) return { ...definition, copies: 0 };
       if (definition.type !== 'boss') return definition;
       return definition.id === 'base:boss/ruin-warden'
         ? { ...definition, copies: setup.bossCopies, combat: 5 }

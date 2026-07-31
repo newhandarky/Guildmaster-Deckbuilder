@@ -36,6 +36,14 @@ describe('base provisional content catalog', () => {
     }
   });
 
+  it('records the approved cycle anchor as project policy without enabling provisional content', () => {
+    const anchor = baseProvisionalContentCatalog.candidates.find(({ definitionId }) => definitionId === 'base:monster/monster-01')!;
+    expect(anchor.fields.find(({ field }) => field === 'copies')).toMatchObject({ candidateValue: 3, sourceIds: ['project-policy:base-supply-continuity-2026-07-31'] });
+    expect(anchor.mechanicsTags).toEqual(['base:supply-cycle-anchor']);
+    expect(anchor).toMatchObject({ activation: 'disabled', runtimeLoadable: false });
+    expect(baseProvisionalContentCatalog.evidence.find(({ sourceId }) => sourceId === 'project-policy:base-supply-continuity-2026-07-31')).toMatchObject({ evidenceKind: 'project-policy' });
+  });
+
   it('rejects non-finite, fractional, negative, and duplicate mechanics fields', () => {
     const invalid = structuredClone(baseProvisionalContentCatalog);
     const candidate = invalid.candidates[0]!; const copies = candidate.fields.find((field) => field.field === 'copies')!;

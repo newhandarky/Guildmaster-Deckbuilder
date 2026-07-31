@@ -7,6 +7,7 @@ import { validateEncounterStateAgainstRuleset } from '../rules/encounter-resolut
 import { validatePendingCounterConsentState } from '../rules/counter-consent-evaluator.js';
 import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect } from '../effects/executor.js';
 import { dispatch } from './dispatch.js';
+import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -37,6 +38,8 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);
     const consentError = validatePendingCounterConsentState(state, ruleset);
     if (consentError) throw new Error(`Snapshot counter consent registry mismatch: ${consentError}`);
+    const continuityErrors = validateSupplyContinuityState(state, ruleset);
+    if (continuityErrors.length) throw new Error(`Snapshot supply continuity mismatch: ${continuityErrors.join(' ')}`);
   }
   const pending = state.effectState.pendingLifecycle;
   if (pending) {

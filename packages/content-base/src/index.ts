@@ -9,7 +9,7 @@ export * from './playtest/index.js';
 export * from './capabilities/index.js';
 
 export const baseDemoContentPack: ContentPack = {
-  manifest: { id: 'base:demo', version: '0.1.0', hash: 'base-demo-v1', role: 'base', contentStatus: 'demo' },
+  manifest: { id: 'base:demo', version: '0.2.0', hash: 'base-demo-v2-supply-continuity', role: 'base', contentStatus: 'demo' },
   definitions: demoCards,
   starter: {
     adventurerDefinitionId: 'base:starter/newcomer',

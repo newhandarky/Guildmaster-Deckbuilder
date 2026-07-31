@@ -2,6 +2,7 @@ export type ProvisionalAuditStatus = 'verified' | 'provisional' | 'exception' | 
 export type ProvisionalFieldName = 'sourceName' | 'cardType' | 'profession' | 'copies' | 'cost' | 'combat' | 'purchasePower' | 'honor' | 'effect' | 'effectTiming' | 'equipmentEligibility' | 'restrictions' | 'setup';
 
 export type VisualSource = {
+  evidenceKind?: 'official-visual';
   sourceId: string;
   officialUrl: string;
   documentName: string;
@@ -9,6 +10,14 @@ export type VisualSource = {
   printedPage?: string;
   region: string;
   reviewedOn: string;
+  repositoryAsset: 'not-committed';
+} | {
+  evidenceKind: 'project-policy';
+  sourceId: string;
+  title: string;
+  locator: string;
+  decidedOn: string;
+  recordedOn: string;
   repositoryAsset: 'not-committed';
 };
 
@@ -28,6 +37,7 @@ export type ProvisionalCardCandidate = {
   category: 'starter' | 'adventurer' | 'resource' | 'monster' | 'boss' | 'bond' | 'helper';
   runtimeLoadable: false;
   activation: 'disabled';
+  mechanicsTags?: readonly string[];
   fields: readonly ProvisionalField[];
 };
 
@@ -46,6 +56,11 @@ export function validateProvisionalBaseContentCatalog(catalog: ProvisionalBaseCo
   for (const source of catalog.evidence) {
     if (sourceIds.has(source.sourceId)) errors.push(`Duplicate visual source: ${source.sourceId}.`);
     sourceIds.add(source.sourceId);
+    if (source.evidenceKind === 'project-policy') {
+      if (!source.title.trim() || !source.locator.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(source.decidedOn) || !/^\d{4}-\d{2}-\d{2}$/.test(source.recordedOn)) errors.push(`Project policy ${source.sourceId} requires a title, locator, and ISO decision/record dates.`);
+      if (source.repositoryAsset !== 'not-committed') errors.push(`Source ${source.sourceId} must not be committed as an asset.`);
+      continue;
+    }
     if (!officialUrl(source.officialUrl) || !source.documentName.trim() || !source.providedFileName.trim() || !source.region.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(source.reviewedOn)) errors.push(`Source ${source.sourceId} requires official URL, document, local filename, locator, and date.`);
     if (source.repositoryAsset !== 'not-committed') errors.push(`Source ${source.sourceId} must not be committed as an asset.`);
   }
@@ -53,6 +68,7 @@ export function validateProvisionalBaseContentCatalog(catalog: ProvisionalBaseCo
     if (!idPattern.test(candidate.definitionId) || definitionIds.has(candidate.definitionId)) errors.push(`Candidate has invalid or duplicate neutral mechanics ID: ${candidate.definitionId}.`);
     definitionIds.add(candidate.definitionId);
     if (candidate.runtimeLoadable || candidate.activation !== 'disabled') errors.push(`Provisional candidate ${candidate.definitionId} must remain disabled outside runtime.`);
+    if (candidate.mechanicsTags?.some((tag) => !idPattern.test(tag))) errors.push(`Provisional candidate ${candidate.definitionId} has an invalid mechanics tag.`);
     if (!candidate.fields.length) errors.push(`Provisional candidate ${candidate.definitionId} requires fields.`);
     const fieldNames = new Set<ProvisionalFieldName>();
     for (const field of candidate.fields) {

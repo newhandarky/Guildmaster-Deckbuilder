@@ -6,14 +6,15 @@ describe('base provisional effect capability matrix', () => {
     expect(validateEffectCapabilityMatrix(baseProvisionalEffectCapabilityMatrix)).toEqual([]);
     const statuses = new Set(baseProvisionalEffectCapabilityMatrix.capabilities.map((capability) => capability.status));
     for (const status of statuses) expect(capabilityStatuses).toContain(status);
-    expect(statuses).toContain('supported'); expect(statuses).toContain('blocked-by-rule-exception'); expect(statuses).toContain('not-in-MVP-yet');
+    expect(statuses).toContain('supported'); expect(statuses).toContain('not-in-MVP-yet');
+    expect(statuses).not.toContain('blocked-by-rule-exception');
     expect(statuses).not.toContain('missing-generic-capability');
   });
-  it('keeps all confirmed supply-copy gaps blocked and never invents a composition policy', () => {
+  it('treats per-kind counts as non-blocking metadata while preserving project-policy provenance', () => {
     const copies = baseProvisionalEffectCapabilityMatrix.capabilities.find((capability) => capability.id === 'supply/base-composition-by-copy-count')!;
-    expect(copies.status).toBe('blocked-by-rule-exception');
-    expect(copies.gapOrConstraint).toMatch(/不可由總數反推/);
-    expect(copies.recommendedNextStep).toMatch(/官方資料/);
+    expect(copies.status).toBe('supported');
+    expect(copies.summary).toMatch(/非阻擋 metadata/);
+    expect(copies.summary).toMatch(/project policy/);
   });
   it('requires supported evidence and uses only neutral mechanics IDs', () => {
     for (const capability of baseProvisionalEffectCapabilityMatrix.capabilities) {

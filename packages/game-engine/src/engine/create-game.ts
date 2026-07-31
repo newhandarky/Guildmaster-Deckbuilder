@@ -5,6 +5,7 @@ import { shuffle } from '../ports/random.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { refillConfiguredSupplyRows } from './supply.js';
 import { assertGameStateInvariants } from './state-invariants.js';
+import { supplyContinuityPolicyFor, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 export type GamePlayerConfig = { id: string; name: string; kind: PlayerKind };
 export type CreateGameConfig = { gameId: string; seed: number; players: readonly GamePlayerConfig[]; startingPlayerId?: string };
 function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState {
@@ -19,18 +20,22 @@ function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState
 }
 export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameState {
   const state = createEmptyState(config, ruleset); const events: DomainEvent[] = [];
-  const groups = { adventurer: [] as string[], equipment: [] as string[], item: [] as string[], monster: [] as string[] }; const bossDefinitionIds: string[] = [];
-  for (const definition of Object.values(ruleset.registry.definitions)) { if (definition.type === 'starter' || definition.type === 'bond') continue; for (let copy = 0; copy < definition.copies; copy += 1) { if (definition.type === 'boss') { bossDefinitionIds.push(definition.id); continue; } const card = createCard(state, definition.id); if (definition.type === 'adventurer') groups.adventurer.push(card.id); if (definition.type === 'equipment') groups.equipment.push(card.id); if (definition.type === 'item') groups.item.push(card.id); if (definition.type === 'monster') groups.monster.push(card.id); } }
-  state.zones[baseZoneIds.adventurerDeck]!.cardIds = shuffle(state, groups.adventurer); state.zones[baseZoneIds.itemDeck]!.cardIds = shuffle(state, [...groups.equipment, ...groups.item]); state.zones[baseZoneIds.monsterDeck]!.cardIds = shuffle(state, groups.monster); state.zones[baseZoneIds.bossDeck]!.cardIds = shuffle(state, bossDefinitionIds).slice(0, config.players.length + 2).map((definitionId) => createCard(state, definitionId).id);
+  const groups = { adventurer: [] as string[], equipment: [] as string[], item: [] as string[], monster: [] as string[] }; const cycleAnchors: string[] = []; const bossDefinitionIds: string[] = [];
+  const monsterContinuity = supplyContinuityPolicyFor(ruleset, 'monster');
+  if (monsterContinuity.status !== 'ready' || monsterContinuity.policy.mode !== 'require-full-cycle') throw new Error(monsterContinuity.status === 'failed' ? monsterContinuity.error : 'Base monster supply requires a full-cycle continuity policy.');
+  for (const definition of Object.values(ruleset.registry.definitions)) { if (definition.type === 'starter' || definition.type === 'bond') continue; for (let copy = 0; copy < definition.copies; copy += 1) { if (definition.type === 'boss') { bossDefinitionIds.push(definition.id); continue; } const card = createCard(state, definition.id); if (definition.type === 'adventurer') groups.adventurer.push(card.id); if (definition.type === 'equipment') groups.equipment.push(card.id); if (definition.type === 'item') groups.item.push(card.id); if (definition.type === 'monster') { if (definition.tags?.includes(monsterContinuity.policy.cycleAnchorTag)) cycleAnchors.push(card.id); else groups.monster.push(card.id); } } }
+  state.zones[baseZoneIds.adventurerDeck]!.cardIds = shuffle(state, groups.adventurer); state.zones[baseZoneIds.itemDeck]!.cardIds = shuffle(state, [...groups.equipment, ...groups.item]); state.zones[baseZoneIds.monsterDeck]!.cardIds = [...cycleAnchors, ...shuffle(state, groups.monster)]; state.zones[baseZoneIds.bossDeck]!.cardIds = shuffle(state, bossDefinitionIds).slice(0, config.players.length + 2).map((definitionId) => createCard(state, definitionId).id);
   const starter = ruleset.registry.starter;
   let partyDefinitionIds: readonly string[];
   if ('partyDefinitionIds' in starter) partyDefinitionIds = starter.partyDefinitionIds;
   else partyDefinitionIds = Array.from({ length: 5 }, () => starter.adventurerDefinitionId);
   for (const player of state.players) { for (const definitionId of partyDefinitionIds) player.party.push({ adventurerId: createCard(state, definitionId, player.id).id }); for (let count = 0; count < 4; count += 1) player.hand.push(createCard(state, ruleset.registry.starter.summonStoneDefinitionId, player.id).id); player.hand.push(createCard(state, ruleset.registry.starter.crystalDefinitionId, player.id).id); }
-  refillConfiguredSupplyRows(state, ruleset, events); attachTargets(state); assertGameStateInvariants(state); return state;
+  refillConfiguredSupplyRows(state, ruleset, events); attachTargets(state); assertGameStateInvariants(state);
+  const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) throw new Error(continuityErrors.join(' '));
+  return state;
 }
 export function attachTargets(state: GameState): void {
   const encounter = state.enemyEncounters.find(({ encounterId }) => encounterId === 'base:enemies'); if (!encounter) throw new Error('Missing base enemy encounter.');
   const rows: [string, string, string][] = [...state.zones[baseZoneIds.monsterRow]!.cardIds.map((id) => [id, 'monster', baseZoneIds.monsterRow] as [string, string, string]), ...state.zones[baseZoneIds.bossRow]!.cardIds.map((id) => [id, 'boss', baseZoneIds.bossRow] as [string, string, string])];
-  for (const [cardInstanceId, kind, zoneId] of rows) if (!Object.values(state.enemyTargets).some((target) => target.cardInstanceId === cardInstanceId)) { let sequence = Object.keys(state.enemyTargets).length + 1; while (state.enemyTargets[`base:target-${sequence}`]) sequence += 1; const targetId = `base:target-${sequence}`; state.enemyTargets[targetId] = { targetId, cardInstanceId, kind, status: 'available', parentEncounterId: encounter.encounterId, zoneId, attachments: [], moduleState: {} }; encounter.targetIds.push(targetId); }
+  for (const [cardInstanceId, kind, zoneId] of rows) if (!Object.values(state.enemyTargets).some((target) => target.cardInstanceId === cardInstanceId && target.status !== 'defeated' && target.status !== 'removed')) { let sequence = Object.keys(state.enemyTargets).length + 1; while (state.enemyTargets[`base:target-${sequence}`]) sequence += 1; const targetId = `base:target-${sequence}`; state.enemyTargets[targetId] = { targetId, cardInstanceId, kind, status: 'available', parentEncounterId: encounter.encounterId, zoneId, attachments: [], moduleState: {} }; encounter.targetIds.push(targetId); }
 }

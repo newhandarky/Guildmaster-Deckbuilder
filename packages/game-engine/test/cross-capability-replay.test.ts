@@ -102,7 +102,8 @@ const fixturePack: ContentPack = {
   manifest: { id: 'test:cross-replay-content', version: '1', hash: 'cross-replay-fixture', role: 'base' },
   definitions: [
     { id: 'test:cross-replay/stone', name: 'Fixture stone', type: 'starter', copies: 0, source: 'mvp-demo' },
-    { id: 'test:cross-replay/crystal', name: 'Fixture crystal', type: 'starter', copies: 0, source: 'mvp-demo' }
+    { id: 'test:cross-replay/crystal', name: 'Fixture crystal', type: 'starter', copies: 0, source: 'mvp-demo' },
+    { id: 'test:cross-replay/anchor', name: 'Fixture anchor', type: 'monster', copies: 3, combat: 1, source: 'mvp-demo', tags: ['base:supply-cycle-anchor'] }
   ],
   starter: {
     partyDefinitionIds: [],

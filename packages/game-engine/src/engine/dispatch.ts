@@ -4,7 +4,7 @@ import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js'
 import { getEndCondition, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
-import { refillConfiguredSupplyRows } from './supply.js';
+import { refillConfiguredSupplyRows, refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice, resumeEffectCounterConsent } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
@@ -18,6 +18,7 @@ import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewa
 import { defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
 import { validateGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
+import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -63,10 +64,56 @@ function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Rule
   return undefined;
 }
 
-function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
-  const player = getPlayer(state, envelope.actorId); const target = state.enemyTargets[(envelope.command as Extract<GameCommand, { type: 'ATTACK_TARGET' }>).targetId];
-  if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
+function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined {
+  const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload;
+  return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined;
+}
+
+function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, targetId: string, outcome: 'defeat-target' | 'remove-target', events: DomainEvent[], commandId: string): EngineError | undefined {
+  const target = state.enemyTargets[targetId];
+  if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: 'Combat target disappeared before final disposition.' };
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
+  const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
+  const monsterContinuity = target.kind === 'monster' ? evaluateMonsterDefeatContinuity(state, ruleset, targetId, outcome) : undefined;
+  if (monsterContinuity?.status === 'failed') return { code: 'INVALID_COMMAND', message: `${monsterContinuity.reason}: ${monsterContinuity.error}` };
+  if (encounter?.resolutionPolicy) {
+    const resolution = outcome === 'remove-target'
+      ? removeEnemyTarget(state, ruleset, { kind: 'remove-enemy-target', targetId, policy: encounter.resolutionPolicy }, events)
+      : defeatEnemyTarget(state, ruleset, { kind: 'defeat-enemy-target', targetId, policy: encounter.resolutionPolicy }, events);
+    if (!resolution.ok) return { code: 'INVALID_COMMAND', message: resolution.error };
+  } else {
+    if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
+    if (outcome === 'remove-target') {
+      target.status = 'removed';
+      state.removedCards.push(target.cardInstanceId);
+      event(state, events, 'ENEMY_REMOVED', `${definition.name} 的討伐結果被替代為移出遊戲。`, commandId);
+    } else {
+      target.status = 'defeated';
+      if (monsterContinuity?.status === 'ready' && monsterContinuity.recycle) getZone(state, baseZoneIds.monsterDeck).cardIds.unshift(target.cardInstanceId);
+      else player.discardPile.push(target.cardInstanceId);
+    }
+  }
+  if (target.kind === 'monster') {
+    try { refillSupply(state, ruleset, 'monster', events); attachTargets(state); }
+    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : 'Monster supply refill failed.' }; }
+    const continuityErrors = validateSupplyContinuityState(state, ruleset);
+    if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') };
+  }
+  return undefined;
+}
+
+function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
+  const player = getPlayer(state, envelope.actorId); const targetId = (envelope.command as Extract<GameCommand, { type: 'ATTACK_TARGET' }>).targetId;
+  const target = state.enemyTargets[targetId];
+  if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
+  const outcome = fixedCombatOutcome(events);
+  if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
+  const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
+  if (dispositionError) return dispositionError;
+  if (outcome === 'remove-target') return undefined;
+  const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
+  if (target.kind === 'boss') player.history.defeatedBosses += 1;
+  else player.history.defeatedMonsters += 1;
   const bondError = maybeCompleteBonds(state, player, ruleset, events, envelope.commandId); if (bondError) return bondError;
   event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEnd(state, ruleset, events, envelope.commandId); return undefined;
 }
@@ -149,7 +196,10 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   const combat = evaluateCombat(state, ruleset, player.id, command.targetId);
   if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
   if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
-  const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
+  if (target.kind === 'monster') {
+    const continuity = evaluateMonsterDefeatContinuity(state, ruleset, target.targetId, combat.evaluation.outcome.kind);
+    if (continuity.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${continuity.reason}: ${continuity.error}` };
+  }
   const prefix = getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat);
   if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
   const participants = player.party.splice(0, prefix.slotCount);
@@ -158,33 +208,9 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
   }
   event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
-  if (encounter?.resolutionPolicy) {
-    const policy = encounter.resolutionPolicy;
-    const resolution = combat.evaluation.outcome.kind === 'remove-target'
-      ? removeEnemyTarget(state, ruleset, { kind: 'remove-enemy-target', targetId: target.targetId, policy }, events)
-      : defeatEnemyTarget(state, ruleset, { kind: 'defeat-enemy-target', targetId: target.targetId, policy }, events);
-    if (!resolution.ok) return { code: 'INVALID_COMMAND', message: resolution.error };
-    if (combat.evaluation.outcome.kind === 'remove-target') return undefined;
-    if (target.kind === 'boss') player.history.defeatedBosses += 1;
-    else player.history.defeatedMonsters += 1;
-    const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
-    if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
-    const pipeline = beginCombatRewardPipeline(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, structuredClone(state), events, 0, rewards.evaluation, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } });
-    if (pipeline.status === 'suspended') return undefined;
-    if (pipeline.status !== 'completed') return { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Combat reward policy failed.' };
-    return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
-  }
-  if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
   if (combat.evaluation.outcome.kind === 'remove-target') {
-    target.status = 'removed';
-    state.removedCards.push(target.cardInstanceId);
-    event(state, events, 'ENEMY_REMOVED', `${definition.name} 的討伐結果被替代為移出遊戲。`, commandId);
-    return undefined;
+    return finalizeAttackTarget(state, ruleset, player, target.targetId, 'remove-target', events, commandId);
   }
-  target.status = 'defeated';
-  player.discardPile.push(target.cardInstanceId);
-  if (target.kind === 'boss') player.history.defeatedBosses += 1;
-  else player.history.defeatedMonsters += 1;
   const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
   if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
   const pipeline = beginCombatRewardPipeline(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, structuredClone(state), events, 0, rewards.evaluation, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } });
@@ -276,8 +302,9 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   envelope = parsedEnvelope.data;
   const stateErrors = validateGameStateInvariants(state); if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
   const registryError = validateRulesetStateCompatibility(state, ruleset); if (registryError) return fail(state, 'INVALID_COMMAND', registryError);
+  const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return fail(state, 'INVALID_COMMAND', continuityErrors.join(' '));
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
-  if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '公共供應牌庫耗盡的官方結果尚待確認。');
+  if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '目前 Rules Module 尚有必須先完成的規則裁定。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
   const pendingChoice = state.effectState.pendingChoice; const pendingConsent = state.effectState.pendingCounterConsent;
   if (pendingConsent ? !state.players.some(({ id }) => id === envelope.actorId) : envelope.actorId !== (pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家可執行的指令。');
@@ -399,7 +426,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   const result = dispatchInternal(state, ruleset, envelope);
   if (result.error) return result;
-  const errors = validateGameStateInvariants(result.state); const registryError = validateRulesetStateCompatibility(result.state, ruleset);
+  const errors = [...validateGameStateInvariants(result.state), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
   if (errors.length || registryError) return fail(state, 'INVALID_COMMAND', `Command produced invalid state: ${[...errors, ...(registryError ? [registryError] : [])].join(' ')}`);
   return result;
 }

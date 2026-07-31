@@ -44,7 +44,7 @@ export function assembleProvisionalPlaytestPack(catalog: ProvisionalBaseContentC
     const fields = Object.fromEntries(candidate.fields.filter(isRelevant).map((field) => [field.field, field.candidateValue]));
     const type = candidate.category === 'starter' ? 'starter' : fields.cardType;
     if (typeof type !== 'string' || !definitionTypes.has(type)) return undefined;
-    const definition: CardDefinition = { id: candidate.definitionId, name: placeholderName(candidate.definitionId), type, copies: typeof fields.copies === 'number' ? fields.copies : 0, source: 'provisional-playtest' };
+    const definition: CardDefinition = { id: candidate.definitionId, name: placeholderName(candidate.definitionId), type, copies: typeof fields.copies === 'number' ? fields.copies : 0, source: 'provisional-playtest', ...(candidate.mechanicsTags?.length ? { tags: [...candidate.mechanicsTags] } : {}) };
     for (const numericField of ['cost', 'combat', 'purchasePower', 'honor'] as const) if (typeof fields[numericField] === 'number') definition[numericField] = fields[numericField];
     return definition;
   }).filter((definition): definition is CardDefinition => definition !== undefined);

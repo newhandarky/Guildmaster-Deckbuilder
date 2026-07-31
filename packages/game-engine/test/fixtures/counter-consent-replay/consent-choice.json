@@ -48,7 +48,7 @@
         "revision": 1,
         "eventLogCursor": 10,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:3648b507",
+        "stateFingerprint": "fnv1a32:126312a7",
         "orderedEvents": [
           { "eventId": "transaction:choice-start:1", "type": "EFFECT_STARTED", "causedByCommandId": "choice-start", "reasonCode": null },
           { "eventId": "transaction:choice-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": "choice-start", "reasonCode": null },

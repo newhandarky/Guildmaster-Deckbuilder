@@ -11,14 +11,21 @@ type Props = {
 
 export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onAction }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement>();
+  if (trigger) lastTriggerRef.current = trigger;
   const restoreFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        const focusTarget = trigger?.isConnected ? trigger : getFocusFallback();
+        const lastTrigger = lastTriggerRef.current;
+        const instanceId = lastTrigger?.dataset.cardInstanceId;
+        const replacement = instanceId
+          ? Array.from(document.querySelectorAll<HTMLButtonElement>('[data-card-instance-id]')).find((element) => element.dataset.cardInstanceId === instanceId)
+          : undefined;
+        const focusTarget = lastTrigger?.isConnected ? lastTrigger : replacement ?? getFocusFallback();
         focusTarget?.focus();
       });
     });
-  }, [getFocusFallback, trigger]);
+  }, [getFocusFallback]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
