@@ -1,30 +1,41 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
 
 type Props = {
   card: CardVisualViewModel | undefined;
   trigger: HTMLButtonElement | undefined;
+  getFocusFallback: () => HTMLElement | undefined;
   onClose: () => void;
   onAction: (action: CardAction) => void;
 };
 
-export function CardDetailsPanel({ card, trigger, onClose, onAction }: Props) {
+export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onAction }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const restoreFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const focusTarget = trigger?.isConnected ? trigger : getFocusFallback();
+        focusTarget?.focus();
+      });
+    });
+  }, [getFocusFallback, trigger]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (card && !dialog.open) dialog.showModal();
-    if (!card && dialog.open) dialog.close();
-  }, [card]);
+    if (!card && dialog.open) {
+      dialog.close();
+      onClose();
+      restoreFocus();
+    }
+  }, [card, onClose, restoreFocus]);
 
   const close = () => {
     const dialog = dialogRef.current;
     if (dialog?.open) dialog.close();
     onClose();
-    window.requestAnimationFrame(() => {
-      if (trigger?.isConnected) trigger.focus();
-    });
+    restoreFocus();
   };
 
   const runAction = (action: CardAction) => {
@@ -61,10 +72,12 @@ export function CardDetailsPanel({ card, trigger, onClose, onAction }: Props) {
           <dd>{metric.value}</dd>
         </div>)}
       </dl> : null}
-      {card.tags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
-        {card.tags.map((tag) => <span key={tag}>{tag}</span>)}
-      </div> : null}
-      <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
+      <div className="card-details-meta">
+        {card.tags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
+          {card.tags.map((tag) => <span key={tag}>{tag}</span>)}
+        </div> : null}
+        <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
+      </div>
       <footer>
         {card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
         <button type="button" onClick={close}>關閉</button>

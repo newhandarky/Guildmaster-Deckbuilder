@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
-import { buildCardVisualModel, commandAction, equipmentSelectionAction } from './card-visual-model.js';
+import { buildCardVisualModel, commandAction, equipmentSelectionAction, isCardActionCurrent } from './card-visual-model.js';
 
 const instance: CardInstance = { id: 'card-1', definitionId: 'demo:adventurer/one' };
 const presentation: PresentationViewModel = {
@@ -74,5 +74,20 @@ describe('card visual model', () => {
     ];
     expect(equipmentSelectionAction('equipment-1', legal)).toMatchObject({ kind: 'select-equipment', commands: legal });
     expect(equipmentSelectionAction('equipment-1', [])).toBeUndefined();
+  });
+
+  it('invalidates a details command as soon as it leaves the authoritative legal set', () => {
+    const play: GameCommand = { type: 'PLAY_ADVENTURER', cardId: instance.id };
+    const action = commandAction('play', '加入隊伍', play);
+    expect(isCardActionCurrent(action, [structuredClone(play)])).toBe(true);
+    expect(isCardActionCurrent(action, [{ type: 'END_PHASE', phase: 'action1' }])).toBe(false);
+  });
+
+  it('requires the complete current equipment target set', () => {
+    const first: Extract<GameCommand, { type: 'EQUIP_ITEM' }> = { type: 'EQUIP_ITEM', cardId: 'equipment-1', adventurerId: 'adventurer-1' };
+    const second: Extract<GameCommand, { type: 'EQUIP_ITEM' }> = { type: 'EQUIP_ITEM', cardId: 'equipment-1', adventurerId: 'adventurer-2' };
+    const action = equipmentSelectionAction('equipment-1', [first, second]);
+    expect(isCardActionCurrent(action, [second, first])).toBe(true);
+    expect(isCardActionCurrent(action, [first])).toBe(false);
   });
 });

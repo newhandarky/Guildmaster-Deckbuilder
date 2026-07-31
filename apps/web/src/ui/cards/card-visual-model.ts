@@ -147,3 +147,23 @@ export function equipmentSelectionAction(
     ? { kind: 'select-equipment', id: `select-equipment:${cardId}`, label: '選擇配戴對象', equipmentCardId: cardId, commands: [...commands] }
     : undefined;
 }
+
+function commandFingerprint(command: GameCommand): string {
+  return JSON.stringify(command);
+}
+
+/** Keeps details actions tied to the current authoritative legal-command set, even before a transaction commits. */
+export function isCardActionCurrent(action: CardAction | undefined, legalCommands: readonly GameCommand[]): boolean {
+  if (!action) return true;
+  if (action.kind === 'command') {
+    const expected = commandFingerprint(action.command);
+    return legalCommands.some((command) => commandFingerprint(command) === expected);
+  }
+  const expected = action.commands.map(commandFingerprint).sort();
+  const current = legalCommands
+    .filter((command): command is Extract<GameCommand, { type: 'EQUIP_ITEM' }> =>
+      command.type === 'EQUIP_ITEM' && command.cardId === action.equipmentCardId)
+    .map(commandFingerprint)
+    .sort();
+  return JSON.stringify(current) === JSON.stringify(expected);
+}
