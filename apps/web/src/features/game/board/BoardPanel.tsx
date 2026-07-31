@@ -18,11 +18,17 @@ function definitionFor(cards: Props['cards'], definitions: Props['definitions'],
 
 export function BoardPanel({ zones, targets, definitions, cards, presentation, legalCommands, onInspect }: Props) {
   const cardsIn = (zoneId: string) => zones[zoneId]?.cardIds ?? [];
-  const targetFor = (cardId: string) => Object.values(targets).find((target) => target.cardInstanceId === cardId && target.status === 'available');
-  const renderRow = (zoneId: string, title: string, ids: string[], action: 'attack' | 'buy') => {
+  const availableTargets = new Map(
+    Object.values(targets)
+      .filter((target) => target.status === 'available')
+      .map((target) => [target.cardInstanceId, target]),
+  );
+  const renderRow = (zoneId: string, title: string, ids: readonly string[], action: 'attack' | 'buy') => {
     const emptyMessage = emptySupplyMessage(zoneId, ids.length);
-    return <section><h2>{title}</h2><div className="card-row">{ids.map((id) => {
-      const target = targetFor(id);
+    return <section className="board-row" data-zone-id={zoneId}>
+      <h3>{title}</h3>
+      <div className="card-row" aria-label={`${title}卡片`}>{ids.map((id) => {
+      const target = availableTargets.get(id);
       const definition = definitionFor(cards, definitions, id);
       const command = action === 'attack'
         ? legalCommands.find((candidate): candidate is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => candidate.type === 'ATTACK_TARGET' && candidate.targetId === target?.targetId)
@@ -38,12 +44,20 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
         action: cardAction,
       });
       return <Card key={id} card={card} onInspect={onInspect} />;
-    })}</div>{emptyMessage ? <p className="supply-empty-state">{emptyMessage}</p> : null}</section>;
+    })}</div>
+      {emptyMessage ? <p className="supply-empty-state">{emptyMessage}</p> : null}
+    </section>;
   };
-  return <div className="board-grid">
-    {renderRow('base:adventurer-row', `招募區（牌庫 ${cardsIn('base:adventurer-deck').length}）`, cardsIn('base:adventurer-row'), 'buy')}
-    {renderRow('base:item-row', `商店（牌庫 ${cardsIn('base:item-deck').length}）`, cardsIn('base:item-row'), 'buy')}
-    {renderRow('base:monster-row', `魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack')}
-    {renderRow('base:boss-row', `魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack')}
+  return <div className="public-table-grid" data-testid="public-table">
+    <div className="table-area encounter-area" data-testid="encounter-area" role="region" aria-labelledby="encounter-area-title">
+      <h2 id="encounter-area-title" className="area-title">公共遭遇區</h2>
+      {renderRow('base:boss-row', `魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack')}
+      {renderRow('base:monster-row', `魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack')}
+    </div>
+    <div className="table-area tavern-area" data-testid="tavern-area" role="region" aria-labelledby="tavern-area-title">
+      <h2 id="tavern-area-title" className="area-title">酒館供應區</h2>
+      {renderRow('base:adventurer-row', `招募區（牌庫 ${cardsIn('base:adventurer-deck').length}）`, cardsIn('base:adventurer-row'), 'buy')}
+      {renderRow('base:item-row', `商店（牌庫 ${cardsIn('base:item-deck').length}）`, cardsIn('base:item-row'), 'buy')}
+    </div>
   </div>;
 }
