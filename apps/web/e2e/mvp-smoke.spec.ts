@@ -10,6 +10,16 @@ test('opening game shows the human guild, hand, and a valid action', async ({ pa
   await expect(page.getByTestId('interaction-hint')).toContainText('可操作');
 });
 
+test('empty adventurer and item supplies show approved copy while monsters remain full', async ({ page }) => {
+  await page.goto('/?e2eScenario=empty-partial-supplies');
+  await expect(page.getByText('目前沒有冒險者可以雇用')).toBeVisible();
+  await expect(page.getByText('目前沒有道具、裝備可以販售')).toBeVisible();
+  const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+  await expect(monsterRow.getByRole('button')).toHaveCount(3);
+  await expect(monsterRow).not.toContainText(/沒有|耗盡/);
+  await expect(page.getByTestId('end-phase')).toBeEnabled();
+});
+
 test('a completed human turn lets the AI finish and returns control to the human', async ({ page }) => {
   await page.goto('/');
   const endPhase = page.getByTestId('end-phase');

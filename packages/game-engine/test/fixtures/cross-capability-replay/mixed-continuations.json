@@ -53,7 +53,7 @@
         "revision": 1,
         "eventLogCursor": 11,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:b152c639",
+        "stateFingerprint": "fnv1a32:3b306c84",
         "continuations": [
           {
             "index": 0,
@@ -67,7 +67,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:15e98035"
+            "snapshotFingerprint": "fnv1a32:63a67f8d"
           },
           {
             "index": 1,
@@ -81,7 +81,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:3420aa49"
+            "snapshotFingerprint": "fnv1a32:032918fc"
           },
           {
             "index": 2,
@@ -95,7 +95,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:82b8499f"
+            "snapshotFingerprint": "fnv1a32:9a6eba2c"
           }
         ],
         "orderedEvents": [
@@ -165,7 +165,7 @@
         "revision": 1,
         "eventLogCursor": 12,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:8240f349",
+        "stateFingerprint": "fnv1a32:9e7da9d8",
         "continuations": [
           {
             "index": 0,
@@ -179,7 +179,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 47,
-            "snapshotFingerprint": "fnv1a32:b2d9d9cb"
+            "snapshotFingerprint": "fnv1a32:fcd748de"
           },
           {
             "index": 1,
@@ -193,7 +193,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:c6e09d89"
+            "snapshotFingerprint": "fnv1a32:2f474d69"
           },
           {
             "index": 2,
@@ -207,7 +207,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:b406851d"
+            "snapshotFingerprint": "fnv1a32:f60a906c"
           }
         ],
         "orderedEvents": [
@@ -291,7 +291,7 @@
         "revision": 1,
         "eventLogCursor": 18,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:e51aadbf",
+        "stateFingerprint": "fnv1a32:32875cd4",
         "continuations": [
           {
             "index": 0,
@@ -305,7 +305,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 47,
-            "snapshotFingerprint": "fnv1a32:9e05c7c8"
+            "snapshotFingerprint": "fnv1a32:549db0a5"
           },
           {
             "index": 1,
@@ -319,7 +319,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:cd6448a1"
+            "snapshotFingerprint": "fnv1a32:184116a3"
           },
           {
             "index": 2,
@@ -333,7 +333,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:80b1d3a8"
+            "snapshotFingerprint": "fnv1a32:a540cbd3"
           },
           {
             "index": 3,
@@ -347,7 +347,7 @@
             "revision": 0,
             "eventLogCursor": 0,
             "rngState": 12182925,
-            "snapshotFingerprint": "fnv1a32:ed403f7f"
+            "snapshotFingerprint": "fnv1a32:f15fc02e"
           }
         ],
         "orderedEvents": [

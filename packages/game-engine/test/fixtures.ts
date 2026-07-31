@@ -12,6 +12,7 @@ export const testPack: ContentPack = {
     { id: 'test:item/spear', name: '短槍', type: 'equipment', copies: 3, cost: 2, combat: 1, source: 'mvp-demo' },
     { id: 'test:item/ration', name: '口糧', type: 'item', copies: 3, cost: 2, itemEffect: 'combat+2', source: 'mvp-demo' },
     { id: 'test:monster/wolf', name: '狼', type: 'monster', copies: 4, combat: 3, purchasePower: 1, honor: 1, source: 'mvp-demo' },
+    { id: 'test:monster/anchor', name: '循環魔物', type: 'monster', copies: 3, combat: 3, purchasePower: 1, honor: 1, source: 'mvp-demo', tags: ['base:supply-cycle-anchor'] },
     { id: 'test:boss/a', name: '魔王 A', type: 'boss', copies: 1, combat: 4, honor: 2, source: 'mvp-demo' },
     { id: 'test:boss/b', name: '魔王 B', type: 'boss', copies: 1, combat: 4, honor: 2, source: 'mvp-demo' },
     { id: 'test:boss/c', name: '魔王 C', type: 'boss', copies: 1, combat: 4, honor: 2, source: 'mvp-demo' },

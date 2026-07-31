@@ -19,7 +19,7 @@
 - 個人牌庫只在抽牌過程中空且仍要繼續抽時重洗；查看／展示牌庫頂不重洗。
 - 道具結算後留在使用區，休息時才棄至棄牌堆（FAQ 勘誤）。
 - 神樂的「查看」修為「展示」；巴風特與奇美拉採官方 FAQ 補充；修爾蒂自身不吃自身的第一位加成。
-- 基礎版冒險者／物資供應耗盡後允許公開列縮減至空並繼續遊戲；骷髏戰士 3 張在擊敗後回到魔物牌庫底。這是 2026-07-31 核准的專案 policy。
+- 基礎版冒險者／物資供應耗盡後允許公開列縮減至空並繼續遊戲；骷髏戰士 3 張在擊敗後回到魔物牌庫底，使魔物區 committed state 始終正好 3 張。這是 2026-07-31 核准並以 `project-policy` evidence 記錄的專案 policy。
 - 以上規則會保留在規則文件／Rules Module，並不因候選 catalog 而自動寫進 UI 或 production runtime。
 
 完整欄位、來源定位、confidence 與 exception reason 由 TypeScript catalog 驗證；請見 [例外清單](./26-基礎版Provisional例外清單.md)。

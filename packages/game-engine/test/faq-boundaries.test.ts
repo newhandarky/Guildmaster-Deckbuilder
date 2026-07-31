@@ -25,13 +25,14 @@ describe('FAQ 與供應牌庫邊界', () => {
     expect([...restedPlayer.drawPile, ...restedPlayer.hand, ...restedPlayer.discardPile]).toContain(itemId);
   });
 
-  it('公共供應牌庫耗盡會發出正式事件並暫停待官方確認', () => {
+  it('冒險者供應牌庫耗盡會發出稽核事件但不暫停遊戲', () => {
     const state = makeGame();
-    state.zones[baseZoneIds.monsterRow]!.cardIds = [];
-    state.zones[baseZoneIds.monsterDeck]!.cardIds = [state.zones[baseZoneIds.monsterDeck]!.cardIds[0]!];
+    state.zones[baseZoneIds.adventurerRow]!.cardIds = [];
+    state.zones[baseZoneIds.adventurerDeck]!.cardIds = [state.zones[baseZoneIds.adventurerDeck]!.cardIds[0]!];
     const events: DomainEvent[] = [];
-    refillSupply(state, testRuleset, 'monster', events);
+    refillSupply(state, testRuleset, 'adventurer', events);
     expect(events.some((event) => event.type === 'SUPPLY_DECK_DEPLETED')).toBe(true);
-    expect(state.status).toBe('pendingOfficialRuling');
+    expect(state.status).toBe('playing');
+    expect(state.zones[baseZoneIds.adventurerRow]!.cardIds).toHaveLength(1);
   });
 });

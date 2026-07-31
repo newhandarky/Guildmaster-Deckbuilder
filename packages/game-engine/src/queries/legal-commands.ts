@@ -6,6 +6,7 @@ import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
+import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 
 const maxAttackPreviewDepth = 32;
 const maxAttackPreviewBranches = 256;
@@ -60,7 +61,9 @@ function attackIsLegalInAnyPreview(preview: AttackPreviewResult, ruleset: Rulese
     const encounter = target?.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
     if (!target || target.status !== 'available' || encounter?.status === 'finished' || target.health) return false;
     const result = evaluateCombat(state, ruleset, actorId, targetId);
-    return result.status === 'ready' && result.evaluation.eligible && getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
+    if (result.status !== 'ready' || !result.evaluation.eligible) return false;
+    if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, targetId, result.evaluation.outcome.kind).status !== 'ready') return false;
+    return getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
   });
 }
 
@@ -85,6 +88,7 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
+  if (validateSupplyContinuityState(state, ruleset).length) return [];
   const consent = state.effectState.pendingCounterConsent;
   if (consent) {
     if (!state.players.some(({ id }) => id === actorId)) return [];
@@ -126,6 +130,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     const preview = previewAttackCommandBefore(state, ruleset, actorId);
     for (const target of Object.values(state.enemyTargets)) {
       if (target.status !== 'available') continue;
+      if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, target.targetId).status !== 'ready') continue;
       if (attackIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
     }
   }

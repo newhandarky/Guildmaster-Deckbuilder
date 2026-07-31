@@ -73,7 +73,7 @@
 - 建立 GameState、玩家區域、公共 zones、卡片 instances
 - 五階段 state machine
 - 個人牌庫「抽牌途中」重建與展示不洗牌
-- `SUPPLY_DECK_DEPLETED` 正式事件
+- 冒險者／物資 `SUPPLY_DECK_DEPLETED` 正式事件；魔物以循環 policy 維持公開列正好 3 張
 - 動態隊伍上限 selector，以基礎值 5 啟用
 - 一般魔王／魔物 encounters 與基礎討伐
 - 購買力明細、購買、休息與回合切換

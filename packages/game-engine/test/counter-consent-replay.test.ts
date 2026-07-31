@@ -82,7 +82,8 @@ const fixturePack: ContentPack = {
   manifest: { id: 'test:counter-replay-content', version: '1', hash: 'counter-replay-fixture', role: 'base' },
   definitions: [
     { id: 'test:counter-replay/stone', name: 'Fixture stone', type: 'starter', copies: 0, source: 'mvp-demo' },
-    { id: 'test:counter-replay/crystal', name: 'Fixture crystal', type: 'starter', copies: 0, source: 'mvp-demo' }
+    { id: 'test:counter-replay/crystal', name: 'Fixture crystal', type: 'starter', copies: 0, source: 'mvp-demo' },
+    { id: 'test:counter-replay/anchor', name: 'Fixture anchor', type: 'monster', copies: 3, combat: 1, source: 'mvp-demo', tags: ['base:supply-cycle-anchor'] }
   ],
   starter: { partyDefinitionIds: [], summonStoneDefinitionId: 'test:counter-replay/stone', crystalDefinitionId: 'test:counter-replay/crystal' },
   bonds: []
@@ -208,7 +209,7 @@ function expectScenario(scenario: PositiveScenario): void {
   expect(restored.state).toEqual(uninterrupted.state);
   expect(restored.events).toEqual(uninterrupted.events);
   const owner = restored.state.players[0]!;
-  expect({
+  const actual = {
     phase: restored.state.phase,
     purchaseBonus: owner.turnPurchaseBonus,
     counterVisibility: owner.counters[0]!.visibility,
@@ -220,7 +221,8 @@ function expectScenario(scenario: PositiveScenario): void {
     rngState: restored.state.rngState,
     stateFingerprint: stateFingerprint(restored.state),
     orderedEvents: eventProjection(restored.events)
-  }).toEqual(scenario.expected);
+  };
+  expect(actual).toEqual(scenario.expected);
   expect(new Set(restored.events.map(({ eventId }) => eventId)).size).toBe(restored.events.length);
   const observer = restored.state.players[1]!.id;
   const visibleCounters = projectPlayerView(restored.state, restored.ruleset, observer).opponents.find(({ id }) => id === 'p1')!.counters;

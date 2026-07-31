@@ -1,7 +1,7 @@
 import type { ProvisionalBaseContentCatalog, ProvisionalCardCandidate, ProvisionalField } from './schema.js';
 
 const url = 'https://www.paintcanfarm.com/aggboardgames/zh';
-const sourceIds = { rulebook: 'local-visual:base-rulebook', starter: 'local-visual:base-starter-sheet', adventurer: 'local-visual:base-adventurer-sheet', resource: 'local-visual:base-resource-sheet', monster: 'local-visual:base-monster-sheet', boss: 'local-visual:base-boss-sheet', bond: 'local-visual:base-bond-sheet', helper: 'local-visual:base-helper-sheet', faq: 'official-text:base-faq-2025-09-01' } as const;
+const sourceIds = { rulebook: 'local-visual:base-rulebook', starter: 'local-visual:base-starter-sheet', adventurer: 'local-visual:base-adventurer-sheet', resource: 'local-visual:base-resource-sheet', monster: 'local-visual:base-monster-sheet', boss: 'local-visual:base-boss-sheet', bond: 'local-visual:base-bond-sheet', helper: 'local-visual:base-helper-sheet', faq: 'official-text:base-faq-2025-09-01', projectPolicy: 'project-policy:base-supply-continuity-2026-07-31' } as const;
 type Source = keyof typeof sourceIds;
 const field = (name: ProvisionalField['field'], candidateValue: string | number | boolean | undefined, source: Source, sourceLocation: string, confidence: ProvisionalField['confidence'] = 'high', status: ProvisionalField['status'] = candidateValue === undefined ? 'exception' : 'provisional', exceptionReason?: string): ProvisionalField => ({ field: name, status, confidence, sourceIds: [sourceIds[source]], sourceLocation, ...(candidateValue === undefined ? {} : { candidateValue }), ...(status === 'exception' ? { exceptionReason: exceptionReason ?? 'Visual evidence does not establish this field clearly enough for provisional rules use.' } : {}) });
 const card = (definitionId: string, category: ProvisionalCardCandidate['category'], sourceName: string, source: Source, region: string, values: readonly ProvisionalField[]): ProvisionalCardCandidate => ({ definitionId, category, runtimeLoadable: false, activation: 'disabled', fields: [field('sourceName', sourceName, source, region), ...values] });
@@ -72,7 +72,13 @@ const monsterRewards: Record<string, string> = {
   'monster-13': '可捨棄全部手牌，抽等量的牌。',
   'monster-14': '抽 1 張牌。'
 };
-const monsters = monsterRows.map(([id, name, combat, purchasePower, honor], i) => card(`base:monster/${id}`, 'monster', name, 'monster', `card-05.jpg；第 ${i + 1} 張`, [field('cardType', 'monster', 'rulebook', 'page-07.jpg；印刷頁 5；魔物卡'), field('copies', undefined, 'rulebook', 'page-04.jpg；印刷頁 2；魔物卡共 32 張；card-05.jpg 顯示 14 種', 'medium', 'exception', 'Per-card multiplicities are not explicitly shown.'), ...stats('monster', `card-05.jpg；第 ${i + 1} 張`, undefined, combat, purchasePower, honor), effect('monster', `card-05.jpg；第 ${i + 1} 張`, monsterRewards[id], 'high')]));
+const monsters = monsterRows.map(([id, name, combat, purchasePower, honor], i) => {
+  const copies = id === 'monster-01'
+    ? field('copies', 3, 'projectPolicy', '2026-07-31 專案負責人核准：骷髏戰士固定 3 張', 'high')
+    : field('copies', undefined, 'rulebook', 'page-04.jpg；印刷頁 2；魔物卡共 32 張；card-05.jpg 顯示 14 種', 'medium', 'exception', 'Per-card multiplicities are not explicitly shown; this metadata is non-blocking.');
+  const candidate = card(`base:monster/${id}`, 'monster', name, 'monster', `card-05.jpg；第 ${i + 1} 張`, [field('cardType', 'monster', 'rulebook', 'page-07.jpg；印刷頁 5；魔物卡'), copies, ...stats('monster', `card-05.jpg；第 ${i + 1} 張`, undefined, combat, purchasePower, honor), effect('monster', `card-05.jpg；第 ${i + 1} 張`, monsterRewards[id], 'high')]);
+  return id === 'monster-01' ? { ...candidate, mechanicsTags: ['base:supply-cycle-anchor'] } : candidate;
+});
 
 const bossRows: readonly [string, string, number, number, number][] = [['boss-01','紅龍',9,3,10],['boss-02','巴風特',9,3,10],['boss-03','巫妖',10,3,10],['boss-04','奇美拉',5,3,10],['boss-05','究極機械獸EX',9,3,10],['boss-06','巨魔',8,3,10],['boss-07','魅魔',9,3,8],['boss-08','暗黑精靈',9,3,8],['boss-09','哈比',8,3,8],['boss-10','史萊姆娘',14,3,8],['boss-11','狼女',6,3,8]];
 const bossEffects: Record<string, string> = {
@@ -123,7 +129,8 @@ export const baseProvisionalContentCatalog: ProvisionalBaseContentCatalog = {
     { sourceId: sourceIds.rulebook, officialUrl: url, documentName: '冒險少女公會 基礎規則書（使用者合法提供的本機視覺副本）', providedFileName: 'page-04.jpg 至 page-13.jpg', region: '印刷頁 2–11', reviewedOn: '2026-07-28', repositoryAsset: 'not-committed' },
     { sourceId: sourceIds.starter, officialUrl: url, documentName: '冒險少女公會 起始卡表（使用者合法提供的本機視覺副本）', providedFileName: 'card-07.jpg', region: '全部起始卡區域', reviewedOn: '2026-07-28', repositoryAsset: 'not-committed' },
     ...(['adventurer','resource','monster','boss','bond','helper'] as const).map((kind) => ({ sourceId: sourceIds[kind], officialUrl: url, documentName: `冒險少女公會 ${kind} 卡表（使用者合法提供的本機視覺副本）`, providedFileName: `card-${({adventurer:'01',resource:'03',monster:'05',boss:'04',bond:'02',helper:'06'} as Record<string,string>)[kind]}.jpg`, region: '全部卡牌格', reviewedOn: '2026-07-28', repositoryAsset: 'not-committed' as const })),
-    { sourceId: sourceIds.faq, officialUrl: url, documentName: '官方網站 Q&A 2025/9/1 更新', providedFileName: 'not-a-local-asset', region: '初版實體說明書勘誤、效果敘述微調與補充說明', reviewedOn: '2026-07-28', repositoryAsset: 'not-committed' }
+    { sourceId: sourceIds.faq, officialUrl: url, documentName: '官方網站 Q&A 2025/9/1 更新', providedFileName: 'not-a-local-asset', region: '初版實體說明書勘誤、效果敘述微調與補充說明', reviewedOn: '2026-07-28', repositoryAsset: 'not-committed' },
+    { evidenceKind: 'project-policy', sourceId: sourceIds.projectPolicy, title: '基礎版供應連續性核准政策', locator: '專案負責人確認：骷髏戰士固定 3 張並在討伐獎勵後回魔物牌庫底', decidedOn: '2026-07-31', recordedOn: '2026-07-31', repositoryAsset: 'not-committed' }
   ],
   candidates: [...starters, ...starterResources, ...adventurers, ...resources, ...monsters, ...bosses, ...bonds, ...helpers]
 };

@@ -88,7 +88,7 @@ describe('core abstraction contracts', () => {
     expect(illegal.error?.code).toBe('INVALID_COMMAND'); expect(illegal.state).toBe(state); expect(illegal.events).toEqual([]);
   });
 
-  it('marks supply exhaustion as pending official ruling after the current rest completes', () => {
+  it('keeps the base game active and the monster row full after rest', () => {
     const state = makeGame(); state.phase = 'combat';
     const targetId = Object.values(state.enemyTargets).find((target) => target.kind === 'monster')!.targetId;
     const defeated = dispatch(state, testRuleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })).state;
@@ -96,8 +96,9 @@ describe('core abstraction contracts', () => {
     const purchase = dispatch(action2, testRuleset, envelope(action2, 'p1', { type: 'END_PHASE', phase: 'action2' })).state;
     const rest = dispatch(purchase, testRuleset, envelope(purchase, 'p1', { type: 'END_PHASE', phase: 'purchase' })).state;
     const result = dispatch(rest, testRuleset, envelope(rest, 'p1', { type: 'END_PHASE', phase: 'rest' })).state;
-    expect(result.status).toBe('pendingOfficialRuling');
+    expect(result.status).toBe('playing');
     expect(result.phase).toBe('action1');
     expect(result.activePlayerId).toBe('p2');
+    expect(result.zones[baseZoneIds.monsterRow]!.cardIds).toHaveLength(3);
   });
 });

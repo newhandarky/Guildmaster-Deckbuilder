@@ -35,7 +35,7 @@
         "revision": 1,
         "eventLogCursor": 9,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:635e972e",
+        "stateFingerprint": "fnv1a32:441c3caa",
         "orderedEvents": [
           { "eventId": "transaction:post-start:1", "type": "PHASE_ENDED", "causedByCommandId": "post-start", "reasonCode": null },
           { "eventId": "transaction:post-start:2", "type": "EFFECT_STARTED", "causedByCommandId": "post-start", "reasonCode": null },
