@@ -103,7 +103,7 @@ export type EnemyTargetResolutionEvaluation = {
   reasonCode: EncounterReasonCode;
 };
 
-export type EnemyTargetDamageRequest = { schemaVersion: 1; targetId: string; requestedDamage: number; policy?: EncounterPolicyRef };
+export type EnemyTargetDamageRequest = { schemaVersion: 1; targetId: string; requestedDamage: number; policy?: EncounterPolicyRef; lethalOutcome?: 'defeated' | 'removed' | undefined };
 export type EnemyTargetDamageEvaluationInput = {
   schemaVersion: 1;
   encounter: EncounterRef;
@@ -112,6 +112,7 @@ export type EnemyTargetDamageEvaluationInput = {
   fixedAttachmentIds: readonly string[];
   healthBefore: EnemyTargetHealth;
   requestedDamage: number;
+  lethalOutcome?: 'defeated' | 'removed' | undefined;
   policy: EncounterPolicyRef;
   registry: EncounterRegistryFingerprint;
 };
@@ -222,12 +223,12 @@ const sourceSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('e
 export const EncounterDestinationMutationPlanSchema = z.object({ schemaVersion: z.literal(1), targetId: nonEmpty, targetStatus: z.enum(['defeated', 'removed']), mutations: z.array(z.object({ cardInstanceId: nonEmpty, source: sourceSchema, destination: destinationSchema }).strict()) }).strict();
 export const EncounterCompletionRequestSchema = z.object({ schemaVersion: z.literal(1), encounterId: nonEmpty, policy: EncounterPolicyRefSchema.optional(), explicit: z.boolean().optional() }).strict();
 export const EnemyTargetResolutionRequestSchema = z.object({ schemaVersion: z.literal(1), targetId: nonEmpty, outcome: z.enum(['defeated', 'removed']), policy: EncounterPolicyRefSchema.optional() }).strict();
-export const EnemyTargetDamageRequestSchema = z.object({ schemaVersion: z.literal(1), targetId: nonEmpty, requestedDamage: z.number().finite().int().nonnegative(), policy: EncounterPolicyRefSchema.optional() }).strict();
+export const EnemyTargetDamageRequestSchema = z.object({ schemaVersion: z.literal(1), targetId: nonEmpty, requestedDamage: z.number().finite().int().nonnegative(), policy: EncounterPolicyRefSchema.optional(), lethalOutcome: z.enum(['defeated', 'removed']).optional() }).strict();
 const completionInputSchema = z.object({ schemaVersion: z.literal(1), encounter: encounterRefSchema, fixedTargetIds: z.array(nonEmpty), targets: z.array(targetSnapshotSchema), policy: EncounterPolicyRefSchema, registry: EncounterRegistryFingerprintSchema }).strict();
 export const EncounterCompletionEvaluationSchema = z.object({ schemaVersion: z.literal(1), input: completionInputSchema, completed: z.boolean(), alreadyCompleted: z.boolean(), reasonCode: EncounterReasonCodeSchema }).strict();
 const resolutionInputSchema = z.object({ schemaVersion: z.literal(1), encounter: encounterRefSchema, target: targetRefSchema, fixedTargetIds: z.array(nonEmpty), fixedAttachmentIds: z.array(nonEmpty), terminalBefore: z.boolean(), terminalAfter: z.literal(true), outcome: z.enum(['defeated', 'removed']), policy: EncounterPolicyRefSchema, registry: EncounterRegistryFingerprintSchema }).strict();
 export const EnemyTargetResolutionEvaluationSchema: z.ZodType<EnemyTargetResolutionEvaluation> = z.object({ schemaVersion: z.literal(1), input: resolutionInputSchema, mutationPlan: EncounterDestinationMutationPlanSchema, completion: EncounterCompletionEvaluationSchema, reasonCode: EncounterReasonCodeSchema }).strict();
-const damageInputSchema = z.object({ schemaVersion: z.literal(1), encounter: encounterRefSchema, target: targetRefSchema, fixedTargetIds: z.array(nonEmpty), fixedAttachmentIds: z.array(nonEmpty), healthBefore: EnemyTargetHealthSchema, requestedDamage: z.number().finite().int().nonnegative(), policy: EncounterPolicyRefSchema, registry: EncounterRegistryFingerprintSchema }).strict();
+const damageInputSchema = z.object({ schemaVersion: z.literal(1), encounter: encounterRefSchema, target: targetRefSchema, fixedTargetIds: z.array(nonEmpty), fixedAttachmentIds: z.array(nonEmpty), healthBefore: EnemyTargetHealthSchema, requestedDamage: z.number().finite().int().nonnegative(), lethalOutcome: z.enum(['defeated', 'removed']).optional(), policy: EncounterPolicyRefSchema, registry: EncounterRegistryFingerprintSchema }).strict();
 export const EnemyTargetDamageEvaluationSchema: z.ZodType<EnemyTargetDamageEvaluation> = z.object({ schemaVersion: z.literal(1), input: damageInputSchema, healthAfter: EnemyTargetHealthSchema, actualDamage: z.number().finite().int().nonnegative(), lethal: z.boolean(), terminalBefore: z.boolean(), terminalAfter: z.boolean(), resolution: EnemyTargetResolutionEvaluationSchema.optional(), reasonCode: EncounterReasonCodeSchema }).strict();
 export const EncounterEventPayloadSchema: z.ZodType<EncounterEventPayload> = z.object({
   schemaVersion: z.literal(1),

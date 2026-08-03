@@ -37,7 +37,7 @@ export const CommandEnvelopeSchema: z.ZodType<CommandEnvelope> = z.object({
   command: GameCommandSchema
 }).strict();
 
-export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] } | import('./encounter.js').EncounterEventPayload | import('./dice.js').DiceRollEventPayload | import('./counter-consent.js').CounterConsentEventPayload;
+export type DomainEventPayload = { schemaVersion: 1; kind: 'combat-evaluation'; evaluation: import('./combat.js').CombatEvaluation } | import('./attack-resolution.js').AttackResolutionEventPayload | { schemaVersion: 1; kind: 'combat-reward-evaluation'; evaluation: import('./combat-reward.js').CombatRewardEvaluation; executedPolicy: import('./combat-reward.js').CombatRewardPolicyRef } | { schemaVersion: 1; kind: 'team-overflow'; policy?: { moduleId: string; policyId: string }; candidateIds: readonly string[] } | import('./encounter.js').EncounterEventPayload | import('./dice.js').DiceRollEventPayload | import('./counter-consent.js').CounterConsentEventPayload;
 export type DomainEvent = { eventId: string; revision: number; type: string; message: string; causedByCommandId?: string; moduleId?: string; payload?: DomainEventPayload };
 
 export type EngineErrorCode = 'STALE_REVISION' | 'NOT_AUTHORIZED' | 'INVALID_COMMAND' | 'RULE_CLARIFICATION_REQUIRED' | 'GAME_FINISHED';

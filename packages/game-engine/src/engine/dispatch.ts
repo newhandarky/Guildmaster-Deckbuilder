@@ -15,10 +15,11 @@ import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-eva
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
-import { defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
+import { applyEnemyTargetDamageEvaluation, defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
 import { validateGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
+import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -69,6 +70,11 @@ function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | '
   return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined;
 }
 
+function fixedAttackResolution(events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined {
+  const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload;
+  return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined;
+}
+
 function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, targetId: string, outcome: 'defeat-target' | 'remove-target', events: DomainEvent[], commandId: string): EngineError | undefined {
   const target = state.enemyTargets[targetId];
   if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: 'Combat target disappeared before final disposition.' };
@@ -108,8 +114,14 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
   const outcome = fixedCombatOutcome(events);
   if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
-  const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
-  if (dispositionError) return dispositionError;
+  const attackResolution = fixedAttackResolution(events);
+  if (attackResolution) {
+    const expectedStatus = attackResolution.damage.input.lethalOutcome ?? 'defeated';
+    if (!attackResolution.damage.lethal || target.status !== expectedStatus || target.health?.current !== 0) return { code: 'INVALID_COMMAND', message: 'Committed health-target attack resolution is incomplete or inconsistent.' };
+  } else {
+    const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
+    if (dispositionError) return dispositionError;
+  }
   if (outcome === 'remove-target') return undefined;
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
@@ -189,18 +201,16 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
   if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: '該敵方目標不可討伐。' };
   const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
   if (encounter?.status === 'finished') return { code: 'INVALID_COMMAND', message: '該敵方 encounter 已完成。' };
-  // EncounterResolutionPolicy governs terminal disposition/completion only.  Until a
-  // separate, versioned attack-damage policy exists, ATTACK_TARGET must not silently
-  // turn a health target into a one-shot defeat.
-  if (target.health) return { code: 'INVALID_COMMAND', message: '具生命值的敵方目標需要明確的 attack-resolution policy。' };
-  const combat = evaluateCombat(state, ruleset, player.id, command.targetId);
+  const attackResolution = target.health ? evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }) : undefined;
+  if (attackResolution && attackResolution.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${attackResolution.reason}: ${attackResolution.error}` };
+  const combat = attackResolution?.status === 'ready' ? { status: 'ready' as const, evaluation: attackResolution.evaluation.combat } : evaluateCombat(state, ruleset, player.id, command.targetId);
   if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
   if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
-  if (target.kind === 'monster') {
+  if (!target.health && target.kind === 'monster') {
     const continuity = evaluateMonsterDefeatContinuity(state, ruleset, target.targetId, combat.evaluation.outcome.kind);
     if (continuity.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${continuity.reason}: ${continuity.error}` };
   }
-  const prefix = getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat);
+  const prefix = attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat);
   if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
   const participants = player.party.splice(0, prefix.slotCount);
   for (const slot of participants) {
@@ -208,6 +218,13 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
   }
   event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
+  if (attackResolution?.status === 'ready') {
+    event(state, events, 'ATTACK_RESOLUTION_EVALUATED', `Attack resolution policy ${attackResolution.evaluation.policy.moduleId}/${attackResolution.evaluation.policy.policyId} fixed ${attackResolution.evaluation.damage.actualDamage} damage.`, commandId, { schemaVersion: 1, kind: 'attack-resolution', evaluation: structuredClone(attackResolution.evaluation) });
+    const applied = applyEnemyTargetDamageEvaluation(state, ruleset, attackResolution.evaluation.damage, events);
+    if (!applied.ok) return { code: 'INVALID_COMMAND', message: applied.error };
+    if (!attackResolution.evaluation.damage.lethal) return undefined;
+    if (combat.evaluation.outcome.kind === 'remove-target') return undefined;
+  }
   if (combat.evaluation.outcome.kind === 'remove-target') {
     return finalizeAttackTarget(state, ruleset, player, target.targetId, 'remove-target', events, commandId);
   }
