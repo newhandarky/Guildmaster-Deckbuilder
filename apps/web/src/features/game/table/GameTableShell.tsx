@@ -17,11 +17,12 @@ export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableS
   ref,
 ) {
   return <main ref={ref} className="app-shell" data-testid="game-app" tabIndex={-1}>
+    <a className="skip-link" href="#primary-game-table">跳到主要牌桌</a>
     {header}
     {notices}
     {playerStatus}
     <div className="game-table-layout" data-testid="game-table-layout">
-      <div className="game-play-column" data-testid="game-play-column">
+      <div id="primary-game-table" className="game-play-column" data-testid="game-play-column" tabIndex={-1}>
         {publicTable}
         <div className="guild-area" data-testid="guild-area" role="region" aria-labelledby="guild-area-title">
           <h2 id="guild-area-title" className="area-title">你的公會區</h2>

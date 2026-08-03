@@ -31,6 +31,7 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
   const [submitting, setSubmitting] = useState(false);
   const internalHeadingRef = useRef<HTMLHeadingElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const actionButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const stateKey = `${scopeKey}:${actionStateKey(model)}`;
 
   useImperativeHandle(headingRef, () => internalHeadingRef.current as HTMLHeadingElement);
@@ -47,6 +48,13 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
   if (model.kind === 'none') return null;
   const actions = hasActions(model) ? model.actions : [];
   const confirmation = actions.find(({ id }) => id === confirmationId);
+  const cancelConfirmation = () => {
+    const actionId = confirmationId;
+    setConfirmationId(undefined);
+    if (actionId) {
+      window.requestAnimationFrame(() => actionButtonRefs.current.get(actionId)?.focus());
+    }
+  };
   const run = (action: LifecycleInteractionAction) => {
     if (action.requiresConfirmation && confirmationId !== action.id) {
       setConfirmationId(action.id);
@@ -67,7 +75,7 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
     onKeyDown={(event) => {
       if (event.key === 'Escape' && confirmationId) {
         event.preventDefault();
-        setConfirmationId(undefined);
+        cancelConfirmation();
       }
     }}
   >
@@ -92,10 +100,15 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
     {confirmation ? <div className="lifecycle-confirmation" role="group" aria-label={`確認${confirmation.label}`}>
       <p>{confirmationCopy(confirmation)}</p>
       <button ref={confirmButtonRef} className="danger" type="button" disabled={submitting} onClick={() => run(confirmation)}>確認{confirmation.label}</button>
-      <button type="button" disabled={submitting} onClick={() => setConfirmationId(undefined)}>返回</button>
+      <button type="button" disabled={submitting} onClick={cancelConfirmation}>返回</button>
     </div> : actions.length > 0 ? <div className="lifecycle-actions">
       {actions.map((action) => <button
         key={action.id}
+        ref={(node) => {
+          if (node) actionButtonRefs.current.set(action.id, node);
+          else actionButtonRefs.current.delete(action.id);
+        }}
+        data-lifecycle-action-id={action.id}
         className={action.emphasis === 'primary' ? 'primary' : action.emphasis === 'danger' ? 'danger' : undefined}
         type="button"
         disabled={submitting}

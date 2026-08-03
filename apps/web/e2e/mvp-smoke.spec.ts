@@ -124,6 +124,7 @@ test('decline confirmation is reversible with Escape and commits only after conf
   await expect(dock.getByRole('button', { name: '確認不同意' })).toBeFocused();
   await dock.press('Escape');
   await expect(dock.getByRole('button', { name: '確認不同意' })).toHaveCount(0);
+  await expect(dock.getByRole('button', { name: '不同意', exact: true })).toBeFocused();
   await dock.getByRole('button', { name: '不同意', exact: true }).click();
   await dock.getByRole('button', { name: '確認不同意' }).click();
   await expect(dock).toContainText('REQUIRED_ACTOR_DECLINED');
@@ -409,6 +410,7 @@ test('restart clears an in-progress equipment selection', async ({ page }) => {
   await expect(page.getByRole('button', { name: '取消配戴' })).toBeVisible();
 
   await page.getByRole('button', { name: '重新開始' }).click();
+  await page.getByRole('button', { name: '確認重新開始' }).click();
   await expect(page.getByText('版本 0')).toBeVisible();
   await expect(page.getByRole('button', { name: '取消配戴' })).toHaveCount(0);
   await expect(page.locator('[data-card-state="target"]')).toHaveCount(0);

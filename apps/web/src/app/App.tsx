@@ -171,6 +171,7 @@ export function App() {
       />
       <TurnControlDock
         ref={interactionFallbackRef}
+        scopeKey={`${view.gameId}:${view.revision}`}
         interactionHint={interactionHint}
         phaseName={phaseDisplayName(view.phase)}
         canEndPhase={Boolean(endPhaseCommand)}

@@ -33,6 +33,8 @@ export function ReplayDiagnosticsPanel({ report, loadCurrentReplay, runReplay, c
       {report ? <output
         data-testid="replay-report"
         className={report.status === 'completed' ? 'replay-success' : 'replay-failure'}
+        aria-live="polite"
+        aria-atomic="true"
       >
         {report.status === 'completed'
           ? <>
