@@ -1,4 +1,4 @@
-import { GameStateSchema, SnapshotEnvelopeSchema, isFiniteJsonValue, type GameState, type VersionedSnapshot } from '@guildmaster/game-protocol';
+import { DomainEventSchema, GameStateSchema, SnapshotEnvelopeSchema, isFiniteJsonValue, type GameState, type VersionedSnapshot } from '@guildmaster/game-protocol';
 import { baseZoneIds } from '../model/zones.js';
 import { validatePostCommandContinuationState, validateTransactionEventSequence } from './post-command-pipeline.js';
 import type { Ruleset } from '../rules/ruleset.js';
@@ -8,6 +8,7 @@ import { validatePendingCounterConsentState } from '../rules/counter-consent-eva
 import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect } from '../effects/executor.js';
 import { dispatch } from './dispatch.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
+import { validatePendingCombatRewardContinuation } from './combat-reward-pipeline.js';
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -71,6 +72,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (command.kind === 'combat-reward') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) }; const evaluation = command.evaluation;
       if (Boolean(choice) === Boolean(consent) || pending || state.effectState.pendingPostCommand || command.continuationId !== `combat-reward:${command.envelope.commandId}` || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || JSON.stringify(evaluation.registry) !== JSON.stringify(registry) || evaluation.input.playerId !== command.envelope.actorId || evaluation.input.targetId !== command.envelope.command.targetId || command.policyIndex >= evaluation.matchedPolicies.length || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid combat reward continuation.');
+      if (ruleset) { const rewardError = validatePendingCombatRewardContinuation(state, ruleset); if (rewardError) throw new Error(rewardError); }
       command.rollbackState = structuredClone(rollbackState); return state;
     }
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
@@ -87,7 +89,11 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (ruleset) {
       const replayed = dispatch(structuredClone(outer.rollbackState), ruleset, structuredClone(outer.envelope));
       const canonicalFacts = replayed.state.effectState.pendingPostCommand?.facts;
-      if (replayed.error || !canonicalFacts || JSON.stringify(canonicalFacts) !== JSON.stringify(outer.facts)) throw new Error('Post-command facts must equal the complete ordered reducer fact segment.');
+      if (replayed.error) throw new Error(`Post-command canonical replay failed: ${replayed.error.message}`);
+      if (!canonicalFacts) throw new Error('Post-command canonical replay did not suspend at the expected fact boundary.');
+      const normalizedCanonical = canonicalFacts.map((fact) => DomainEventSchema.parse(fact));
+      const normalizedPersisted = outer.facts.map((fact) => DomainEventSchema.parse(fact));
+      if (JSON.stringify(normalizedCanonical) !== JSON.stringify(normalizedPersisted)) throw new Error('Post-command facts must equal the complete ordered reducer fact segment.');
     }
   }
   if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');

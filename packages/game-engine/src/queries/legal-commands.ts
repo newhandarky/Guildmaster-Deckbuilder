@@ -2,11 +2,12 @@ import type { CommandEnvelope, GameCommand, GameState } from '@guildmaster/game-
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
-import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
+import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 
 const maxAttackPreviewDepth = 32;
 const maxAttackPreviewBranches = 256;
@@ -59,7 +60,8 @@ function attackIsLegalInAnyPreview(preview: AttackPreviewResult, ruleset: Rulese
   return preview.states.some((state) => {
     const target = state.enemyTargets[targetId];
     const encounter = target?.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
-    if (!target || target.status !== 'available' || encounter?.status === 'finished' || target.health) return false;
+    if (!target || target.status !== 'available' || encounter?.status === 'finished') return false;
+    if (target.health) return evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: actorId, targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }).status === 'ready';
     const result = evaluateCombat(state, ruleset, actorId, targetId);
     if (result.status !== 'ready' || !result.evaluation.eligible) return false;
     if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, targetId, result.evaluation.outcome.kind).status !== 'ready') return false;
@@ -74,16 +76,8 @@ export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: s
 }
 
 export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number): { slotCount: number; power: number } | undefined {
-  const player = getPlayer(state, playerId);
-  let power = player.turnCombatBonus;
-  if (power >= required) return { slotCount: 0, power };
-  for (let index = 0; index < player.party.length; index += 1) {
-    const slot = player.party[index]!;
-    power += getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0;
-    if (slot.equipmentId) power += getDefinition(ruleset.registry, state, slot.equipmentId).combat ?? 0;
-    if (power >= required) return { slotCount: index + 1, power };
-  }
-  return undefined;
+  const prefix = evaluateCombatPartyPrefix(state, ruleset, playerId, required);
+  return prefix ? { slotCount: prefix.slotCount, power: prefix.power } : undefined;
 }
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
@@ -130,7 +124,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     const preview = previewAttackCommandBefore(state, ruleset, actorId);
     for (const target of Object.values(state.enemyTargets)) {
       if (target.status !== 'available') continue;
-      if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, target.targetId).status !== 'ready') continue;
+      if (!target.health && target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, target.targetId).status !== 'ready') continue;
       if (attackIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
     }
   }

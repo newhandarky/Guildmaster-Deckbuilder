@@ -202,6 +202,14 @@ export function validateTransactionEventSequence(
       const evaluated = evaluateDiceRoll(state, ruleset, dicePayload.evaluation.input);
       if (evaluated.status !== 'ready' || !same(evaluated.evaluation, dicePayload.evaluation)) return 'Transaction dice evaluation is invalid or tampered.';
     }
+    const attackPayload = transactionEvent.payload?.kind === 'attack-resolution' ? transactionEvent.payload : undefined;
+    if (attackPayload && (!same(attackPayload.evaluation.input.registry, registry) || !same(attackPayload.evaluation.combat.registry, registry) || !same(attackPayload.evaluation.damage.input.registry, registry))) return 'Transaction attack resolution registry mismatch.';
+    if (attackPayload && ruleset) {
+      const evaluation = attackPayload.evaluation;
+      const policy = ruleset.modules.find(({ id }) => id === evaluation.policy.moduleId)?.attackResolutionPolicies?.find(({ policyId }) => policyId === evaluation.policy.policyId);
+      const expectedOutcome = evaluation.combat.outcome.kind === 'remove-target' ? 'removed' : 'defeated';
+      if (!policy || policy.damage.amount !== evaluation.damage.input.requestedDamage || !same(policy.encounterPolicy, evaluation.damage.input.policy) || !same(policy.reasonCode, evaluation.reasonCode) || (evaluation.damage.input.lethalOutcome ?? 'defeated') !== expectedOutcome) return 'Transaction attack resolution policy or evaluation is invalid or tampered.';
+    }
   }
   return validateCounterConsentEventSequence(events, state, registry, ruleset);
 }
@@ -236,6 +244,9 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
     const combatPayload = transactionEvent.payload?.kind === 'combat-evaluation' ? transactionEvent.payload : undefined;
     if ((transactionEvent.type === 'COMBAT_EVALUATED') !== Boolean(combatPayload)) return 'Post-command combat fact type and payload are inconsistent.';
     if (combatPayload && !same(combatPayload.evaluation.registry, outer.registry)) return 'Post-command combat evaluation registry mismatch.';
+    const attackPayload = transactionEvent.payload?.kind === 'attack-resolution' ? transactionEvent.payload : undefined;
+    if ((transactionEvent.type === 'ATTACK_RESOLUTION_EVALUATED') !== Boolean(attackPayload)) return 'Post-command attack resolution fact type and payload are inconsistent.';
+    if (attackPayload && (!same(attackPayload.evaluation.input.registry, outer.registry) || !same(attackPayload.evaluation.combat.registry, outer.registry) || !same(attackPayload.evaluation.damage.input.registry, outer.registry))) return 'Post-command attack resolution registry mismatch.';
     const encounterPayload = transactionEvent.payload?.kind === 'encounter-resolution' ? transactionEvent.payload : undefined;
     const encounterTypes = new Set(['ENCOUNTER_CREATED', 'ENEMY_TARGET_CREATED', 'ENEMY_ATTACHMENT_ADDED', 'ENEMY_TARGET_DAMAGED', 'ENEMY_TARGET_DEFEATED', 'ENEMY_TARGET_REMOVED', 'ENCOUNTER_COMPLETED']);
     if (encounterTypes.has(transactionEvent.type) !== Boolean(encounterPayload)) return 'Post-command encounter fact type and payload are inconsistent.';

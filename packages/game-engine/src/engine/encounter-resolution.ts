@@ -182,17 +182,32 @@ function resolveTarget(state: GameState, ruleset: Ruleset, targetId: string, out
 export function damageEnemyTarget(state: GameState, ruleset: Ruleset, node: DamageNode, events: DomainEvent[]): EncounterMutationResult<EnemyTargetDamageEvaluation> {
   const evaluation = evaluateEnemyTargetDamage(state, ruleset, { schemaVersion: 1, targetId: node.targetId, requestedDamage: node.amount, policy: node.policy });
   if (evaluation.status !== 'ready') return fromEvaluation(evaluation);
+  return applyEnemyTargetDamageEvaluation(state, ruleset, evaluation.evaluation, events);
+}
+
+/** Applies one previously fixed pure damage evaluation without recomputing policy selection. */
+export function applyEnemyTargetDamageEvaluation(state: GameState, ruleset: Ruleset, evaluation: EnemyTargetDamageEvaluation, events: DomainEvent[]): EncounterMutationResult<EnemyTargetDamageEvaluation> {
+  const canonical = evaluateEnemyTargetDamage(state, ruleset, {
+    schemaVersion: 1,
+    targetId: evaluation.input.target.targetId,
+    requestedDamage: evaluation.input.requestedDamage,
+    policy: evaluation.input.policy,
+    lethalOutcome: evaluation.input.lethalOutcome
+  });
+  if (canonical.status !== 'ready') return fromEvaluation(canonical);
+  if (JSON.stringify(canonical.evaluation) !== JSON.stringify(evaluation)) return reject('INVALID_INPUT', 'Enemy target damage evaluation is stale or was tampered.');
   return transactional(state, events, (next, nextEvents) => {
-    const target = next.enemyTargets[node.targetId]!;
-    target.health = { ...evaluation.evaluation.healthAfter };
-    emit(next, nextEvents, 'ENEMY_TARGET_DAMAGED', `Enemy target ${node.targetId} took ${evaluation.evaluation.actualDamage} damage.`, payload(next, ruleset, 'damaged', evaluation.evaluation.input.encounter.encounterId, node.targetId, evaluation.evaluation));
-    const resolution = evaluation.evaluation.resolution;
+    const targetId = evaluation.input.target.targetId;
+    const target = next.enemyTargets[targetId]!;
+    target.health = { ...evaluation.healthAfter };
+    emit(next, nextEvents, 'ENEMY_TARGET_DAMAGED', `Enemy target ${targetId} took ${evaluation.actualDamage} damage.`, payload(next, ruleset, 'damaged', evaluation.input.encounter.encounterId, targetId, evaluation));
+    const resolution = evaluation.resolution;
     if (resolution) {
       const planFailure = applyMutationPlan(next, ruleset, resolution.mutationPlan); if (planFailure) return planFailure;
-      emit(next, nextEvents, 'ENEMY_TARGET_DEFEATED', `Enemy target ${node.targetId} resolved.`, payload(next, ruleset, 'target-defeated', resolution.input.encounter.encounterId, node.targetId, resolution));
+      emit(next, nextEvents, resolution.input.outcome === 'removed' ? 'ENEMY_TARGET_REMOVED' : 'ENEMY_TARGET_DEFEATED', `Enemy target ${targetId} resolved.`, payload(next, ruleset, resolution.input.outcome === 'removed' ? 'target-removed' : 'target-defeated', resolution.input.encounter.encounterId, targetId, resolution));
       if (resolution.completion.completed && !resolution.completion.alreadyCompleted) { const encounter = next.enemyEncounters.find(({ encounterId }) => encounterId === resolution.input.encounter.encounterId)!; encounter.status = 'finished'; emit(next, nextEvents, 'ENCOUNTER_COMPLETED', `Encounter ${encounter.encounterId} completed.`, payload(next, ruleset, 'completed', encounter.encounterId, undefined, resolution.completion)); }
     }
-    return { ok: true, status: 'completed', evaluation: evaluation.evaluation };
+    return { ok: true, status: 'completed', evaluation };
   });
 }
 

@@ -17,6 +17,16 @@ export function validatePendingCombatRewardContinuation(state: GameState, rulese
   if (Boolean(choice) === Boolean(consent) || state.effectState.pendingLifecycle || state.effectState.pendingPostCommand || pending.envelope.command.type !== 'ATTACK_TARGET' || pending.continuationId !== `combat-reward:${pending.envelope.commandId}` || pending.envelope.gameId !== state.gameId || pending.envelope.expectedRevision !== state.revision || !same(pending.registry, registry(state, ruleset))) return 'Malformed combat reward continuation.';
   if (pending.policyIndex < 0 || pending.policyIndex >= pending.evaluation.matchedPolicies.length || !same(pending.evaluation.registry, pending.registry) || pending.evaluation.input.targetId !== pending.envelope.command.targetId || pending.evaluation.input.playerId !== pending.envelope.actorId) return 'Combat reward cursor or evaluation mismatch.';
   if (pending.rollbackState.effectState.pendingChoice || pending.rollbackState.effectState.pendingCounterConsent || pending.rollbackState.effectState.pendingCommand || pending.rollbackState.effectState.pendingLifecycle || pending.rollbackState.effectState.pendingPostCommand) return 'Recursive combat reward rollback checkpoint.';
+  const attackEvents = pending.events.filter(({ type }) => type === 'ATTACK_RESOLUTION_EVALUATED');
+  if (attackEvents.length > 1) return 'Combat reward continuation has duplicate attack resolution evaluations.';
+  const attackPayload = attackEvents[0]?.payload;
+  if (attackPayload?.kind === 'attack-resolution') {
+    const attack = attackPayload.evaluation;
+    const target = state.enemyTargets[pending.envelope.command.targetId];
+    const policy = ruleset.modules.find(({ id }) => id === attack.policy.moduleId)?.attackResolutionPolicies?.find(({ policyId }) => policyId === attack.policy.policyId);
+    const expectedOutcome = attack.combat.outcome.kind === 'remove-target' ? 'removed' : 'defeated';
+    if (!same(attack.input.registry, pending.registry) || !same(attack.combat.registry, pending.registry) || !same(attack.damage.input.registry, pending.registry) || attack.input.playerId !== pending.envelope.actorId || attack.input.targetId !== pending.envelope.command.targetId || !attack.damage.lethal || (attack.damage.input.lethalOutcome ?? 'defeated') !== expectedOutcome || !target || target.status !== expectedOutcome || target.health?.current !== 0 || !policy || policy.damage.amount !== attack.damage.input.requestedDamage || !same(policy.encounterPolicy, attack.damage.input.policy) || !same(policy.reasonCode, attack.reasonCode)) return 'Combat reward attack resolution is invalid or tampered.';
+  } else if (attackPayload !== undefined) return 'Combat reward attack resolution payload is malformed.';
   const ref = pending.evaluation.matchedPolicies[pending.policyIndex]!;
   const suspension = choice ?? consent;
   if (suspension!.executionId !== executionId(pending.envelope, ref) || !same(suspension!.context, pending.context)) return 'Combat reward suspension does not match the current policy.';

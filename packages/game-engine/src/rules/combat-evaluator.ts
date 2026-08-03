@@ -7,6 +7,7 @@ export type CombatEvaluationResult =
   | { status: 'ready'; evaluation: CombatEvaluation }
   | { status: 'unsupported'; reason: 'ORDER_POLICY_REQUIRED'; error: string }
   | { status: 'failed'; reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH' | 'INVALID_TARGET' | 'INVALID_COMBAT_VALUE'; error: string };
+export type CombatPartyPrefix = { slotCount: number; power: number; participantCardIds: readonly string[] };
 
 function registryError(state: GameState, ruleset: Ruleset): Extract<CombatEvaluationResult, { status: 'failed' }> | undefined {
   const stateSignature = state.rulesModules.map(({ id, version }) => `${id}@${version}`).join('|');
@@ -73,4 +74,23 @@ export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: str
       registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) }
     }
   };
+}
+
+/** Fixes the exact ordered party prefix consumed by one authoritative attack. */
+export function evaluateCombatPartyPrefix(state: GameState, ruleset: Ruleset, playerId: string, requiredCombat: number): CombatPartyPrefix | undefined {
+  if (!Number.isFinite(requiredCombat) || requiredCombat < 0) return undefined;
+  const player = getPlayer(state, playerId);
+  let power = player.turnCombatBonus;
+  if (!Number.isFinite(power)) return undefined;
+  if (power >= requiredCombat) return { slotCount: 0, power, participantCardIds: [] };
+  const participantCardIds: string[] = [];
+  for (let index = 0; index < player.party.length; index += 1) {
+    const slot = player.party[index]!;
+    participantCardIds.push(slot.adventurerId);
+    power += getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0;
+    if (slot.equipmentId) { participantCardIds.push(slot.equipmentId); power += getDefinition(ruleset.registry, state, slot.equipmentId).combat ?? 0; }
+    if (!Number.isFinite(power)) return undefined;
+    if (power >= requiredCombat) return { slotCount: index + 1, power, participantCardIds };
+  }
+  return undefined;
 }
