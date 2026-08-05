@@ -124,9 +124,21 @@ test('low-height lifecycle interaction remains reachable without page overflow',
 });
 
 async function expectNoDocumentOverflow(page: Page): Promise<void> {
-  expect(await page.evaluate(
-    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-  )).toBe(true);
+  const overflow = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    offenders: Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+      .slice(0, 8)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        id: element.id,
+        className: element.className,
+        right: Math.round(element.getBoundingClientRect().right),
+        width: Math.round(element.getBoundingClientRect().width),
+      })),
+  }));
+  expect(overflow.scrollWidth, JSON.stringify(overflow.offenders)).toBeLessThanOrEqual(overflow.clientWidth);
 }
 
 function rectanglesOverlap(

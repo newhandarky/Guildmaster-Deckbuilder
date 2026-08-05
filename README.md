@@ -39,6 +39,7 @@ pnpm check
 - 單頁 responsive game table shell 支援手機橫向、平板與桌面；Replay 診斷預設收合，所有指令仍只來自 LocalGameSession 提供的 legal Commands。
 - 增量 Presentation asset pipeline 支援完整 demo 顯示資料搭配部分或零插畫覆蓋；只有 manifest 已核准的 `384×512`／`768×1024` WebP 會進入 runtime，缺圖安全回到 CSS placeholder。
 - 卡牌 UI accessibility／usability baseline 包含 WCAG A/AA 自動稽核、skip link、全域 focus-visible、具體合法動作名稱、桌機鍵盤操作與 dispatch 後焦點交接、語意化結算排名、44px 操作目標、320px reflow、放大文字、reduced motion、forced colors 與重新開局二次確認。
+- 桌機牌桌以五階段進度、由 legal Commands 純衍生的動作摘要、非純色卡片狀態圖例與單一最新 accepted event 回饋協助理解目前可做事項；UI 不自行重建規則或 optimistic state。
 
 ## 有意保留的限制
 
