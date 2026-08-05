@@ -45,9 +45,10 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .player-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; }
 .player-summary > div, .log, .scoreboard { padding: 1rem; border-radius: .9rem; background: rgb(14 25 43 / .8); border: 1px solid #304664; }
 .player-summary span { display: block; color: #c6d1e4; }
-.game-table-layout, .game-play-column, .public-table-grid, .table-area, .guild-area, .activity-rail { min-width: 0; }
+.game-table-layout, .game-play-column, .game-utility-column, .public-table-grid, .table-area, .guild-area, .activity-rail { min-width: 0; }
 .game-table-layout { display: grid; gap: 1.25rem; align-items: start; }
 .game-play-column { display: grid; gap: 1.25rem; }
+.game-utility-column { display: grid; gap: 1rem; align-content: start; }
 .public-table-grid { display: grid; gap: 1rem; }
 .table-area, .guild-area { min-width: 0; padding: 1rem; border: 1px solid #304664; border-radius: 1rem; background: rgb(14 25 43 / .68); }
 .area-title { margin-bottom: 1rem; color: #f4d9a5; font-size: 1.15rem; }
@@ -375,9 +376,28 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 }
 
 @media (min-width: 1180px) {
-  .game-table-layout { grid-template-columns: minmax(0, 1fr) 300px; }
-  .activity-rail { grid-column: 2; }
-  .game-play-column { grid-column: 1; grid-row: 1; }
+  .app-shell { padding-top: 1rem; }
+  .hero { padding: 1rem 1.25rem; }
+  .hero, .player-summary { margin-bottom: .9rem; }
+  .hero h1 { font-size: 2.7rem; }
+  .player-summary > div { padding: .8rem 1rem; }
+  .game-table-layout { grid-template-columns: minmax(0, 1fr) 320px; gap: 1rem; }
+  .game-play-column { grid-column: 1; grid-row: 1; gap: 1rem; }
+  .game-utility-column {
+    position: sticky;
+    top: 1rem;
+    grid-column: 2;
+    grid-row: 1;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .public-table-grid { grid-template-columns: minmax(0, 9fr) minmax(0, 11fr); }
+  .interaction-rail { position: static; }
+  .turn-control-dock { grid-template-columns: minmax(0, 1fr); }
+  .turn-control-dock .controls { justify-content: stretch; }
+  .turn-control-dock .controls button { flex: 1 1 8rem; }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {

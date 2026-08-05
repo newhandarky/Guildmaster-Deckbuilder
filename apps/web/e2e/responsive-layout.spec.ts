@@ -42,6 +42,39 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
+for (const viewport of [
+  { width: 1280, height: 720 },
+  { width: 1440, height: 900 },
+]) {
+  test(`desktop utility column keeps controls beside the table without overlap at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+
+    const playBox = await page.getByTestId('game-play-column').boundingBox();
+    const utility = page.getByTestId('game-utility-column');
+    const utilityBox = await utility.boundingBox();
+    const interactionBox = await page.getByTestId('interaction-rail').boundingBox();
+    const activityBox = await page.getByTestId('activity-rail').boundingBox();
+    const encounterBox = await page.getByTestId('encounter-area').boundingBox();
+    const tavernBox = await page.getByTestId('tavern-area').boundingBox();
+
+    expect(utilityBox?.width).toBeCloseTo(320, 0);
+    expect(utilityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
+    expect(tavernBox?.x).toBeGreaterThan((encounterBox?.x ?? 0) + (encounterBox?.width ?? 0));
+    expect(rectanglesOverlap(interactionBox, activityBox)).toBe(false);
+
+    for (const row of await page.locator('.card-row').all()) {
+      expect(rectanglesOverlap(interactionBox, await row.boundingBox())).toBe(false);
+    }
+
+    await expect(utility).toHaveCSS('position', 'sticky');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const stickyUtilityBox = await utility.boundingBox();
+    expect(stickyUtilityBox?.y).toBeCloseTo(16, 0);
+    await expectNoDocumentOverflow(page);
+  });
+}
+
 test('Replay diagnostics are collapsed by default and keyboard operable', async ({ page }) => {
   await page.goto('/');
   const diagnostics = page.getByTestId('replay-diagnostics');
@@ -94,6 +127,17 @@ async function expectNoDocumentOverflow(page: Page): Promise<void> {
   expect(await page.evaluate(
     () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
   )).toBe(true);
+}
+
+function rectanglesOverlap(
+  left: { x: number; y: number; width: number; height: number } | null,
+  right: { x: number; y: number; width: number; height: number } | null,
+): boolean {
+  if (!left || !right) return true;
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
 }
 
 async function expectFixedTableOrder(page: Page): Promise<void> {

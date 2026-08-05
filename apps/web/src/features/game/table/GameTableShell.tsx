@@ -29,9 +29,11 @@ export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableS
           {party}
           {hand}
         </div>
-        {interaction}
       </div>
-      {activity}
+      <div className="game-utility-column" data-testid="game-utility-column">
+        {interaction}
+        {activity}
+      </div>
     </div>
     {details}
   </main>;
