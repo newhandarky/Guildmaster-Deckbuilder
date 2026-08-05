@@ -36,6 +36,16 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 .app-shell { width: min(1440px, calc(100% - (2 * var(--shell-gutter)))); min-width: 0; margin: 0 auto; padding: 2rem 0 4rem; }
 .hero { display: flex; justify-content: space-between; gap: 1rem; align-items: end; padding: 1.5rem; border: 1px solid #5b7095; border-radius: 1.25rem; background: var(--surface); }
 .hero, .player-summary { margin-bottom: 1.25rem; }
+.expedition-entry-shell { min-height: 100dvh; display: grid; align-content: center; gap: 1.25rem; }
+.expedition-entry-hero { margin-bottom: 0; }
+.expedition-entry-card { display: grid; gap: 1.25rem; padding: 1.5rem; border: 1px solid #526987; border-radius: 1.25rem; background: var(--surface); }
+.expedition-entry-card h2, .expedition-entry-card h3, .expedition-entry-card p { margin-bottom: 0; }
+.expedition-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin: 0; }
+.expedition-summary div { display: grid; gap: .35rem; min-width: 0; padding: .9rem; border: 1px solid #405878; border-radius: .75rem; background: rgb(10 20 35 / .42); }
+.expedition-summary dt { color: #b6c7e3; font-size: .78rem; }
+.expedition-summary dd { margin: 0; font-weight: 700; }
+.expedition-entry-actions { justify-content: flex-end; }
+.expedition-new-confirmation { display: grid; gap: .8rem; padding: 1rem; border: 1px solid #c86b7b; border-radius: .75rem; background: #4d2330; }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: clamp(2rem, 6vw, 3.6rem); margin-bottom: .25rem; }
 h2 { font-size: 1.05rem; margin-bottom: .65rem; }
@@ -368,6 +378,8 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .hero { align-items: start; flex-direction: column; }
   .game-header > div:first-child { width: 100%; max-width: 100%; overflow-x: clip; }
   .status { text-align: left; }
+  .expedition-entry-shell { align-content: start; }
+  .expedition-summary { grid-template-columns: minmax(0, 1fr); }
   .card-title-scrim { padding: .42rem .42rem 1.1rem; }
   .card-title-scrim strong { font-size: .75rem; }
   .card-state-label { top: .3rem; right: .3rem; max-width: 3.9rem; font-size: .5rem; }

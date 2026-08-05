@@ -4,6 +4,8 @@ import type { CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState,
 import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
+const localGameIdPattern = /^local-(\d+)$/;
+
 export class LocalGameSession {
   private state: GameState;
   private readonly processed = new Map<string, SessionUpdate>();
@@ -22,6 +24,7 @@ export class LocalGameSession {
       try {
         const saved = loaded.game;
         this.state = restoreSnapshot(saved.snapshot, this.ruleset);
+        this.restoreGameSequence(this.state.gameId);
         this.events = saved.events;
         this.replayHistoryComplete = saved.replayHistoryComplete;
         this.persistenceState = 'restored';
@@ -51,6 +54,13 @@ export class LocalGameSession {
     this.auditEvents = [];
     this.replayHistoryComplete = true;
     return createGame(this.initialConfig, this.ruleset);
+  }
+
+  private restoreGameSequence(gameId: string): void {
+    const match = localGameIdPattern.exec(gameId);
+    if (!match) return;
+    const sequence = Number(match[1]);
+    if (Number.isSafeInteger(sequence)) this.gameSequence = Math.max(this.gameSequence, sequence);
   }
 
   current(): SessionUpdate { return this.makeUpdate([]); }
@@ -164,6 +174,16 @@ export class LocalGameSession {
       events: this.events.slice(-60),
       legalCommands,
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
+      entrySummary: {
+        schemaVersion: 1,
+        canContinue: this.persistenceState === 'restored',
+        gameId: this.state.gameId,
+        revision: this.state.revision,
+        round: this.state.round,
+        phase: this.state.phase,
+        status: this.state.status,
+        replayHistoryComplete: this.replayHistoryComplete,
+      },
       persistence: {
         schemaVersion: 1,
         state: this.persistenceState,

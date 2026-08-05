@@ -132,6 +132,7 @@
 - WCAG A／AA automated gate、skip link、44px 觸控目標、320px reflow／200% 文字放大、reduced motion、forced colors 與破壞性重新開局確認
 - 桌機回饋已提供五階段進度、legal Commands 動作摘要、卡片狀態圖例及最新 accepted event；不複製 engine legality 或建立 optimistic state
 - 桌機本機存檔回饋已提供 versioned persistence status：新對局、成功保存、current／legacy restore 與 storage failure 的僅記憶體警告；狀態綁定 revision，且 storage failure 不再被包裝成規則錯誤
+- 桌機遠征入口已提供 versioned session summary、新對局開始、最近進度繼續與覆蓋確認；繼續不消耗 RNG／推進 revision，新遠征沿用 LocalGameSession restart，完成後焦點交給 authoritative 回合提示
 - 討伐／購買詳情已接入 deterministic `ActionPreviewSet`：一般討伐、health damage、購買剩餘值與未固定的 command-before lifecycle 分支都有 schema／query／session／UI regression；preview 不進入 Snapshot 或改變 RNG／revision
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單

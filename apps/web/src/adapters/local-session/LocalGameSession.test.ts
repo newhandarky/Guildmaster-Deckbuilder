@@ -102,6 +102,16 @@ describe('LocalGameSession transactional boundary', () => {
   it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
+    expect(session.current().entrySummary).toEqual({
+      schemaVersion: 1,
+      canContinue: false,
+      gameId: session.current().view.gameId,
+      revision: 0,
+      round: 1,
+      phase: 'action1',
+      status: 'playing',
+      replayHistoryComplete: true,
+    });
     expect(session.current().persistence).toEqual({
       schemaVersion: 1,
       state: 'fresh',
@@ -126,6 +136,22 @@ describe('LocalGameSession transactional boundary', () => {
       replayHistoryComplete: true,
     });
     expect(restored.view).toMatchObject({ gameId: saved.view.gameId, revision: saved.view.revision });
+    expect(restored.entrySummary).toEqual({
+      schemaVersion: 1,
+      canContinue: true,
+      gameId: restored.view.gameId,
+      revision: restored.view.revision,
+      round: restored.view.round,
+      phase: restored.view.phase,
+      status: restored.view.status,
+      replayHistoryComplete: true,
+    });
+    expect(JSON.parse(JSON.stringify(restored.entrySummary))).toEqual(restored.entrySummary);
+
+    const restarted = new LocalGameSession(ruleset).restart();
+    expect(restarted.view).toMatchObject({ revision: 0, phase: 'action1' });
+    expect(restarted.view.gameId).not.toBe(restored.view.gameId);
+    expect(restarted.entrySummary.gameId).toBe(restarted.view.gameId);
   });
 
   it('marks snapshot-only saves as restored without fabricating replay history', () => {

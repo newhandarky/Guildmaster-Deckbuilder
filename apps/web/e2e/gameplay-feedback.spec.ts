@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { openGame } from './game-entry.js';
 
 test('desktop table explains phase progress, legal actions, and card states', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto('/');
+  await openGame(page);
 
   const progress = page.getByTestId('phase-progress');
   await expect(progress.locator('li')).toHaveCount(5);
@@ -18,7 +19,7 @@ test('desktop table explains phase progress, legal actions, and card states', as
 
 test('accepted desktop actions advance feedback without duplicating the newest event', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
 
   const progress = page.getByTestId('phase-progress');

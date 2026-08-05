@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { createGame, dispatch, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
+import { enterGame, openGame } from './game-entry.js';
 
 const localSaveKey = 'guildmaster-mvp-save-v2';
 
@@ -38,32 +39,69 @@ async function installPendingConsent(page: import('@playwright/test').Page, requ
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
-test('opening game shows the human guild, hand, and a valid action', async ({ page }) => {
+test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
+  const entry = page.getByTestId('expedition-entry');
+  await expect(entry.getByRole('heading', { name: '準備新的遠征' })).toBeFocused();
+  await expect(entry.getByTestId('expedition-summary')).toContainText('第 1 輪 · 行動一階段');
+  await expect(entry.getByTestId('expedition-summary')).toContainText('完整紀錄');
+  await expect(page.getByTestId('game-app')).toHaveCount(0);
+  await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('game-app')).toBeVisible();
   await expect(page.getByTestId('player-summary')).toContainText('你的公會');
   await expect(page.getByTestId('human-card-count')).toContainText('手牌 5');
   await expect(page.getByTestId('hand').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('end-phase')).toBeEnabled();
   await expect(page.getByTestId('interaction-hint')).toContainText('可操作');
-  await expect(page.getByTestId('save-status')).toHaveText('本機：新對局 · 尚未保存');
+  await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
 });
 
 test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
   await expect(page.getByText('版本 1')).toBeVisible();
 
   await page.reload();
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
+  await expect(page.getByTestId('expedition-summary')).toContainText('修訂1');
+  const saveBeforeContinue = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
+  await enterGame(page);
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(saveBeforeContinue);
   await expect(page.getByTestId('save-status')).toHaveText('本機：已恢復本機進度');
   await expect(page.getByTestId('restore-notice')).toHaveText('已恢復最近的本機進度。');
   await expect(page.getByText('版本 1')).toBeVisible();
   await expect(page.getByTestId('end-phase')).toBeEnabled();
 });
 
+test('restored entry requires confirmation before replacing the saved expedition', async ({ page }) => {
+  await openGame(page);
+  await page.getByTestId('end-phase').click();
+  const priorGameId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.state.gameId);
+  await page.reload();
+
+  const entry = page.getByTestId('expedition-entry');
+  const startNew = entry.getByRole('button', { name: '開啟新遠征' });
+  await startNew.click();
+  const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(confirm).toHaveCount(0);
+  await expect(startNew).toBeFocused();
+
+  await startNew.click();
+  await entry.getByRole('button', { name: '確認開啟新遠征' }).click();
+  await expect(page.getByText('版本 0')).toBeVisible();
+  await expect(page.getByTestId('interaction-hint')).toBeFocused();
+  const restarted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  expect(restarted.snapshot.state).toMatchObject({ revision: 0, eventLogCursor: 0 });
+  expect(restarted.snapshot.state.gameId).not.toBe(priorGameId);
+  expect(restarted.events).toEqual([]);
+  expect(restarted.replayBundle.commands).toEqual([]);
+});
+
 test('empty adventurer and item supplies show approved copy while monsters remain full', async ({ page }) => {
-  await page.goto('/?e2eScenario=empty-partial-supplies');
+  await openGame(page, '/?e2eScenario=empty-partial-supplies');
   await expect(page.getByText('目前沒有冒險者可以雇用')).toBeVisible();
   await expect(page.getByText('目前沒有道具、裝備可以販售')).toBeVisible();
   const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
@@ -73,7 +111,7 @@ test('empty adventurer and item supplies show approved copy while monsters remai
 });
 
 test('lifecycle choice uses the dock, keeps cards inspectable, and commits once', async ({ page }) => {
-  await page.goto('/?e2eScenario=lifecycle-choice');
+  await openGame(page, '/?e2eScenario=lifecycle-choice');
   const card = page.getByTestId('hand').getByRole('button').first();
   await card.click();
   await expect(page.getByTestId('card-details')).toBeVisible();
@@ -106,7 +144,7 @@ test('lifecycle choice uses the dock, keeps cards inspectable, and commits once'
 
 test('counter consent survives reload, hides the counter value, and accepts through the dock', async ({ page }) => {
   await installPendingConsent(page, 'ai-1');
-  await page.goto('/?e2eScenario=lifecycle-consent');
+  await openGame(page, '/?e2eScenario=lifecycle-consent');
 
   const dock = page.getByTestId('lifecycle-dock');
   await expect(dock).toContainText('星塵 AI 要求公開');
@@ -118,6 +156,7 @@ test('counter consent survives reload, hides the counter value, and accepts thro
   await expect(dock.getByRole('button', { name: '取消公開請求' })).toHaveCount(0);
 
   await page.reload();
+  await enterGame(page);
   await expect(dock).toContainText('星塵 AI 要求公開');
   await dock.getByRole('button', { name: '同意公開' }).click();
   await expect(dock).toContainText('ALL_REQUIRED_ACTORS_ACCEPTED');
@@ -131,7 +170,7 @@ test('counter consent survives reload, hides the counter value, and accepts thro
 
 test('decline confirmation is reversible with Escape and commits only after confirmation', async ({ page }) => {
   await installPendingConsent(page, 'ai-1');
-  await page.goto('/?e2eScenario=lifecycle-consent');
+  await openGame(page, '/?e2eScenario=lifecycle-consent');
   const dock = page.getByTestId('lifecycle-dock');
 
   await dock.getByRole('button', { name: '不同意', exact: true }).click();
@@ -147,7 +186,7 @@ test('decline confirmation is reversible with Escape and commits only after conf
 
 test('requester can cancel but cannot answer their own counter consent', async ({ page }) => {
   await installPendingConsent(page, 'human-1');
-  await page.goto('/?e2eScenario=lifecycle-consent');
+  await openGame(page, '/?e2eScenario=lifecycle-consent');
   const dock = page.getByTestId('lifecycle-dock');
 
   await expect(dock.getByRole('button', { name: '同意公開' })).toHaveCount(0);
@@ -161,7 +200,7 @@ test('requester can cancel but cannot answer their own counter consent', async (
 test('explicit expiration uses confirmation without a wall-clock timer and remains mobile-safe', async ({ page }) => {
   await installPendingConsent(page, 'ai-1');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/?e2eScenario=lifecycle-consent');
+  await openGame(page, '/?e2eScenario=lifecycle-consent');
   const dock = page.getByTestId('lifecycle-dock');
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -175,7 +214,7 @@ test('explicit expiration uses confirmation without a wall-clock timer and remai
 });
 
 test('a completed human turn lets the AI finish and returns control to the human', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const endPhase = page.getByTestId('end-phase');
   for (let phase = 0; phase < 5; phase += 1) await endPhase.click();
   await expect(page.getByText('你的回合')).toBeVisible();
@@ -183,7 +222,7 @@ test('a completed human turn lets the AI finish and returns control to the human
 });
 
 test('unavailable actions show a clear phase-specific hint', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
   const unavailable = page.getByTestId('hand').getByRole('button').first();
@@ -194,7 +233,7 @@ test('unavailable actions show a clear phase-specific hint', async ({ page }) =>
 });
 
 test('card details support keyboard inspection, Escape, and focus restoration', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const card = page.getByTestId('hand').getByRole('button').first();
   await card.focus();
   await card.press('Enter');
@@ -209,7 +248,7 @@ test('card details support keyboard inspection, Escape, and focus restoration', 
 });
 
 test('art-first cards keep their desktop and mobile ratio without page overflow', async ({ page }) => {
-  await page.goto('/?e2eScenario=tagged-card-layout');
+  await openGame(page, '/?e2eScenario=tagged-card-layout');
   const desktopCard = page.getByTestId('hand').getByRole('button').first();
   const desktopBox = await desktopCard.boundingBox();
   expect(desktopBox?.width).toBeCloseTo(146, 0);
@@ -235,14 +274,16 @@ test('art-first cards keep their desktop and mobile ratio without page overflow'
 test('malformed local save is cleared and starts a playable new game', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('guildmaster-mvp-save-v2', '{not-json'));
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: '準備新的遠征' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
+  await page.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('human-card-count')).toContainText('手牌 5');
   await expect(page.getByTestId('end-phase')).toBeEnabled();
-  await expect(page.getByTestId('save-status')).toHaveText('本機：新對局 · 尚未保存');
-  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
 });
 
 test('legacy local save restores the persisted phase', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
   await page.evaluate(() => {
     const current = JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!);
@@ -251,13 +292,15 @@ test('legacy local save restores the persisted phase', async ({ page }) => {
     localStorage.removeItem('guildmaster-mvp-save-v2');
   });
   await page.reload();
+  await expect(page.getByTestId('expedition-summary')).toContainText('舊版存檔 · 紀錄不完整');
+  await enterGame(page);
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
   await expect(page.getByTestId('save-status')).toHaveText('本機：已恢復本機進度');
   await expect(page.getByTestId('restore-notice')).toContainText('沒有完整 Replay history');
 });
 
 test('replay runner reports malformed JSON without changing the live game', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await openReplayDiagnostics(page);
   await page.getByLabel('Replay JSON').fill('{not-json');
   await page.getByTestId('run-replay').click();
@@ -266,7 +309,7 @@ test('replay runner reports malformed JSON without changing the live game', asyn
 });
 
 test('replay runner does not expose the current unfinished authoritative game', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   await expect(page.getByTestId('replay-report')).toContainText('只能在對局結束後匯出');
@@ -275,7 +318,7 @@ test('replay runner does not expose the current unfinished authoritative game', 
 });
 
 test('replay runner reports the first assertion divergence without changing the live game', async ({ page }) => {
-  await page.goto('/?e2eScenario=all-bosses-endgame');
+  await openGame(page, '/?e2eScenario=all-bosses-endgame');
   await finishAllBossesGame(page);
   await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
@@ -288,7 +331,7 @@ test('replay runner reports the first assertion divergence without changing the 
 });
 
 test('deterministic full-game journey defeats, recruits, rests, restores v3 save, and continues legally', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const endPhase = page.getByTestId('end-phase');
 
   await endPhase.click();
@@ -321,6 +364,8 @@ test('deterministic full-game journey defeats, recruits, rests, restores v3 save
   await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(3);
 
   await page.reload();
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
+  await enterGame(page);
   await expect(page.getByText(/第 \d+ 輪 · 行動一階段/)).toBeVisible();
   await expect(page.getByText('你的回合')).toBeVisible();
   await expect(endPhase).toBeEnabled();
@@ -343,7 +388,7 @@ async function finishAllBossesGame(page: import('@playwright/test').Page): Promi
 }
 
 test('deterministic all-bosses journey reaches the scoreboard once and restarts with a fresh replay', async ({ page }) => {
-  await page.goto('/?e2eScenario=all-bosses-endgame');
+  await openGame(page, '/?e2eScenario=all-bosses-endgame');
   const endPhase = page.getByTestId('end-phase');
 
   await endPhase.click();
@@ -388,7 +433,7 @@ test('scoreboard keeps the memory-only warning when the final save fails', async
       value: () => { throw new DOMException('Storage unavailable', 'QuotaExceededError'); },
     });
   });
-  await page.goto('/?e2eScenario=all-bosses-endgame');
+  await openGame(page, '/?e2eScenario=all-bosses-endgame');
   await finishAllBossesGame(page);
   await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
   await expect(page.getByTestId('save-status')).toHaveText('本機：僅保留在此分頁');
@@ -396,7 +441,7 @@ test('scoreboard keeps the memory-only warning when the final save fails', async
 });
 
 test('deterministic all-bonds journey triggers the registered bond end condition through UI play', async ({ page }) => {
-  await page.goto('/?e2eScenario=all-bonds-endgame');
+  await openGame(page, '/?e2eScenario=all-bonds-endgame');
   const endPhase = page.getByTestId('end-phase');
 
   await endPhase.click();
@@ -418,7 +463,7 @@ test('deterministic all-bonds journey triggers the registered bond end condition
 });
 
 test('equipment uses details-driven selection and only exposes legal party targets', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const equipmentInHand = await buyEquipmentIntoHand(page);
   await equipmentInHand.click();
   await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
@@ -433,7 +478,7 @@ test('equipment uses details-driven selection and only exposes legal party targe
 });
 
 test('restart clears an in-progress equipment selection', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const equipmentInHand = await buyEquipmentIntoHand(page);
   await equipmentInHand.click();
   await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
@@ -449,7 +494,7 @@ test('restart clears an in-progress equipment selection', async ({ page }) => {
 });
 
 test('an authoritative revision invalidates an open details action', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const equipmentInHand = await buyEquipmentIntoHand(page);
   await equipmentInHand.click();
   await expect(page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true })).toBeVisible();
@@ -463,7 +508,7 @@ test('an authoritative revision invalidates an open details action', async ({ pa
 });
 
 test('item use is dispatched only from the current details action', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const endPhase = page.getByTestId('end-phase');
   for (let phase = 0; phase < 3; phase += 1) await endPhase.click();
   const store = page.locator('section').filter({ has: page.getByRole('heading', { name: /商店/ }) });

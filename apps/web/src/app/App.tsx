@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
+import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
 import { CardStateLegend } from '../features/game/table/CardStateLegend.js';
@@ -36,11 +37,12 @@ type CardInspection = {
 
 export function App() {
   const {
-    view, definitions, events, legalCommands, actionPreviews, persistence, error, scoreboard, replayReport,
+    view, definitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport,
     submit, restart, loadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
   const [inspection, setInspection] = useState<CardInspection>();
+  const [hasEnteredGame, setHasEnteredGame] = useState(false);
   const appRootRef = useRef<HTMLElement>(null);
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -92,6 +94,23 @@ export function App() {
       });
     });
   };
+  const focusGame = () => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        (interactionFallbackRef.current ?? appRootRef.current)?.focus();
+      });
+    });
+  };
+  const continueExpedition = () => {
+    setHasEnteredGame(true);
+    focusGame();
+  };
+  const startNewExpedition = () => {
+    clearTransientUi();
+    restart();
+    setHasEnteredGame(true);
+    focusGame();
+  };
   const inspectCard = (card: CardVisualViewModel, trigger: HTMLButtonElement) => {
     setInspection({ gameId: view.gameId, revision: view.revision, card, trigger });
   };
@@ -109,7 +128,16 @@ export function App() {
     clearReport={clearReplayReport}
   />;
 
-  useLifecycleFocus(lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
+  useLifecycleFocus(hasEnteredGame && lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
+
+  if (!hasEnteredGame) {
+    return <ExpeditionEntryScreen
+      summary={entrySummary}
+      persistence={persistence}
+      onContinue={continueExpedition}
+      onStartNew={startNewExpedition}
+    />;
+  }
 
   if (scoreboard) {
     return <GameResultsScreen
