@@ -93,6 +93,15 @@ describe('LocalGameSession transactional boundary', () => {
     vi.stubGlobal('localStorage', memoryStorage());
   });
 
+  it('returns action previews tied to the current game, actor, revision, and legal commands', () => {
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const session = new LocalGameSession(ruleset);
+    const combat = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(combat.actionPreviews).toMatchObject({ schemaVersion: 1, gameId: combat.view.gameId, revision: combat.view.revision, actorId: 'human-1' });
+    expect(combat.actionPreviews.items.length).toBeGreaterThan(0);
+    expect(combat.actionPreviews.items.every(({ command }) => combat.legalCommands.some((legal) => JSON.stringify(legal) === JSON.stringify(command)))).toBe(true);
+  });
+
   it('records one committed audit after choice suspension and never duplicates suspended events', () => {
     const choice: EffectDefinition['body'] = {
       kind: 'choice',

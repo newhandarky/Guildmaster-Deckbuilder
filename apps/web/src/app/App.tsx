@@ -36,7 +36,7 @@ type CardInspection = {
 
 export function App() {
   const {
-    view, definitions, events, legalCommands, error, scoreboard, replayReport,
+    view, definitions, events, legalCommands, actionPreviews, error, scoreboard, replayReport,
     submit, restart, loadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
@@ -148,6 +148,7 @@ export function App() {
       cards={view.cards}
       presentation={presentationResolver}
       legalCommands={legalCommands}
+      actionPreviews={actionPreviews.items}
       onInspect={inspectCard}
     />}
     party={<PartyPanel

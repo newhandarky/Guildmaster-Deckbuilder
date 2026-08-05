@@ -1,4 +1,4 @@
-import type { CardDefinition, CardInstance, EnemyTargetState, GameCommand, ZoneState } from '@guildmaster/game-protocol';
+import type { ActionPreviewItem, CardDefinition, CardInstance, EnemyTargetState, GameCommand, ZoneState } from '@guildmaster/game-protocol';
 import type { PresentationResolver } from '@guildmaster/presentation-core';
 import { Card } from '../../../ui/components/Card.js';
 import { buildCardVisualModel, commandAction, type CardVisualViewModel } from '../../../ui/cards/card-visual-model.js';
@@ -11,12 +11,13 @@ type Props = {
   cards: Record<string, CardInstance>;
   presentation: PresentationResolver;
   legalCommands: readonly GameCommand[];
+  actionPreviews: readonly ActionPreviewItem[];
   onInspect: (card: CardVisualViewModel, trigger: HTMLButtonElement) => void;
 };
 
 function definitionFor(cards: Props['cards'], definitions: Props['definitions'], cardId: string): CardDefinition | undefined { return definitions[cards[cardId]?.definitionId ?? '']; }
 
-export function BoardPanel({ zones, targets, definitions, cards, presentation, legalCommands, onInspect }: Props) {
+export function BoardPanel({ zones, targets, definitions, cards, presentation, legalCommands, actionPreviews, onInspect }: Props) {
   const cardsIn = (zoneId: string) => zones[zoneId]?.cardIds ?? [];
   const availableTargets = new Map(
     Object.values(targets)
@@ -36,12 +37,18 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
       const cardAction = command
         ? commandAction(`${command.type}:${action === 'attack' ? target?.targetId : id}`, action === 'attack' ? '討伐' : definition?.type === 'adventurer' ? '招募' : '購買', command)
         : undefined;
+      const actionPreview = command?.type === 'ATTACK_TARGET'
+        ? actionPreviews.find((preview) => preview.kind === 'attack' && preview.targetId === command.targetId)
+        : command?.type === 'BUY_CARD'
+          ? actionPreviews.find((preview) => preview.kind === 'purchase' && preview.cardId === command.cardId)
+          : undefined;
       const card = buildCardVisualModel({
         instance: cards[id],
         definition,
         presentation: presentation.resolve(definition?.id ?? cards[id]?.definitionId ?? ''),
         interactionState: cardAction ? 'legal' : 'unavailable',
         action: cardAction,
+        actionPreview,
       });
       return <Card key={id} card={card} onInspect={onInspect} />;
     })}</div>

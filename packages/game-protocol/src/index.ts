@@ -1,6 +1,7 @@
 export * from './cards.js';
 export * from './combat.js';
 export * from './attack-resolution.js';
+export * from './action-preview.js';
 export * from './combat-reward.js';
 export * from './encounter.js';
 export * from './equipment.js';
