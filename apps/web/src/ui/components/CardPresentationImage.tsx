@@ -7,6 +7,16 @@ type Props = {
   placeholderAccessible?: boolean;
 };
 
+function CardFallbackArtwork() {
+  return <span className="card-fallback-scene" data-html-artwork="true" aria-hidden="true">
+    <span className="card-fallback-backdrop" />
+    <span className="card-fallback-orbit" />
+    <span className="card-fallback-ground" />
+    <span className="card-fallback-figure" />
+    <span className="card-fallback-accent" />
+  </span>;
+}
+
 export function CardPresentationImage({ art, sizes, placeholderAccessible = false }: Props) {
   const [failedSource, setFailedSource] = useState<string>();
   const showImage = Boolean(art.src && failedSource !== art.src);
@@ -16,8 +26,10 @@ export function CardPresentationImage({ art, sizes, placeholderAccessible = fals
       data-image-fallback={showImage ? 'hidden' : 'visible'}
       role={!showImage && placeholderAccessible ? 'img' : undefined}
       aria-label={!showImage && placeholderAccessible ? `${art.altText}（目前使用中性 placeholder）` : undefined}
-      aria-hidden={!placeholderAccessible ? true : undefined}
-    />
+      aria-hidden={showImage || !placeholderAccessible ? true : undefined}
+    >
+      <CardFallbackArtwork />
+    </span>
     {showImage ? <img
       src={art.src}
       srcSet={art.srcSet}
