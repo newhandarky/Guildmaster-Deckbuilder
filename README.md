@@ -32,7 +32,7 @@ pnpm check
 - 魔物、魔王、終局輪、榮譽計分與平手比較。
 - Content Pack、Rules Module、可擴充敵方 Encounter、Snapshot、Command、Event、PlayerView 與 LocalGameSession 邊界。
 - 簡單 AI 只透過相同的合法 Command 介面操作；沒有另一套 AI 規則。
-- localStorage 自動保存版本化 Snapshot 與近期事件紀錄。
+- localStorage 自動保存版本化 Snapshot、近期事件與完整 Replay history；桌機頁首會以純文字標示新對局、已保存、已恢復或僅記憶體狀態，舊版 snapshot-only 存檔另明示 Replay history 不完整。
 - Deterministic Playwright journey 會以原創示範內容走完真人討伐、招募、休息、AI 回合與 v3 local save reload；這是 runtime／測試穩定化能力，不是正式基礎卡表完成的宣告。
 - e2e mode 的 typed、validated 原創示範 scenario registry 也會以正常 UI 操作觸發已註冊的全魔王／全羈絆終局，驗證 final round、AI 收尾、單次 scoreboard、排名／榮譽／討伐統計，以及「開啟新遠征」後 revision、事件與 replay history 歸零；它不修改 engine state，也不增加 production debug 捷徑。
 - 規則核心 Vitest 回歸測試，涵蓋抽牌途中洗牌、展示不洗牌、隊伍滿員、過量派遣、道具休息棄置、供應牌庫耗盡與 Snapshot round-trip。

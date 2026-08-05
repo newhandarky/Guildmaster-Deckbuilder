@@ -1,15 +1,18 @@
 import type { Phase } from '@guildmaster/game-protocol';
+import type { SessionPersistenceStatus } from '../../../adapters/game-session.js';
 import { phaseDisplayName } from './phase-copy.js';
 import { PhaseProgress } from './PhaseProgress.js';
+import { SessionPersistenceLabel } from './SessionPersistenceLabel.js';
 
 type Props = {
   round: number;
   phase: Phase;
   revision: number;
   isViewerActive: boolean;
+  persistence: SessionPersistenceStatus;
 };
 
-export function GameHeader({ round, phase, revision, isViewerActive }: Props) {
+export function GameHeader({ round, phase, revision, isViewerActive, persistence }: Props) {
   return <header className="hero game-header">
     <div>
       <p className="eyebrow">原創文字示範牌組 · 單機人機對戰</p>
@@ -20,6 +23,7 @@ export function GameHeader({ round, phase, revision, isViewerActive }: Props) {
     <div className="status">
       <strong>{isViewerActive ? '你的回合' : 'AI 正在行動'}</strong>
       <span>版本 {revision}</span>
+      <SessionPersistenceLabel persistence={persistence} />
     </div>
   </header>;
 }

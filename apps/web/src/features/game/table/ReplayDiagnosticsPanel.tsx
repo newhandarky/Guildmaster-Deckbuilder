@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ReplayRunnerReport } from '../../../adapters/local-session/LocalGameSession.js';
+import type { ReplayRunnerReport } from '../../../adapters/game-session.js';
 
 type Props = {
   report?: ReplayRunnerReport | undefined;

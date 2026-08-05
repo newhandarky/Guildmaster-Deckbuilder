@@ -36,7 +36,7 @@ type CardInspection = {
 
 export function App() {
   const {
-    view, definitions, events, legalCommands, actionPreviews, error, scoreboard, replayReport,
+    view, definitions, events, legalCommands, actionPreviews, persistence, error, scoreboard, replayReport,
     submit, restart, loadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
@@ -117,6 +117,8 @@ export function App() {
       conditionId={view.endState?.conditionId ?? '遊戲結束'}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
+      notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
+      persistence={persistence}
       onRestart={restartAndClear}
     />;
   }
@@ -128,8 +130,9 @@ export function App() {
       phase={view.phase}
       revision={view.revision}
       isViewerActive={view.activePlayerId === view.viewerId}
+      persistence={persistence}
     />}
-    notices={<GameNotices status={view.status} error={error} />}
+    notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
     playerStatus={<PlayerStatusStrip
       self={{
         handCount: view.self.hand.length,

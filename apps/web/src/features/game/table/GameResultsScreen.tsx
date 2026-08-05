@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useRef, type ReactNode } from 'react';
+import type { SessionPersistenceStatus } from '../../../adapters/game-session.js';
+import { SessionPersistenceLabel } from './SessionPersistenceLabel.js';
 
 type ScoreboardRow = {
   playerId: string;
@@ -13,11 +15,13 @@ type Props = {
   conditionId: string;
   scoreboard: readonly ScoreboardRow[];
   diagnostics: ReactNode;
+  notices: ReactNode;
+  persistence: SessionPersistenceStatus;
   onRestart: () => void;
 };
 
 export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameResultsScreen(
-  { conditionId, scoreboard, diagnostics, onRestart },
+  { conditionId, scoreboard, diagnostics, notices, persistence, onRestart },
   ref,
 ) {
   const restartRef = useRef<HTMLButtonElement>(null);
@@ -34,7 +38,12 @@ export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameRes
         <h1>遠征結算</h1>
         <p>{conditionId}</p>
       </div>
+      <div className="status">
+        <strong>對局已結束</strong>
+        <SessionPersistenceLabel persistence={persistence} />
+      </div>
     </section>
+    {notices}
     <div className="results-layout">
       <section className="scoreboard" aria-labelledby="scoreboard-heading">
         <h2 id="scoreboard-heading">榮譽排名</h2>

@@ -5,36 +5,65 @@ const legacyStorageKey = 'guildmaster-mvp-snapshot-v1';
 const legacyEventKey = 'guildmaster-mvp-events-v1';
 
 export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean };
+export type LoadLocalGameResult =
+  | { status: 'empty' }
+  | { status: 'loaded'; game: LoadedLocalGame }
+  | { status: 'invalid-cleared' }
+  | { status: 'unavailable' };
 
 export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle): void {
   localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}) }));
 }
-export function clearLocalGame(): void { try { localStorage.removeItem(storageKey); localStorage.removeItem(legacyStorageKey); localStorage.removeItem(legacyEventKey); } catch { /* Storage can be unavailable; the in-memory session remains usable. */ } }
-
-export function loadLocalGame(): LoadedLocalGame | undefined {
+export function clearLocalGame(): boolean {
   try {
-    const current = localStorage.getItem(storageKey);
-    const value: unknown = current ? JSON.parse(current) : undefined;
-    if (value && typeof value === 'object' && 'snapshot' in value && 'events' in value && Array.isArray(value.events) && value.events.every(isDomainEvent)) {
-      const record = value as Record<string, unknown>;
-      if (record.schemaVersion === 3) {
-        const replay = ReplayBundleSchema.safeParse(record.replayBundle);
-        return replay.success
-          ? { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayBundle: replay.data as ReplayBundle, replayHistoryComplete: true }
-          : { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false };
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(legacyStorageKey);
+    localStorage.removeItem(legacyEventKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadLocalGame(): LoadLocalGameResult {
+  let current: string | null;
+  try {
+    current = localStorage.getItem(storageKey);
+  } catch {
+    return { status: 'unavailable' };
+  }
+
+  if (current) {
+    try {
+      const value: unknown = JSON.parse(current);
+      if (value && typeof value === 'object' && 'snapshot' in value && 'events' in value && Array.isArray(value.events) && value.events.every(isDomainEvent)) {
+        const record = value as Record<string, unknown>;
+        if (record.schemaVersion === 3) {
+          const replay = ReplayBundleSchema.safeParse(record.replayBundle);
+          return { status: 'loaded', game: replay.success
+            ? { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayBundle: replay.data as ReplayBundle, replayHistoryComplete: true }
+            : { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
+        }
+        if (record.schemaVersion !== 2) throw new Error('Unsupported local save version.');
+        // v2 stored only a Snapshot and a display-event tail; it has no authoritative command history.
+        return { status: 'loaded', game: { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
       }
-      // v2 stored only a Snapshot and a display-event tail; it has no authoritative command history.
-      return { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false };
+    } catch {
+      // Invalid current saves are handled below with the same recoverable clear path.
     }
+    return { status: clearLocalGame() ? 'invalid-cleared' : 'unavailable' };
+  }
+
+  try {
     const legacySnapshot = localStorage.getItem(legacyStorageKey);
-    if (!legacySnapshot) return undefined;
-    const events: unknown = JSON.parse(localStorage.getItem(legacyEventKey) ?? '[]');
+    if (!legacySnapshot) return { status: 'empty' };
+    const legacyEvents = localStorage.getItem(legacyEventKey);
+    const events: unknown = JSON.parse(legacyEvents ?? '[]');
     if (!Array.isArray(events) || !events.every(isDomainEvent)) throw new Error('Malformed stored events.');
     // v1 predates the local-save envelope. Preserve its Snapshot, never fabricate commands.
-    return { snapshot: JSON.parse(legacySnapshot) as VersionedSnapshot, events, replayHistoryComplete: false };
+    return { status: 'loaded', game: { snapshot: JSON.parse(legacySnapshot) as VersionedSnapshot, events, replayHistoryComplete: false } };
   } catch {
-    clearLocalGame();
-    return undefined;
+    return { status: clearLocalGame() ? 'invalid-cleared' : 'unavailable' };
   }
 }
 

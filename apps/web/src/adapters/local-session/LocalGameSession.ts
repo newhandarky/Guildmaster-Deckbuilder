@@ -1,11 +1,8 @@
 import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
-import { createGame, dispatch, getActionPreviewSet, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
-import type { ActionPreviewSet, CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayDiagnostic, ReplayInitialConfig } from '@guildmaster/game-protocol';
+import { createGame, dispatch, getActionPreviewSet, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset } from '@guildmaster/game-engine';
+import type { CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, ReplayBundle, ReplayInitialConfig } from '@guildmaster/game-protocol';
+import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
-
-export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; actionPreviews: ActionPreviewSet; replayHistoryComplete: boolean; error?: EngineError | undefined; scoreboard?: ScoreRow[] | undefined };
-export type ReplayDiagnosticExport = { json?: string; error?: string };
-export type ReplayRunnerReport = { status: 'completed'; message: string; commandCount: number; eventCount: number; revision: number } | { status: 'failed'; message: string; reasonCode?: ReplayDiagnostic['reasonCode'] | undefined; commandIndex?: number | undefined; commandId?: string | undefined; expectedRevision?: number | undefined; actualRevision?: number | undefined; engineErrorCode?: string | undefined; divergence?: { path: string; expected: unknown; actual: unknown } | undefined };
 
 export class LocalGameSession {
   private state: GameState;
@@ -15,16 +12,19 @@ export class LocalGameSession {
   private commands: CommandEnvelope[] = [];
   private initialConfig!: ReplayInitialConfig;
   private replayHistoryComplete = true;
+  private persistenceState: SessionPersistenceStatus['state'] = 'fresh';
   private commandSequence = 0;
   private gameSequence = 0;
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
-    const saved = loadLocalGame();
-    if (saved) {
+    const loaded = loadLocalGame();
+    if (loaded.status === 'loaded') {
       try {
+        const saved = loaded.game;
         this.state = restoreSnapshot(saved.snapshot, this.ruleset);
         this.events = saved.events;
         this.replayHistoryComplete = saved.replayHistoryComplete;
+        this.persistenceState = 'restored';
         if (saved.replayBundle) {
           this.initialConfig = structuredClone(saved.replayBundle.initialConfig);
           this.commands = structuredClone([...saved.replayBundle.commands]);
@@ -32,13 +32,15 @@ export class LocalGameSession {
           this.commandSequence = this.commands.length;
         }
       } catch {
-        clearLocalGame();
+        const cleared = clearLocalGame();
         this.state = this.createFreshGame();
         this.events = [];
+        this.persistenceState = cleared ? 'fresh' : 'memory-only';
       }
     } else {
       this.state = this.createFreshGame();
       this.events = [];
+      this.persistenceState = loaded.status === 'unavailable' ? 'memory-only' : 'fresh';
     }
   }
 
@@ -145,13 +147,32 @@ export class LocalGameSession {
   }
 
   private persistAndReturn(newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
-    try { saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined); return this.makeUpdate(newEvents, error); }
-    catch { return this.makeUpdate(newEvents, error ?? { code: 'INVALID_COMMAND', message: '本機儲存不可用；目前進度只保留在記憶體中。' }); }
+    try {
+      saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined);
+      this.persistenceState = 'saved';
+    } catch {
+      this.persistenceState = 'memory-only';
+    }
+    return this.makeUpdate(newEvents, error);
   }
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
-    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId), replayHistoryComplete: this.replayHistoryComplete, error };
+    const update: SessionUpdate = {
+      view: projectPlayerView(this.state, this.ruleset, this.humanId),
+      definitions: this.ruleset.registry.definitions,
+      events: this.events.slice(-60),
+      legalCommands,
+      actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
+      persistence: {
+        schemaVersion: 1,
+        state: this.persistenceState,
+        revision: this.state.revision,
+        replayHistoryComplete: this.replayHistoryComplete,
+      },
+      replayHistoryComplete: this.replayHistoryComplete,
+      error,
+    };
     return { ...update, scoreboard: this.state.status === 'finished' ? getScoreboard(this.state, this.ruleset) : undefined };
   }
 
