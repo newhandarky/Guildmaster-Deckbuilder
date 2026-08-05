@@ -61,6 +61,23 @@ describe('card visual model', () => {
     expect(model.action).toEqual(action);
   });
 
+  it('copies the exact authoritative preview into the presentation model', () => {
+    const command: Extract<GameCommand, { type: 'BUY_CARD' }> = { type: 'BUY_CARD', cardId: instance.id };
+    const action = commandAction('buy', '招募', command);
+    const actionPreview = {
+      kind: 'purchase' as const,
+      status: 'ready' as const,
+      command,
+      cardId: instance.id,
+      cost: 2,
+      availablePurchasePower: 3,
+      remainingPurchasePower: 1,
+    };
+    const model = buildCardVisualModel({ instance, definition: definition(), presentation, action, actionPreview });
+    expect(model.actionPreview).toEqual(actionPreview);
+    expect(model.actionPreview).not.toBe(actionPreview);
+  });
+
   it('names the exact legal action while keeping details as the card activation behavior', () => {
     const action = commandAction('play', '加入隊伍', { type: 'PLAY_ADVENTURER', cardId: instance.id });
     const model = buildCardVisualModel({

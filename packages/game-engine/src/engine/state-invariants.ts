@@ -61,6 +61,7 @@ export function validateGameStateInvariants(state: GameState): string[] {
   const targetMembership = new Map<string, string[]>();
   for (const encounter of state.enemyEncounters) {
     if (duplicates(encounter.targetIds).length) errors.push(`Encounter ${encounter.encounterId} contains duplicate target IDs.`);
+    if (encounter.status === 'finished' && !encounter.resolutionPolicy) errors.push(`Finished encounter ${encounter.encounterId} must have a resolution policy.`);
     if (encounter.resolutionPolicy && encounter.rulesModuleId && encounter.resolutionPolicy.moduleId !== encounter.rulesModuleId) errors.push(`Encounter ${encounter.encounterId} policy owner does not match its Rules Module.`);
     const partKeys = new Set<string>();
     for (const targetId of encounter.targetIds) {

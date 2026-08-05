@@ -1,4 +1,4 @@
-import type { CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
+import type { ActionPreviewItem, CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
 
 export type CardTemplate = 'character' | 'standard' | 'supply' | 'enemy' | 'boss' | 'full-art';
@@ -40,6 +40,7 @@ export type CardVisualViewModel = {
   stateDescription: string;
   contextLabel?: string;
   action?: CardAction;
+  actionPreview?: ActionPreviewItem;
 };
 
 type BuildCardVisualModelInput = {
@@ -49,6 +50,7 @@ type BuildCardVisualModelInput = {
   interactionState?: CardInteractionState | undefined;
   contextLabel?: string | undefined;
   action?: CardAction | undefined;
+  actionPreview?: ActionPreviewItem | undefined;
 };
 
 const typeTemplates: Readonly<Record<string, CardTemplate>> = {
@@ -109,6 +111,7 @@ export function buildCardVisualModel({
   interactionState = 'default',
   contextLabel,
   action,
+  actionPreview,
 }: BuildCardVisualModelInput): CardVisualViewModel {
   const definitionId = definition?.id ?? instance?.definitionId ?? presentation?.definitionId ?? 'unknown';
   const fallback = fallbackPresentation(definitionId);
@@ -132,6 +135,7 @@ export function buildCardVisualModel({
     stateDescription: stateDescriptions[interactionState],
     ...(contextLabel ? { contextLabel } : {}),
     ...(action ? { action } : {}),
+    ...(actionPreview ? { actionPreview: structuredClone(actionPreview) } : {}),
   };
 }
 

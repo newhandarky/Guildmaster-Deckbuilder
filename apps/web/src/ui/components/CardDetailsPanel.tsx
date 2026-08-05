@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
+import { ActionPreviewPanel } from './ActionPreviewPanel.js';
 import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
@@ -82,6 +83,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
           <dd>{metric.value}</dd>
         </div>)}
       </dl> : null}
+      {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
       <div className="card-details-meta">
         {card.tags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
           {card.tags.map((tag) => <span key={tag}>{tag}</span>)}

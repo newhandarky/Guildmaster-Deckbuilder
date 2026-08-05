@@ -1,9 +1,9 @@
 import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
-import { createGame, dispatch, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
-import type { CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayDiagnostic, ReplayInitialConfig } from '@guildmaster/game-protocol';
+import { createGame, dispatch, getActionPreviewSet, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type ScoreRow } from '@guildmaster/game-engine';
+import type { ActionPreviewSet, CardDefinition, CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, PlayerView, ReplayBundle, ReplayDiagnostic, ReplayInitialConfig } from '@guildmaster/game-protocol';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 
-export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; replayHistoryComplete: boolean; error?: EngineError | undefined; scoreboard?: ScoreRow[] | undefined };
+export type SessionUpdate = { view: PlayerView; definitions: Readonly<Record<string, CardDefinition>>; events: DomainEvent[]; legalCommands: GameCommand[]; actionPreviews: ActionPreviewSet; replayHistoryComplete: boolean; error?: EngineError | undefined; scoreboard?: ScoreRow[] | undefined };
 export type ReplayDiagnosticExport = { json?: string; error?: string };
 export type ReplayRunnerReport = { status: 'completed'; message: string; commandCount: number; eventCount: number; revision: number } | { status: 'failed'; message: string; reasonCode?: ReplayDiagnostic['reasonCode'] | undefined; commandIndex?: number | undefined; commandId?: string | undefined; expectedRevision?: number | undefined; actualRevision?: number | undefined; engineErrorCode?: string | undefined; divergence?: { path: string; expected: unknown; actual: unknown } | undefined };
 
@@ -151,7 +151,7 @@ export class LocalGameSession {
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
-    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, replayHistoryComplete: this.replayHistoryComplete, error };
+    const update: SessionUpdate = { view: projectPlayerView(this.state, this.ruleset, this.humanId), definitions: this.ruleset.registry.definitions, events: this.events.slice(-60), legalCommands, actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId), replayHistoryComplete: this.replayHistoryComplete, error };
     return { ...update, scoreboard: this.state.status === 'finished' ? getScoreboard(this.state, this.ruleset) : undefined };
   }
 

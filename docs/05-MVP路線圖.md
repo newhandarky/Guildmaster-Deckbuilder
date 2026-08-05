@@ -103,7 +103,7 @@
 ### M4 — 可玩的單機人機 UI
 
 - 對局設定、羈絆選擇、酒館與玩家公會
-- 合法操作高亮、只消費 PlayerView／legal Commands 的 lifecycle interaction dock、討伐預覽
+- 合法操作高亮、只消費 PlayerView／legal Commands 的 lifecycle interaction dock，以及 versioned authoritative 討伐／購買預覽
 - AI 行動後的事件紀錄與人類玩家可見資訊
 - 操作紀錄、規則提示與 placeholder 卡面
 - 響應式手機橫向／平板／桌面牌桌：固定單頁空間順序、各牌列自行捲動、sticky interaction rail 與收合式 Replay 診斷
@@ -131,6 +131,7 @@
 - 桌機核心鍵盤路徑已覆蓋階段推進、合法卡牌詳情、具體動作確認、dispatch 後焦點交接，以及結算／新遠征焦點交接；卡片名稱會區分「開啟詳情」與實際合法動作
 - WCAG A／AA automated gate、skip link、44px 觸控目標、320px reflow／200% 文字放大、reduced motion、forced colors 與破壞性重新開局確認
 - 桌機回饋已提供五階段進度、legal Commands 動作摘要、卡片狀態圖例及最新 accepted event；不複製 engine legality 或建立 optimistic state
+- 討伐／購買詳情已接入 deterministic `ActionPreviewSet`：一般討伐、health damage、購買剩餘值與未固定的 command-before lifecycle 分支都有 schema／query／session／UI regression；preview 不進入 Snapshot 或改變 RNG／revision
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單
 - Presentation asset manifest、尺寸／hash／權利檢查，以及逐批小型素材 PR
