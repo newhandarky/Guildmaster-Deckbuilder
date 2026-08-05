@@ -83,6 +83,11 @@ export function App() {
   const restartAndClear = () => {
     clearTransientUi();
     restart();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        (interactionFallbackRef.current ?? appRootRef.current)?.focus();
+      });
+    });
   };
   const inspectCard = (card: CardVisualViewModel, trigger: HTMLButtonElement) => {
     setInspection({ gameId: view.gameId, revision: view.revision, card, trigger });

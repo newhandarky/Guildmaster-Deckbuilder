@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 async function expectNoAccessibilityViolations(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page })
@@ -19,6 +19,47 @@ test('main game table meets automated WCAG A/AA checks', async ({ page }) => {
   await expect(page.getByTestId('game-app')).toBeVisible();
   await expect(page.locator('.card[aria-label*="購買力"], .card[aria-label*="費用"], .card[aria-label*="戰力"]').first()).toBeVisible();
   await expectNoAccessibilityViolations(page);
+});
+
+test('desktop keyboard path reaches an exact card action and restores focus after dispatch', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  const endPhase = page.getByTestId('end-phase');
+
+  await tabUntilFocused(page, 'Tab', endPhase);
+  await endPhase.press('Enter');
+  await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
+
+  const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+  const legalMonster = monsterRow.locator('[data-legal-action="true"]').first();
+  await expect(legalMonster).toHaveAttribute('aria-label', /動作：討伐/);
+  await tabUntilFocused(page, 'Shift+Tab', legalMonster);
+  await legalMonster.press('Space');
+
+  const action = page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true });
+  await tabUntilFocused(page, 'Tab', action);
+  await action.press('Space');
+  await expect(page.locator('.log')).toContainText('討伐了');
+  await expect(page.getByTestId('interaction-hint')).toBeFocused();
+});
+
+test('scoreboard uses list semantics and hands focus to the new-expedition flow', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/?e2eScenario=all-bosses-endgame');
+  const endPhase = page.getByTestId('end-phase');
+  await endPhase.click();
+  const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });
+  await bossRow.locator('[data-legal-action="true"]').first().click();
+  await page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true }).click();
+  for (let phase = 0; phase < 4; phase += 1) await endPhase.click();
+
+  const ranking = page.getByRole('list', { name: '榮譽排名' });
+  await expect(ranking.getByRole('listitem')).toHaveCount(2);
+  const newExpedition = page.getByRole('button', { name: '開啟新遠征' });
+  await expect(newExpedition).toBeFocused();
+  await newExpedition.press('Enter');
+  await expect(page.getByText('版本 0')).toBeVisible();
+  await expect(page.getByTestId('interaction-hint')).toBeFocused();
 });
 
 test('card details meet automated WCAG A/AA checks', async ({ page }) => {
@@ -111,3 +152,11 @@ test('reduced motion removes card displacement and forced colors preserve state 
   await expect(card).toHaveCSS('transform', 'none');
   await expect(card).toHaveCSS('border-style', 'solid');
 });
+
+async function tabUntilFocused(page: Page, key: 'Tab' | 'Shift+Tab', target: Locator): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await page.keyboard.press(key);
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error(`Keyboard navigation did not reach target with ${key}.`);
+}

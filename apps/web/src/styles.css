@@ -237,6 +237,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .warning, .error { padding: .9rem 1rem; border-radius: .65rem; margin-bottom: 1rem; }
 .warning { background: #71451e; }
 .error { background: #6b2633; }
+.scoreboard-list { margin: 0; padding: 0; list-style: none; }
 .score-row { display: grid; grid-template-columns: 1fr auto; gap: .25rem; padding: .8rem 0; border-bottom: 1px solid #304664; }
 .score-row small { grid-column: 1 / -1; }
 

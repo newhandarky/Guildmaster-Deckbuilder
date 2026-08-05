@@ -148,6 +148,13 @@ export function equipmentSelectionAction(
     : undefined;
 }
 
+/** Gives inspectable cards a concise name without implying that opening details executes the action. */
+export function cardAccessibleName(card: CardVisualViewModel): string {
+  const metricSummary = card.metrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
+  const actionSummary = card.action ? `，動作：${card.action.label}` : '';
+  return `${card.displayName}，${card.cardTypeLabel}${metricSummary ? `，${metricSummary}` : ''}，${card.stateDescription}${actionSummary}，開啟卡牌詳情`;
+}
+
 function commandFingerprint(command: GameCommand): string {
   return JSON.stringify(command);
 }
