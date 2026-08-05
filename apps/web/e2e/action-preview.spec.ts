@@ -36,6 +36,20 @@ test('desktop card details show current, cost, and remaining purchase power', as
   await expect(preview).toContainText('authoritative rules 重新驗證');
 });
 
+test('lifecycle-dependent preview withholds unresolved combat values', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/?e2eScenario=lifecycle-choice');
+  await page.getByTestId('end-phase').click();
+  await page.getByTestId('lifecycle-dock').getByRole('button', { name: '繼續', exact: true }).click();
+
+  const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+  await monsterRow.locator('[data-legal-action="true"]').first().click();
+  const preview = page.getByTestId('action-preview');
+  await expect(preview).toContainText('規則互動或隨機結算');
+  await expect(preview).not.toContainText('需求戰力');
+  await expect(preview).not.toContainText('規則結果');
+});
+
 test('combat preview remains scrollable and actionable on the existing narrow layout', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');

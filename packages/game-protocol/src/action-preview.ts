@@ -37,6 +37,12 @@ export type ActionPreviewItem =
     }
   | {
       kind: 'purchase';
+      status: 'requires-lifecycle';
+      command: PurchaseCommand;
+      cardId: string;
+    }
+  | {
+      kind: 'purchase';
       status: 'ready';
       command: PurchaseCommand;
       cardId: string;
@@ -93,6 +99,7 @@ const attackReadySchema = z.object({
   if (value.command.targetId !== value.targetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ['targetId'], message: 'Attack preview target must match its command.' });
   if (value.committedCombat - value.requiredCombat !== value.surplusCombat) context.addIssue({ code: z.ZodIssueCode.custom, path: ['surplusCombat'], message: 'Attack preview surplus is inconsistent.' });
   if (new Set(value.participantCardIds).size !== value.participantCardIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['participantCardIds'], message: 'Attack preview participant IDs must be unique.' });
+  if (value.participantCardIds.length < value.partySlotCount || value.participantCardIds.length > value.partySlotCount * 2) context.addIssue({ code: z.ZodIssueCode.custom, path: ['participantCardIds'], message: 'Attack preview participants must match the committed party-slot prefix.' });
 });
 
 const attackLifecycleSchema = z.object({
@@ -117,7 +124,16 @@ const purchaseSchema = z.object({
   if (value.availablePurchasePower - value.cost !== value.remainingPurchasePower) context.addIssue({ code: z.ZodIssueCode.custom, path: ['remainingPurchasePower'], message: 'Purchase preview remaining power is inconsistent.' });
 });
 
-export const ActionPreviewItemSchema: z.ZodType<ActionPreviewItem> = z.union([attackReadySchema, attackLifecycleSchema, purchaseSchema]);
+const purchaseLifecycleSchema = z.object({
+  kind: z.literal('purchase'),
+  status: z.literal('requires-lifecycle'),
+  command: purchaseCommandSchema,
+  cardId: nonEmpty,
+}).strict().superRefine((value, context) => {
+  if (value.command.cardId !== value.cardId) context.addIssue({ code: z.ZodIssueCode.custom, path: ['cardId'], message: 'Purchase preview card must match its command.' });
+});
+
+export const ActionPreviewItemSchema: z.ZodType<ActionPreviewItem> = z.union([attackReadySchema, attackLifecycleSchema, purchaseSchema, purchaseLifecycleSchema]);
 export const ActionPreviewSetSchema: z.ZodType<ActionPreviewSet> = z.object({
   schemaVersion: z.literal(1),
   gameId: nonEmpty,

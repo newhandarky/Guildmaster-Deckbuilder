@@ -9,10 +9,11 @@ function outcomeCopy(outcome: AttackPreviewOutcome): string {
 }
 
 export function ActionPreviewPanel({ preview }: { preview: ActionPreviewItem }) {
-  if (preview.kind === 'attack' && preview.status === 'requires-lifecycle') {
+  if (preview.status === 'requires-lifecycle') {
+    const attack = preview.kind === 'attack';
     return <section className="action-preview" data-testid="action-preview" aria-labelledby="action-preview-title">
-      <h3 id="action-preview-title">討伐預覽</h3>
-      <p>此動作會先進入規則互動；完成選擇或同意後，系統才會固定最終戰力與結果。</p>
+      <h3 id="action-preview-title">{attack ? '討伐預覽' : '購買預覽'}</h3>
+      <p>此動作會先進入規則互動或隨機結算；完成後，系統才會固定最終{attack ? '戰力與結果' : '費用與剩餘購買力'}。</p>
     </section>;
   }
   if (preview.kind === 'attack') {

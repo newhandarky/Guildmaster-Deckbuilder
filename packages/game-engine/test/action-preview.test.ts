@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ActionPreviewSetSchema, type EffectDefinition, type LifecycleHook } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, evaluateAttackResolution, executeEffect, getActionPreviewSet, getPurchasePower, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, evaluateAttackResolution, executeEffect, getActionPreviewSet, getLegalCommands, getPurchasePower, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule } from '../src/rules/ruleset.js';
 import { makeGame, testPack, testRuleset } from './fixtures.js';
@@ -25,6 +25,37 @@ const commandBeforeChoice = (moduleId: string): LifecycleHook => ({
       ],
     },
   },
+});
+
+const commandBefore = (moduleId: string, body: EffectDefinition['body'], hookId = 'preview-command'): LifecycleHook => ({
+  schemaVersion: 1,
+  moduleId,
+  hookId,
+  point: 'command-before',
+  kind: 'trigger',
+  priority: 1,
+  effect: { schemaVersion: 1, effectId: `${moduleId}:${hookId}`, body },
+});
+
+const previewModule = (moduleId: string, lifecycleHooks: readonly LifecycleHook[], extra: Partial<RulesModule> = {}): RulesModule => ({
+  id: moduleId,
+  version: '1',
+  lifecycleHooks,
+  getPartyLimit: (_state, _player, limit) => limit,
+  onSupplyDepleted: () => 'handled',
+  ...extra,
+});
+
+const purchaseBonus = (amount: number): EffectDefinition['body'] => ({
+  kind: 'modify-value',
+  target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } },
+  amount,
+});
+
+const combatBonus = (amount: number): EffectDefinition['body'] => ({
+  kind: 'modify-value',
+  target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } },
+  amount,
 });
 
 describe('authoritative action previews', () => {
@@ -68,6 +99,128 @@ describe('authoritative action previews', () => {
     const after = getActionPreviewSet(result.state, testRuleset, 'p1');
     expect(after.revision).toBe(1);
     expect(after.items).not.toContainEqual(expect.objectContaining({ kind: 'purchase', cardId: purchase.cardId }));
+  });
+
+  it('uses deterministic command-before purchase state for legal commands, preview values, and dispatch', () => {
+    const moduleId = 'test:preview-purchase-automatic';
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, purchaseBonus(3))])]);
+    const state = createGame({ gameId: 'preview-purchase-automatic', seed: 29, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'purchase';
+    state.players[0]!.turnPurchaseSpent = getPurchasePower(state, ruleset, 'p1');
+    const before = structuredClone(state);
+    const command = getLegalCommands(state, ruleset, 'p1').find((candidate): candidate is Extract<typeof candidate, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD');
+    if (!command) throw new Error('Expected the automatic purchase bonus to make a card legal.');
+    const preview = getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'purchase' && item.cardId === command.cardId);
+
+    expect(preview).toMatchObject({ kind: 'purchase', status: 'ready', availablePurchasePower: 3, cost: 2, remainingPurchasePower: 1 });
+    expect(state).toEqual(before);
+    const result = dispatch(state, ruleset, envelope(state, 'p1', command, 'preview-purchase-automatic'));
+    expect(result.error).toBeUndefined();
+    expect(result.state.revision).toBe(1);
+  });
+
+  it('keeps purchase discoverable but withholds exact values while command-before choice is unresolved', () => {
+    const moduleId = 'test:preview-purchase-choice';
+    const choice: EffectDefinition['body'] = {
+      kind: 'choice',
+      choiceId: 'purchase-boost',
+      actor: { kind: 'controller' },
+      options: [{ id: 'none', effect: purchaseBonus(0) }, { id: 'boost', effect: purchaseBonus(3) }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, choice)])]);
+    const state = createGame({ gameId: 'preview-purchase-choice', seed: 30, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'purchase';
+    state.players[0]!.turnPurchaseSpent = getPurchasePower(state, ruleset, 'p1');
+    const command = getLegalCommands(state, ruleset, 'p1').find((candidate): candidate is Extract<typeof candidate, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD');
+    if (!command) throw new Error('Expected one completable purchase branch.');
+
+    expect(getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'purchase' && item.cardId === command.cardId)).toEqual({
+      kind: 'purchase',
+      status: 'requires-lifecycle',
+      command,
+      cardId: command.cardId,
+    });
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', command, 'preview-purchase-choice'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.choiceId).toBe('purchase-boost');
+    expect(suspended.state.revision).toBe(0);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
+    expect(getActionPreviewSet(restored, ruleset, 'p1').items).toEqual([]);
+    const pending = restored.effectState.pendingChoice!;
+    const completed = dispatch(restored, ruleset, envelope(restored, 'p1', { type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: 'boost' }, 'preview-purchase-choice-resume'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state).toMatchObject({ revision: 1, effectState: {}, eventLogCursor: completed.events.length });
+    expect(completed.state.players[0]!.discardPile).toContain(command.cardId);
+  });
+
+  it('withholds purchase values while command-before counter consent is unresolved', () => {
+    const moduleId = 'test:preview-purchase-consent';
+    const request: EffectDefinition['body'] = {
+      kind: 'request-counter-consent',
+      requestId: 'purchase-consent',
+      policy: { moduleId, policyId: 'share-token' },
+      counterOwner: { kind: 'controller' },
+      outcomes: { accepted: purchaseBonus(3), declined: purchaseBonus(0), cancelled: purchaseBonus(0), expired: purchaseBonus(0) },
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, request)], {
+      counterConsentPolicies: [{ schemaVersion: 1, moduleId, policyId: 'share-token', resourceId: `${moduleId}:token`, requester: 'counter-owner', requiredConsent: 'all-other-players', expiration: { kind: 'explicit-command', actor: 'any-player' } }],
+    })]);
+    const state = createGame({ gameId: 'preview-purchase-consent', seed: 31, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'purchase';
+    state.players[0]!.turnPurchaseSpent = getPurchasePower(state, ruleset, 'p1');
+    state.players[0]!.counters.push({ resourceId: `${moduleId}:token`, amount: 1, visibility: 'allPlayersByConsent' });
+    const before = structuredClone(state);
+    const command = getLegalCommands(state, ruleset, 'p1').find((candidate): candidate is Extract<typeof candidate, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD');
+    if (!command) throw new Error('Expected consent-dependent purchase discovery.');
+
+    expect(getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'purchase' && item.cardId === command.cardId)).toMatchObject({ kind: 'purchase', status: 'requires-lifecycle' });
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', command, 'preview-purchase-consent'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingCounterConsent?.requestId).toBe('purchase-consent');
+    expect(suspended.state.revision).toBe(0);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
+    const declined = dispatch(restored, ruleset, envelope(restored, 'p2', { type: 'RESPOND_COUNTER_CONSENT', requestId: 'purchase-consent', response: 'decline' }, 'preview-purchase-consent-decline'));
+    expect(declined.error?.code).toBe('INVALID_COMMAND');
+    expect(declined.state).toEqual(before);
+    expect(declined.events).toEqual([]);
+    expect(declined.state.eventLogCursor).toBe(0);
+  });
+
+  it('does not expose or consume a future random purchase result', () => {
+    const moduleId = 'test:preview-purchase-random';
+    const random: EffectDefinition['body'] = { kind: 'random', randomId: 'purchase-random', outcomes: [{ id: 'base', effect: purchaseBonus(0) }, { id: 'boost', effect: purchaseBonus(100) }] };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, random)])]);
+    const state = createGame({ gameId: 'preview-purchase-random', seed: 35, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'purchase';
+    const before = structuredClone(state);
+    const command = getLegalCommands(state, ruleset, 'p1').find((candidate): candidate is Extract<typeof candidate, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD');
+    if (!command) throw new Error('Expected random-dependent purchase discovery.');
+    const preview = getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'purchase' && item.cardId === command.cardId);
+
+    expect(preview).toEqual({ kind: 'purchase', status: 'requires-lifecycle', command, cardId: command.cardId });
+    expect(state).toEqual(before);
+    expect(state.rngState).toBe(before.rngState);
+    const completed = dispatch(state, ruleset, envelope(state, 'p1', command, 'preview-purchase-random'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.rngState).not.toBe(before.rngState);
+    expect(completed.state.revision).toBe(1);
+  });
+
+  it('removes purchases made impossible by deterministic command-before effects and preserves rollback', () => {
+    const moduleId = 'test:preview-purchase-rollback';
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, purchaseBonus(-100))])]);
+    const state = createGame({ gameId: 'preview-purchase-rollback', seed: 32, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'purchase';
+    const cardId = state.zones['base:adventurer-row']!.cardIds[0]!;
+    const before = structuredClone(state);
+
+    expect(getLegalCommands(state, ruleset, 'p1').some(({ type }) => type === 'BUY_CARD')).toBe(false);
+    expect(getActionPreviewSet(state, ruleset, 'p1').items.some(({ kind }) => kind === 'purchase')).toBe(false);
+    const failed = dispatch(state, ruleset, envelope(state, 'p1', { type: 'BUY_CARD', cardId }, 'preview-purchase-rollback'));
+    expect(failed.error?.code).toBe('INVALID_COMMAND');
+    expect(failed.state).toEqual(before);
+    expect(failed.events).toEqual([]);
+    expect(failed.state.rngState).toBe(before.rngState);
   });
 
   it('projects registered fixed damage and remaining health for health targets', () => {
@@ -148,6 +301,62 @@ describe('authoritative action previews', () => {
     expect(getActionPreviewSet(suspended.state, ruleset, 'p1').items).toEqual([]);
   });
 
+  it('withholds combat values while command-before counter consent is unresolved', () => {
+    const moduleId = 'test:preview-attack-consent';
+    const request: EffectDefinition['body'] = {
+      kind: 'request-counter-consent',
+      requestId: 'attack-consent',
+      policy: { moduleId, policyId: 'share-token' },
+      counterOwner: { kind: 'controller' },
+      outcomes: { accepted: combatBonus(1), declined: combatBonus(0), cancelled: combatBonus(0), expired: combatBonus(0) },
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, request)], {
+      counterConsentPolicies: [{ schemaVersion: 1, moduleId, policyId: 'share-token', resourceId: `${moduleId}:token`, requester: 'counter-owner', requiredConsent: 'all-other-players', expiration: { kind: 'explicit-command', actor: 'any-player' } }],
+    })]);
+    const state = createGame({ gameId: 'preview-attack-consent', seed: 33, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'combat';
+    state.players[0]!.counters.push({ resourceId: `${moduleId}:token`, amount: 1, visibility: 'allPlayersByConsent' });
+    const targetId = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+
+    expect(getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === targetId)).toEqual({
+      kind: 'attack',
+      status: 'requires-lifecycle',
+      command: { type: 'ATTACK_TARGET', targetId },
+      targetId,
+    });
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'preview-attack-consent'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingCounterConsent?.requestId).toBe('attack-consent');
+    expect(suspended.state.revision).toBe(0);
+  });
+
+  it.each([
+    ['random', (moduleId: string): EffectDefinition['body'] => ({ kind: 'random', randomId: `${moduleId}:preview-random`, outcomes: [{ id: 'low', effect: combatBonus(0) }, { id: 'high', effect: combatBonus(100) }] }), {}],
+    ['roll-die', (moduleId: string): EffectDefinition['body'] => ({ kind: 'roll-die', moduleId, diceId: 'preview-d2', outcomes: [{ face: 1, effect: combatBonus(0) }, { face: 2, effect: combatBonus(100) }] }), { diceDefinitions: [{ schemaVersion: 1 as const, moduleId: '', diceId: 'preview-d2', sides: 2 }] }],
+  ] as const)('does not expose or consume future %s command-before results', (_kind, body, extra) => {
+    const moduleId = `test:preview-attack-${_kind}`;
+    const moduleExtra: Partial<RulesModule> = 'diceDefinitions' in extra
+      ? { diceDefinitions: extra.diceDefinitions.map((definition) => ({ ...definition, moduleId })) }
+      : {};
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, body(moduleId))], moduleExtra)]);
+    const state = createGame({ gameId: `preview-attack-${_kind}`, seed: 34, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'combat';
+    const targetId = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+    const before = structuredClone(state);
+    const first = getActionPreviewSet(state, ruleset, 'p1');
+    const second = getActionPreviewSet(state, ruleset, 'p1');
+
+    expect(getLegalCommands(state, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(first.items.find((item) => item.kind === 'attack' && item.targetId === targetId)).toEqual({ kind: 'attack', status: 'requires-lifecycle', command: { type: 'ATTACK_TARGET', targetId }, targetId });
+    expect(second).toEqual(first);
+    expect(state).toEqual(before);
+    expect(state.rngState).toBe(before.rngState);
+
+    const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, `preview-${_kind}`));
+    expect(result.error).toBeUndefined();
+    expect(result.state.rngState).not.toBe(before.rngState);
+  });
+
   it('is stable across Snapshot restore and rejects inconsistent or duplicate payloads', () => {
     const state = makeGame();
     state.phase = 'combat';
@@ -160,5 +369,7 @@ describe('authoritative action previews', () => {
     expect(ActionPreviewSetSchema.safeParse({ ...preview, items: [{ ...attack, surplusCombat: attack.surplusCombat + 1 }] }).success).toBe(false);
     expect(ActionPreviewSetSchema.safeParse({ ...preview, items: [attack, structuredClone(attack)] }).success).toBe(false);
     expect(ActionPreviewSetSchema.safeParse({ ...preview, items: [{ ...attack, targetId: 'tampered' }] }).success).toBe(false);
+    expect(ActionPreviewSetSchema.safeParse({ ...preview, items: [{ ...attack, partySlotCount: 0 }] }).success).toBe(false);
+    expect(ActionPreviewSetSchema.safeParse({ ...preview, items: [{ ...attack, partySlotCount: 1, participantCardIds: [] }] }).success).toBe(false);
   });
 });

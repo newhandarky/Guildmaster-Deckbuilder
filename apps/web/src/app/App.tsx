@@ -148,7 +148,8 @@ export function App() {
       cards={view.cards}
       presentation={presentationResolver}
       legalCommands={legalCommands}
-      actionPreviews={actionPreviews.items}
+      actionPreviews={actionPreviews}
+      previewScope={{ gameId: view.gameId, revision: view.revision, actorId: view.viewerId }}
       onInspect={inspectCard}
     />}
     party={<PartyPanel
