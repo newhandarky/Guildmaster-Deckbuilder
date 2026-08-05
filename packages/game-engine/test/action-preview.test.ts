@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ActionPreviewSetSchema, type EffectDefinition, type LifecycleHook } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, evaluateAttackResolution, executeEffect, getActionPreviewSet, getLegalCommands, getPurchasePower, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, evaluateAttackResolution, evaluateCombat, executeEffect, getActionPreviewSet, getCombatPrefix, getLegalCommands, getPurchasePower, inspectEffectPreviewUncertainty, projectPlayerView, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule } from '../src/rules/ruleset.js';
 import { makeGame, testPack, testRuleset } from './fixtures.js';
@@ -206,6 +206,52 @@ describe('authoritative action previews', () => {
     expect(completed.state.revision).toBe(1);
   });
 
+  it('is non-interfering across states that differ only by a hidden command-before draw', () => {
+    const moduleId = 'test:preview-purchase-hidden-draw';
+    const draw: EffectDefinition['body'] = { kind: 'draw', player: { kind: 'controller' }, count: 1 };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, draw)])]);
+    const first = createGame({ gameId: 'preview-purchase-hidden-draw', seed: 36, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    first.phase = 'purchase';
+    const firstPlayer = first.players[0]!;
+    const purchaseCardId = firstPlayer.hand.find((cardId) => (first.cards[cardId]?.definitionId ?? '').includes('/stone')) ?? firstPlayer.hand[0]!;
+    const noPurchaseCardId = firstPlayer.party[0]!.adventurerId;
+    firstPlayer.hand.splice(firstPlayer.hand.indexOf(purchaseCardId), 1);
+    firstPlayer.party.splice(0, 1);
+    firstPlayer.drawPile = [purchaseCardId];
+    first.removedCards.push(noPurchaseCardId);
+    const second = structuredClone(first);
+    second.players[0]!.drawPile = [noPurchaseCardId];
+    second.removedCards = second.removedCards.filter((cardId) => cardId !== noPurchaseCardId);
+    second.removedCards.push(purchaseCardId);
+
+    expect(projectPlayerView(first, ruleset, 'p1')).toEqual(projectPlayerView(second, ruleset, 'p1'));
+    const firstLegal = getLegalCommands(first, ruleset, 'p1');
+    const secondLegal = getLegalCommands(second, ruleset, 'p1');
+    const firstPreview = getActionPreviewSet(first, ruleset, 'p1');
+    const secondPreview = getActionPreviewSet(second, ruleset, 'p1');
+    expect(secondLegal).toEqual(firstLegal);
+    expect(secondPreview).toEqual(firstPreview);
+    expect(firstPreview.items.filter(({ kind }) => kind === 'purchase').every(({ status }) => status === 'requires-lifecycle')).toBe(true);
+    expect(first.players[0]!.drawPile).toEqual([purchaseCardId]);
+    expect(second.players[0]!.drawPile).toEqual([noPurchaseCardId]);
+  });
+
+  it('does not reveal hidden module-state activation through preview readiness', () => {
+    const moduleId = 'test:preview-hidden-activation';
+    const hook: LifecycleHook = { ...commandBefore(moduleId, purchaseBonus(100)), activation: { kind: 'module-state-equals', key: 'enabled', value: true } };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [hook])]);
+    const active = createGame({ gameId: 'preview-hidden-activation', seed: 38, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    active.phase = 'purchase';
+    active.moduleState[moduleId] = { enabled: true };
+    const inactive = structuredClone(active);
+    inactive.moduleState[moduleId] = { enabled: false };
+
+    expect(projectPlayerView(active, ruleset, 'p1')).toEqual(projectPlayerView(inactive, ruleset, 'p1'));
+    expect(getLegalCommands(active, ruleset, 'p1')).toEqual(getLegalCommands(inactive, ruleset, 'p1'));
+    expect(getActionPreviewSet(active, ruleset, 'p1')).toEqual(getActionPreviewSet(inactive, ruleset, 'p1'));
+    expect(getActionPreviewSet(active, ruleset, 'p1').items.filter(({ kind }) => kind === 'purchase').every(({ status }) => status === 'requires-lifecycle')).toBe(true);
+  });
+
   it('removes purchases made impossible by deterministic command-before effects and preserves rollback', () => {
     const moduleId = 'test:preview-purchase-rollback';
     const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, purchaseBonus(-100))])]);
@@ -223,7 +269,7 @@ describe('authoritative action previews', () => {
     expect(failed.state.rngState).toBe(before.rngState);
   });
 
-  it('projects registered fixed damage and remaining health for health targets', () => {
+  it('keeps registered health resolution authoritative but withholds encounter-dependent preview values', () => {
     const moduleId = 'test:preview-health';
     const healthModule: RulesModule = {
       id: moduleId,
@@ -270,14 +316,250 @@ describe('authoritative action previews', () => {
     if (evaluation.status !== 'ready') throw new Error(`${evaluation.reason}: ${evaluation.error}`);
     const preview = getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === target.targetId);
 
-    expect(preview).toMatchObject({
-      kind: 'attack',
-      status: 'ready',
-      requiredCombat: 3,
-      committedCombat: 99,
-      partySlotCount: 0,
-      outcome: { kind: 'damage-target', requestedDamage: 1, actualDamage: 1, healthBefore: 2, healthAfter: 1, lethal: false, lethalOutcome: 'defeated' },
+    expect(evaluation.evaluation.damage).toMatchObject({
+      actualDamage: 1,
+      healthAfter: { current: 1, max: 2 },
+      lethal: false,
     });
+    expect(preview).toEqual({
+      kind: 'attack',
+      status: 'requires-lifecycle',
+      command: { type: 'ATTACK_TARGET', targetId: target.targetId },
+      targetId: target.targetId,
+    });
+  });
+
+  it('is non-interfering when an opponent hidden card controls a continuous combat modifier', () => {
+    const first = createGame({ gameId: 'preview-hidden-continuous', seed: 39, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, testRuleset);
+    const opponent = first.players[1]!;
+    const sourceCardId = opponent.hand[0]!;
+    const replacementCardId = opponent.party.shift()!.adventurerId;
+    first.removedCards.push(replacementCardId);
+    const moduleId = 'test:preview-hidden-continuous';
+    const module: RulesModule = {
+      id: moduleId,
+      version: '1',
+      getPartyLimit: (_state, _player, limit) => limit,
+      onSupplyDepleted: () => 'handled',
+      continuousRules: [{ schemaVersion: 1, moduleId, effectId: 'hidden-source-combat', sourceCardId, duration: 'while-source-present', priority: 1, target: 'combat-modifier', amount: 1 }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    first.rulesModules.push({ id: moduleId, version: '1' });
+    first.moduleState[moduleId] = {};
+    first.enemyTargets['test:terminal-source-history'] = { targetId: 'test:terminal-source-history', cardInstanceId: sourceCardId, kind: 'history', status: 'defeated', attachments: [], moduleState: {} };
+    first.phase = 'combat';
+    const removedSlots = first.players[0]!.party.splice(3);
+    first.removedCards.push(...removedSlots.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])]));
+    const second = structuredClone(first);
+    second.players[1]!.hand[0] = replacementCardId;
+    second.removedCards = second.removedCards.filter((cardId) => cardId !== replacementCardId);
+    second.removedCards.push(sourceCardId);
+    const targetId = Object.values(first.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+    const firstCombat = evaluateCombat(first, ruleset, 'p1', targetId);
+    const secondCombat = evaluateCombat(second, ruleset, 'p1', targetId);
+    if (firstCombat.status !== 'ready' || secondCombat.status !== 'ready') throw new Error('Expected ready combat evaluations.');
+    expect(firstCombat.evaluation.requiredCombat).toBe(secondCombat.evaluation.requiredCombat + 1);
+    expect(getCombatPrefix(first, ruleset, 'p1', firstCombat.evaluation.requiredCombat)).toBeUndefined();
+    expect(getCombatPrefix(second, ruleset, 'p1', secondCombat.evaluation.requiredCombat)).toBeDefined();
+
+    expect(projectPlayerView(first, ruleset, 'p1')).toEqual(projectPlayerView(second, ruleset, 'p1'));
+    expect(getLegalCommands(first, ruleset, 'p1')).toEqual(getLegalCommands(second, ruleset, 'p1'));
+    expect(getLegalCommands(first, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(getActionPreviewSet(first, ruleset, 'p1')).toEqual(getActionPreviewSet(second, ruleset, 'p1'));
+    expect(getActionPreviewSet(first, ruleset, 'p1').items.filter(({ kind }) => kind === 'attack').every(({ status }) => status === 'requires-lifecycle')).toBe(true);
+  });
+
+  it('is non-interfering when health attack policies observe a hidden encounter kind', () => {
+    const moduleId = 'test:preview-hidden-encounter';
+    const module: RulesModule = {
+      id: moduleId,
+      version: '1',
+      getPartyLimit: (_state, _player, limit) => limit,
+      onSupplyDepleted: () => 'handled',
+      encounterResolutionPolicies: [{
+        schemaVersion: 1,
+        moduleId,
+        policyId: 'health-target',
+        priority: 1,
+        ordering: 'explicit-priority',
+        completionCondition: { kind: 'all-targets-terminal' },
+        defeatedTargetDisposition: { kind: 'removed' },
+        removedTargetDisposition: { kind: 'removed' },
+        attachmentDisposition: { kind: 'removed' },
+        reasonCode: { namespace: moduleId, code: 'HEALTH_TARGET_RESOLVED' },
+      }],
+      attackResolutionPolicies: [
+        { schemaVersion: 1, moduleId, policyId: 'alpha-hit', priority: 1, ordering: 'explicit-priority', when: { kind: 'encounter-kind-in', kinds: ['alpha'] }, damage: { kind: 'fixed', amount: 1 }, encounterPolicy: { moduleId, policyId: 'health-target' }, reasonCode: { namespace: moduleId, code: 'ALPHA_HIT' } },
+        { schemaVersion: 1, moduleId, policyId: 'beta-hit', priority: 2, ordering: 'explicit-priority', when: { kind: 'encounter-kind-in', kinds: ['beta'] }, damage: { kind: 'fixed', amount: 2 }, encounterPolicy: { moduleId, policyId: 'health-target' }, reasonCode: { namespace: moduleId, code: 'BETA_HIT' } },
+      ],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const first = createGame({ gameId: 'preview-hidden-encounter', seed: 40, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    const cardId = first.zones['base:monster-deck']!.cardIds.find((id) => first.cards[id]!.definitionId === 'test:monster/wolf')!;
+    const setup: EffectDefinition = { schemaVersion: 1, effectId: 'preview-hidden-encounter-setup', body: { kind: 'sequence', effects: [
+      { kind: 'create-enemy-encounter', encounterId: 'test:hidden-encounter', encounterKind: 'alpha', rulesModuleId: moduleId, policy: { moduleId, policyId: 'health-target' } },
+      { kind: 'create-enemy-target', targetId: 'test:hidden-health-target', encounterId: 'test:hidden-encounter', card: { kind: 'card-instance', cardInstanceId: cardId }, from: { kind: 'shared-zone', zoneId: 'base:monster-deck' }, targetKind: 'hidden-part', health: { current: 3, max: 3 } },
+    ] } };
+    const setupResult = executeEffect(first, ruleset, setup, { controllerId: 'p1' }, 'preview-hidden-encounter-setup');
+    if (setupResult.status !== 'completed') throw new Error(setupResult.error);
+    first.phase = 'combat';
+    first.players[0]!.turnCombatBonus = 99;
+    const encounter = first.enemyEncounters.find(({ encounterId }) => encounterId === 'test:hidden-encounter')!;
+    const target = first.enemyTargets['test:hidden-health-target']!;
+    const second = structuredClone(first);
+    const secondEncounter = second.enemyEncounters.find(({ encounterId }) => encounterId === encounter.encounterId)!;
+    secondEncounter.kind = 'beta';
+    secondEncounter.status = 'finished';
+    expect(evaluateAttackResolution(first, ruleset, { schemaVersion: 1, playerId: 'p1', targetId: target.targetId, registry: { rulesetVersion: first.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }).status).toBe('ready');
+    expect(evaluateAttackResolution(second, ruleset, { schemaVersion: 1, playerId: 'p1', targetId: target.targetId, registry: { rulesetVersion: second.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }).status).toBe('failed');
+
+    expect(projectPlayerView(first, ruleset, 'p1')).toEqual(projectPlayerView(second, ruleset, 'p1'));
+    expect(getLegalCommands(first, ruleset, 'p1')).toEqual(getLegalCommands(second, ruleset, 'p1'));
+    expect(getLegalCommands(first, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId: target.targetId });
+    expect(getActionPreviewSet(first, ruleset, 'p1')).toEqual(getActionPreviewSet(second, ruleset, 'p1'));
+    expect(getActionPreviewSet(first, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === target.targetId)).toEqual({
+      kind: 'attack',
+      status: 'requires-lifecycle',
+      command: { type: 'ATTACK_TARGET', targetId: target.targetId },
+      targetId: target.targetId,
+    });
+  });
+
+  it('withholds non-health results when a hidden encounter completion state can reject dispatch', () => {
+    const moduleId = 'test:preview-hidden-non-health-encounter';
+    const ref = { moduleId, policyId: 'explicit-finish' };
+    const module: RulesModule = {
+      id: moduleId,
+      version: '1',
+      getPartyLimit: (_state, _player, limit) => limit,
+      onSupplyDepleted: () => 'handled',
+      encounterResolutionPolicies: [{
+        schemaVersion: 1,
+        moduleId,
+        policyId: ref.policyId,
+        priority: 1,
+        ordering: 'explicit-priority',
+        completionCondition: { kind: 'explicit-only' },
+        defeatedTargetDisposition: { kind: 'removed' },
+        removedTargetDisposition: { kind: 'removed' },
+        attachmentDisposition: { kind: 'removed' },
+        reasonCode: { namespace: moduleId, code: 'FINISHED' },
+      }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const active = createGame({ gameId: 'preview-hidden-non-health-encounter', seed: 42, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    const cardId = active.zones['base:monster-deck']!.cardIds.find((id) => active.cards[id]!.definitionId === 'test:monster/wolf')!;
+    const setup: EffectDefinition = { schemaVersion: 1, effectId: 'preview-hidden-non-health-setup', body: { kind: 'sequence', effects: [
+      { kind: 'create-enemy-encounter', encounterId: 'test:hidden-non-health', encounterKind: 'hidden', rulesModuleId: moduleId, policy: ref },
+      { kind: 'create-enemy-target', targetId: 'test:hidden-non-health-target', encounterId: 'test:hidden-non-health', card: { kind: 'card-instance', cardInstanceId: cardId }, from: { kind: 'shared-zone', zoneId: 'base:monster-deck' }, targetKind: 'hidden-part' },
+    ] } };
+    const setupResult = executeEffect(active, ruleset, setup, { controllerId: 'p1' }, 'preview-hidden-non-health-setup');
+    if (setupResult.status !== 'completed') throw new Error(setupResult.error);
+    active.phase = 'combat';
+    active.players[0]!.turnCombatBonus = 99;
+    const finished = structuredClone(active);
+    finished.enemyEncounters.find(({ encounterId }) => encounterId === 'test:hidden-non-health')!.status = 'finished';
+    const targetId = 'test:hidden-non-health-target';
+
+    expect(projectPlayerView(active, ruleset, 'p1')).toEqual(projectPlayerView(finished, ruleset, 'p1'));
+    expect(getLegalCommands(active, ruleset, 'p1')).toEqual(getLegalCommands(finished, ruleset, 'p1'));
+    expect(getLegalCommands(active, ruleset, 'p1')).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(getActionPreviewSet(active, ruleset, 'p1')).toEqual(getActionPreviewSet(finished, ruleset, 'p1'));
+    expect(getActionPreviewSet(active, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === targetId)).toEqual({
+      kind: 'attack',
+      status: 'requires-lifecycle',
+      command: { type: 'ATTACK_TARGET', targetId },
+      targetId,
+    });
+    expect(dispatch(active, ruleset, envelope(active, 'p1', { type: 'ATTACK_TARGET', targetId }, 'active-non-health')).error).toBeUndefined();
+    expect(dispatch(finished, ruleset, envelope(finished, 'p1', { type: 'ATTACK_TARGET', targetId }, 'finished-non-health')).error?.code).toBe('INVALID_COMMAND');
+  });
+
+  it('rejects a Snapshot that marks a static no-policy encounter as finished', () => {
+    const snapshot = structuredClone(serializeSnapshot(makeGame()));
+    snapshot.state.enemyEncounters.find(({ encounterId }) => encounterId === 'base:enemies')!.status = 'finished';
+
+    expect(() => restoreSnapshot(snapshot, testRuleset)).toThrow('Finished encounter base:enemies must have a resolution policy.');
+  });
+
+  it('withholds attack results when combat reward selection can observe a hidden encounter kind', () => {
+    const moduleId = 'test:preview-hidden-reward-kind';
+    const reward = (effectId: string): EffectDefinition => ({ schemaVersion: 1, effectId, body: combatBonus(0) });
+    const module: RulesModule = {
+      id: moduleId,
+      version: '1',
+      getPartyLimit: (_state, _player, limit) => limit,
+      onSupplyDepleted: () => 'handled',
+      combatRewardPolicies: [
+        { schemaVersion: 1, moduleId, rewardPolicyId: 'public', priority: 1, condition: { kind: 'always', value: true }, recipient: 'defeating-player', reward: reward('public-reward') },
+        { schemaVersion: 1, moduleId, rewardPolicyId: 'secret', priority: 1, condition: { kind: 'encounter-kind-in', kinds: ['secret'] }, recipient: 'defeating-player', reward: reward('secret-reward') },
+      ],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const publicState = createGame({ gameId: 'preview-hidden-reward-kind', seed: 43, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    publicState.phase = 'combat';
+    publicState.players[0]!.turnCombatBonus = 99;
+    const secretSnapshot = structuredClone(serializeSnapshot(publicState));
+    secretSnapshot.state.enemyEncounters.find(({ encounterId }) => encounterId === 'base:enemies')!.kind = 'secret';
+    const secretState = restoreSnapshot(secretSnapshot, ruleset);
+    const targetId = Object.values(publicState.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+
+    expect(projectPlayerView(publicState, ruleset, 'p1')).toEqual(projectPlayerView(secretState, ruleset, 'p1'));
+    expect(getLegalCommands(publicState, ruleset, 'p1')).toEqual(getLegalCommands(secretState, ruleset, 'p1'));
+    expect(getActionPreviewSet(publicState, ruleset, 'p1')).toEqual(getActionPreviewSet(secretState, ruleset, 'p1'));
+    expect(getActionPreviewSet(publicState, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === targetId)).toMatchObject({ status: 'requires-lifecycle' });
+    expect(dispatch(publicState, ruleset, envelope(publicState, 'p1', { type: 'ATTACK_TARGET', targetId }, 'public-reward')).error).toBeUndefined();
+    const secretBefore = structuredClone(secretState);
+    const failed = dispatch(secretState, ruleset, envelope(secretState, 'p1', { type: 'ATTACK_TARGET', targetId }, 'secret-reward'));
+    expect(failed.error?.code).toBe('INVALID_COMMAND');
+    expect(failed.state).toEqual(secretBefore);
+    expect(failed.events).toEqual([]);
+  });
+
+  it('treats every encounter-dependent effect node as hidden-information uncertainty', () => {
+    const state = makeGame();
+    const ref = { moduleId: 'test:encounter', policyId: 'policy' };
+    const nodes: EffectDefinition['body'][] = [
+      { kind: 'create-enemy-encounter', encounterId: 'encounter', encounterKind: 'kind', rulesModuleId: 'test:encounter', policy: ref },
+      { kind: 'create-enemy-target', targetId: 'target', encounterId: 'encounter', card: { kind: 'card-instance', cardInstanceId: 'card' }, from: { kind: 'shared-zone', zoneId: 'base:monster-deck' }, targetKind: 'part' },
+      { kind: 'attach-card-to-enemy-target', targetId: 'target', card: { kind: 'card-instance', cardInstanceId: 'card' }, from: { kind: 'shared-zone', zoneId: 'base:item-row' } },
+      { kind: 'damage-enemy-target', targetId: 'target', amount: 1, policy: ref },
+      { kind: 'defeat-enemy-target', targetId: 'target', policy: ref },
+      { kind: 'remove-enemy-target', targetId: 'target', policy: ref },
+      { kind: 'finish-enemy-encounter', encounterId: 'encounter', policy: ref },
+    ];
+
+    for (const node of nodes) expect(inspectEffectPreviewUncertainty(node, state, { controllerId: 'p1' }, 'p1')).toEqual({ usesRandomness: false, observesHiddenInformation: true });
+  });
+
+  it('does not expose hidden encounter completion state through command-before discovery', () => {
+    const moduleId = 'test:preview-hidden-encounter-effect';
+    const ref = { moduleId, policyId: 'explicit-finish' };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, { kind: 'finish-enemy-encounter', encounterId: 'test:hidden-finish', policy: ref })], {
+      encounterResolutionPolicies: [{
+        schemaVersion: 1,
+        moduleId,
+        policyId: ref.policyId,
+        priority: 1,
+        ordering: 'explicit-priority',
+        completionCondition: { kind: 'explicit-only' },
+        defeatedTargetDisposition: { kind: 'removed' },
+        removedTargetDisposition: { kind: 'removed' },
+        attachmentDisposition: { kind: 'removed' },
+        reasonCode: { namespace: moduleId, code: 'FINISHED' },
+      }],
+    })]);
+    const active = createGame({ gameId: 'preview-hidden-encounter-effect', seed: 41, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }], startingPlayerId: 'p1' }, ruleset);
+    active.phase = 'purchase';
+    active.players[0]!.turnPurchaseBonus = 10;
+    active.enemyEncounters.push({ encounterId: 'test:hidden-finish', targetIds: [], kind: 'hidden', status: 'active', rulesModuleId: moduleId, resolutionPolicy: ref, state: {} });
+    const finished = structuredClone(active);
+    finished.enemyEncounters.find(({ encounterId }) => encounterId === 'test:hidden-finish')!.status = 'finished';
+
+    expect(projectPlayerView(active, ruleset, 'p1')).toEqual(projectPlayerView(finished, ruleset, 'p1'));
+    expect(getLegalCommands(active, ruleset, 'p1')).toEqual(getLegalCommands(finished, ruleset, 'p1'));
+    expect(getActionPreviewSet(active, ruleset, 'p1')).toEqual(getActionPreviewSet(finished, ruleset, 'p1'));
+    expect(getActionPreviewSet(active, ruleset, 'p1').items.filter(({ kind }) => kind === 'purchase').every(({ status }) => status === 'requires-lifecycle')).toBe(true);
   });
 
   it('does not invent one combat result while command-before lifecycle branches differ', () => {
@@ -355,6 +637,31 @@ describe('authoritative action previews', () => {
     const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, `preview-${_kind}`));
     expect(result.error).toBeUndefined();
     expect(result.state.rngState).not.toBe(before.rngState);
+  });
+
+  it('keeps every choice option discoverable when a later option contains randomness', () => {
+    const moduleId = 'test:preview-choice-random';
+    const choice: EffectDefinition['body'] = {
+      kind: 'choice',
+      choiceId: 'random-stance',
+      actor: { kind: 'controller' },
+      options: [
+        { id: 'steady', effect: combatBonus(0) },
+        { id: 'gamble', effect: { kind: 'random', randomId: 'stance-random', outcomes: [{ id: 'low', effect: combatBonus(-100) }, { id: 'high', effect: combatBonus(100) }] } },
+      ],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, previewModule(moduleId, [commandBefore(moduleId, choice)])]);
+    const state = createGame({ gameId: 'preview-choice-random', seed: 37, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    state.phase = 'combat';
+    const targetId = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+    const beforeRng = state.rngState;
+    expect(getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'attack' && item.targetId === targetId)).toMatchObject({ status: 'requires-lifecycle' });
+    expect(state.rngState).toBe(beforeRng);
+
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'preview-choice-random'));
+    expect(suspended.state.effectState.pendingChoice?.choiceId).toBe('random-stance');
+    expect(getLegalCommands(suspended.state, ruleset, 'p1').filter(({ type }) => type === 'RESOLVE_EFFECT_CHOICE')).toHaveLength(2);
+    expect(suspended.state.rngState).toBe(beforeRng);
   });
 
   it('is stable across Snapshot restore and rejects inconsistent or duplicate payloads', () => {

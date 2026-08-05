@@ -1,4 +1,4 @@
-import { validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectContext, type EffectDefinition, type EffectNode, type GameState } from '@guildmaster/game-protocol';
+import { validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectCardLocation, type EffectContext, type EffectDefinition, type EffectNode, type GameState } from '@guildmaster/game-protocol';
 import { drawCards } from '../engine/draw.js';
 import { getPlayer } from '../model/factories.js';
 import { nextRandom } from '../ports/random.js';
@@ -21,9 +21,46 @@ export function resolveEffectOrder(entries: readonly { id: string; priority?: nu
 }
 
 export type EffectExecutionResult = { status: 'completed' | 'suspended' | 'failed' | 'unsupported'; events: DomainEvent[]; error?: string };
+export type EffectPreviewUncertainty = { usesRandomness: boolean; observesHiddenInformation: boolean };
 const domainEvent = (state: GameState, events: DomainEvent[], type: string, message: string) => events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message });
 const playerId = (ref: import('@guildmaster/game-protocol').EffectPlayerRef, context: EffectContext) => ref.kind === 'controller' ? context.controllerId : ref.kind === 'player-id' ? ref.playerId : context.playerRefs?.[ref.key];
 function commitState(target: GameState, source: GameState): void { Object.assign(target, source); }
+const noPreviewUncertainty = (): EffectPreviewUncertainty => ({ usesRandomness: false, observesHiddenInformation: false });
+const mergePreviewUncertainty = (values: readonly EffectPreviewUncertainty[]): EffectPreviewUncertainty => values.reduce((merged, value) => ({ usesRandomness: merged.usesRandomness || value.usesRandomness, observesHiddenInformation: merged.observesHiddenInformation || value.observesHiddenInformation }), noPreviewUncertainty());
+
+function locationIsVisibleToViewer(location: EffectCardLocation, state: GameState, context: EffectContext, viewerId: string): boolean {
+  if (location.kind === 'shared-zone') return state.zones[location.zoneId]?.visibility === 'public';
+  if (location.kind === 'removed') return false;
+  const ownerId = playerId(location.player, context);
+  if (ownerId !== viewerId) return false;
+  return location.kind !== 'player-zone' || location.zone !== 'drawPile';
+}
+
+/** Conservative metadata for deciding whether speculative effect execution is safe to expose in a PlayerView-derived query. */
+export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameState, context: EffectContext, viewerId: string): EffectPreviewUncertainty {
+  if (node.kind === 'sequence') return mergePreviewUncertainty(node.effects.map((effect) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
+  if (node.kind === 'conditional') return mergePreviewUncertainty([
+    node.condition.kind === 'has-card-at' && !locationIsVisibleToViewer(node.condition.location, state, context, viewerId) ? { usesRandomness: false, observesHiddenInformation: true } : noPreviewUncertainty(),
+    inspectEffectPreviewUncertainty(node.whenTrue, state, context, viewerId),
+    ...(node.whenFalse ? [inspectEffectPreviewUncertainty(node.whenFalse, state, context, viewerId)] : []),
+  ]);
+  if (node.kind === 'choice') return mergePreviewUncertainty(node.options.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
+  if (node.kind === 'random' || node.kind === 'roll-die') return mergePreviewUncertainty([
+    { usesRandomness: true, observesHiddenInformation: false },
+    ...node.outcomes.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)),
+  ]);
+  if (node.kind === 'request-counter-consent') return mergePreviewUncertainty(Object.values(node.outcomes).map((effect) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
+  if (node.kind === 'draw') return { usesRandomness: false, observesHiddenInformation: node.count > 0 };
+  if (node.kind === 'grant-combat-reward') return { usesRandomness: false, observesHiddenInformation: node.rewards.some((reward) => reward.kind === 'draw' && reward.count > 0) };
+  if (node.kind === 'refresh-supply-row') return { usesRandomness: false, observesHiddenInformation: true };
+  if (node.kind === 'create-enemy-encounter' || node.kind === 'create-enemy-target' || node.kind === 'attach-card-to-enemy-target' || node.kind === 'damage-enemy-target' || node.kind === 'defeat-enemy-target' || node.kind === 'remove-enemy-target' || node.kind === 'finish-enemy-encounter') {
+    return { usesRandomness: false, observesHiddenInformation: true };
+  }
+  if (node.kind === 'move-card' || node.kind === 'discard-card' || node.kind === 'remove-from-game') {
+    return { usesRandomness: false, observesHiddenInformation: !locationIsVisibleToViewer(node.from, state, context, viewerId) };
+  }
+  return noPreviewUncertainty();
+}
 type SuspensionMatch =
   | { kind: 'choice'; node: Extract<EffectNode, { kind: 'choice' }> }
   | { kind: 'counter-consent'; node: Extract<EffectNode, { kind: 'request-counter-consent' }> };

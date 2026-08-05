@@ -1,19 +1,70 @@
-import { ActionPreviewSetSchema, type ActionPreviewItem, type ActionPreviewSet, type CommandEnvelope, type GameCommand, type GameState } from '@guildmaster/game-protocol';
+import { ActionPreviewSetSchema, type ActionPreviewItem, type ActionPreviewSet, type AttackResolutionCondition, type AttackResolutionResult, type CombatRewardCondition, type CommandEnvelope, type GameCommand, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
-import { dispatchLifecycle, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
+import { dispatchLifecycle, inspectLifecyclePreviewUncertainty, inspectPendingLifecyclePreviewUncertainty, resumeLifecycleChoice } from '../effects/lifecycle-dispatcher.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
+import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
+import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
 type CommandBeforePreviewResult = { states: GameState[]; indeterminate: boolean; requiresLifecycle: boolean };
 
+function attackPreviewObservesHiddenInformation(state: GameState, ruleset: Ruleset, actorId: string, targetId: string): boolean {
+  const target = state.enemyTargets[targetId];
+  const encounter = target?.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
+  return inspectContinuousPreviewUncertainty(state, ruleset, actorId).observesHiddenInformation
+    || Boolean(target?.parentEncounterId && (target.health || !encounter || encounter.resolutionPolicy))
+    || combatRewardPreviewRequiresLifecycle(state, ruleset, actorId, targetId);
+}
+
+function rewardConditionObservesEncounterKind(condition: CombatRewardCondition): boolean {
+  if (condition.kind === 'encounter-kind-in') return true;
+  if (condition.kind === 'all' || condition.kind === 'any') return condition.conditions.some(rewardConditionObservesEncounterKind);
+  return condition.kind === 'not' && rewardConditionObservesEncounterKind(condition.condition);
+}
+
+function combatRewardPreviewRequiresLifecycle(state: GameState, ruleset: Ruleset, actorId: string, targetId: string): boolean {
+  const target = state.enemyTargets[targetId];
+  if (!target) return false;
+  if (target.parentEncounterId && ruleset.modules.flatMap((module) => module.combatRewardPolicies ?? []).some(({ condition }) => rewardConditionObservesEncounterKind(condition))) return true;
+  const rewards = evaluateCombatRewards(state, ruleset, actorId, targetId);
+  return rewards.status !== 'ready' || rewards.evaluation.matchedPolicies.length > 0;
+}
+
+function encounterKindsIn(condition: AttackResolutionCondition): string[] {
+  if (condition.kind === 'encounter-kind-in') return [...condition.kinds];
+  if (condition.kind === 'all' || condition.kind === 'any') return condition.conditions.flatMap(encounterKindsIn);
+  return condition.kind === 'not' ? encounterKindsIn(condition.condition) : [];
+}
+
+function failedHealthAttackMayDependOnHiddenEncounter(state: GameState, ruleset: Ruleset, actorId: string, targetId: string, result: Exclude<AttackResolutionResult, { status: 'ready' }>): boolean {
+  const target = state.enemyTargets[targetId];
+  if (!target?.parentEncounterId) return false;
+  if (result.reason === 'INVALID_ENCOUNTER_DAMAGE') return true;
+  const encounter = state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId);
+  if (!encounter) return true;
+  const registeredKinds = ruleset.modules.flatMap((module) => module.attackResolutionPolicies ?? []).flatMap(({ when }) => encounterKindsIn(when));
+  let unmatchedKind = '__no_registered_encounter_kind__';
+  while (registeredKinds.includes(unmatchedKind)) unmatchedKind += '_';
+  const candidates = [...new Set([encounter.kind, ...registeredKinds, unmatchedKind])];
+  return candidates.some((kind) => {
+    const candidate = structuredClone(state);
+    const candidateEncounter = candidate.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId)!;
+    candidateEncounter.kind = kind;
+    candidateEncounter.status = 'active';
+    return evaluateAttackResolution(candidate, ruleset, { schemaVersion: 1, playerId: actorId, targetId, registry: { rulesetVersion: candidate.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }).status === 'ready';
+  });
+}
+
 function expandCommandChoicePreviews(state: GameState, ruleset: Ruleset, actorId: string, depth: number, budget: { remaining: number }): CommandBeforePreviewResult {
+  const uncertainty = inspectPendingLifecyclePreviewUncertainty(state, ruleset, actorId);
+  if (uncertainty.usesRandomness || uncertainty.observesHiddenInformation) return { states: [], indeterminate: true, requiresLifecycle: true };
   const choice = state.effectState.pendingChoice;
   if (!choice || choice.actorId !== actorId) return { states: [], indeterminate: false, requiresLifecycle: true };
   if (depth >= maxCommandPreviewDepth) return { states: [], indeterminate: true, requiresLifecycle: true };
@@ -42,6 +93,8 @@ function expandCommandChoicePreviews(state: GameState, ruleset: Ruleset, actorId
 }
 
 function resumeCommandChoicePreview(state: GameState, ruleset: Ruleset, actorId: string, optionId: string): CommandBeforePreviewResult {
+  const uncertainty = inspectPendingLifecyclePreviewUncertainty(state, ruleset, actorId);
+  if (uncertainty.usesRandomness || uncertainty.observesHiddenInformation) return { states: [], indeterminate: true, requiresLifecycle: true };
   const choice = state.effectState.pendingChoice;
   if (!choice || choice.actorId !== actorId) return { states: [], indeterminate: false, requiresLifecycle: true };
   const branch = structuredClone(state);
@@ -53,8 +106,11 @@ function resumeCommandChoicePreview(state: GameState, ruleset: Ruleset, actorId:
 }
 
 function previewCommandBefore(state: GameState, ruleset: Ruleset, actorId: string, commandType: 'ATTACK_TARGET' | 'BUY_CARD'): CommandBeforePreviewResult {
+  const payload = { schemaVersion: 1 as const, point: 'command-before' as const, actorId, commandType, phase: state.phase, metadata: { commandId: `legal-preview-${state.revision + 1}` } };
+  const uncertainty = inspectLifecyclePreviewUncertainty(state, ruleset, payload, { controllerId: actorId }, actorId);
+  if (uncertainty.usesRandomness || uncertainty.observesHiddenInformation) return { states: [], indeterminate: true, requiresLifecycle: true };
   const preview = structuredClone(state);
-  const result = dispatchLifecycle(preview, ruleset, { schemaVersion: 1, point: 'command-before', actorId, commandType, phase: preview.phase, metadata: { commandId: `legal-preview-${state.revision + 1}` } }, { controllerId: actorId });
+  const result = dispatchLifecycle(preview, ruleset, payload, { controllerId: actorId });
   if (preview.rngState !== state.rngState) return { states: [], indeterminate: true, requiresLifecycle: true };
   if (result.status === 'completed') return { states: [preview], indeterminate: false, requiresLifecycle: false };
   if (result.status === 'suspended' && preview.effectState.pendingCounterConsent) return { states: [], indeterminate: true, requiresLifecycle: true };
@@ -63,11 +119,14 @@ function previewCommandBefore(state: GameState, ruleset: Ruleset, actorId: strin
 
 function attackIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, targetId: string): boolean {
   if (preview.indeterminate) return true;
+  if (preview.states.some((state) => inspectContinuousPreviewUncertainty(state, ruleset, actorId).observesHiddenInformation)) return true;
   return preview.states.some((state) => {
     const target = state.enemyTargets[targetId];
-    const encounter = target?.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
-    if (!target || target.status !== 'available' || encounter?.status === 'finished') return false;
-    if (target.health) return evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: actorId, targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }).status === 'ready';
+    if (!target || target.status !== 'available') return false;
+    if (target.health) {
+      const result = evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: actorId, targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } });
+      return result.status === 'ready' || failedHealthAttackMayDependOnHiddenEncounter(state, ruleset, actorId, targetId, result);
+    }
     const result = evaluateCombat(state, ruleset, actorId, targetId);
     if (result.status !== 'ready' || !result.evaluation.eligible) return false;
     if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, targetId, result.evaluation.outcome.kind).status !== 'ready') return false;
@@ -157,6 +216,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
 function readyAttackPreview(state: GameState, ruleset: Ruleset, actorId: string, command: Extract<GameCommand, { type: 'ATTACK_TARGET' }>): Extract<ActionPreviewItem, { kind: 'attack'; status: 'ready' }> | undefined {
   const target = state.enemyTargets[command.targetId];
   if (!target || target.status !== 'available') return undefined;
+  if (attackPreviewObservesHiddenInformation(state, ruleset, actorId, command.targetId)) return undefined;
   if (target.health) {
     const result = evaluateAttackResolution(state, ruleset, {
       schemaVersion: 1,
