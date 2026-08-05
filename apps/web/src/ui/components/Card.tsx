@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react';
-import type { CardMetric, CardVisualViewModel } from '../cards/card-visual-model.js';
+import { cardAccessibleName, type CardMetric, type CardVisualViewModel } from '../cards/card-visual-model.js';
 import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
@@ -47,7 +47,6 @@ export function CardStateRing({ card }: { card: CardVisualViewModel }) {
 /** Inspectable presentation surface. Authoritative commands are executed only from CardDetailsPanel. */
 export function Card({ card, onInspect, testId }: Props) {
   const inspect = (event: MouseEvent<HTMLButtonElement>) => onInspect(card, event.currentTarget);
-  const metricSummary = card.metrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
   return <button
     type="button"
     data-testid={testId}
@@ -58,7 +57,7 @@ export function Card({ card, onInspect, testId }: Props) {
     data-legal-action={card.action ? 'true' : 'false'}
     className={`card card-${card.template} card-state-${card.interactionState}`}
     aria-haspopup="dialog"
-    aria-label={`${card.displayName}，${card.cardTypeLabel}${metricSummary ? `，${metricSummary}` : ''}，${card.stateDescription}，開啟卡牌詳情`}
+    aria-label={cardAccessibleName(card)}
     onClick={inspect}
   >
     <CardArt card={card} />

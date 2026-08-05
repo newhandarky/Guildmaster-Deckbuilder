@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
-import { buildCardVisualModel, commandAction, equipmentSelectionAction, isCardActionCurrent } from './card-visual-model.js';
+import { buildCardVisualModel, cardAccessibleName, commandAction, equipmentSelectionAction, isCardActionCurrent } from './card-visual-model.js';
 
 const instance: CardInstance = { id: 'card-1', definitionId: 'demo:adventurer/one' };
 const presentation: PresentationViewModel = {
@@ -59,6 +59,18 @@ describe('card visual model', () => {
     expect(JSON.stringify({ cardDefinition, presentation, legalCommand })).toBe(before);
     expect(model.tags).not.toBe(cardDefinition.tags);
     expect(model.action).toEqual(action);
+  });
+
+  it('names the exact legal action while keeping details as the card activation behavior', () => {
+    const action = commandAction('play', '加入隊伍', { type: 'PLAY_ADVENTURER', cardId: instance.id });
+    const model = buildCardVisualModel({
+      instance,
+      definition: definition(),
+      presentation,
+      interactionState: 'legal',
+      action,
+    });
+    expect(cardAccessibleName(model)).toBe('示範冒險者，冒險者，費用 2，戰力 3，購買力 4，可執行，動作：加入隊伍，開啟卡牌詳情');
   });
 
   it('keeps unavailable cards inspectable without inventing an action', () => {
