@@ -82,12 +82,19 @@ test('restored entry requires confirmation before replacing the saved expedition
 
   const entry = page.getByTestId('expedition-entry');
   const startNew = entry.getByRole('button', { name: '開啟新遠征' });
+  const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
   await expect(startNew).toBeFocused();
+
+  await startNew.click();
+  await entry.getByRole('button', { name: '保留目前進度' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(startNew).toBeFocused();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(saveBeforeConfirmation);
 
   await startNew.click();
   await entry.getByRole('button', { name: '確認開啟新遠征' }).click();
@@ -98,6 +105,27 @@ test('restored entry requires confirmation before replacing the saved expedition
   expect(restarted.snapshot.state.gameId).not.toBe(priorGameId);
   expect(restarted.events).toEqual([]);
   expect(restarted.replayBundle.commands).toEqual([]);
+});
+
+test('storage read failure is explained at entry and still allows memory-only play', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage unavailable', 'SecurityError');
+      },
+    });
+  });
+  await page.goto('/');
+
+  const entry = page.getByTestId('expedition-entry');
+  await expect(entry.getByTestId('entry-storage-warning')).toHaveText(
+    '本機儲存目前不可用；仍可遊玩，但進度只會保留在此分頁。',
+  );
+  await entry.getByRole('button', { name: '開始新遠征' }).click();
+  await expect(page.getByTestId('game-app')).toBeVisible();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：僅保留在此分頁');
+  await expect(page.getByTestId('storage-warning')).toContainText('最新進度只保留在此分頁');
 });
 
 test('empty adventurer and item supplies show approved copy while monsters remain full', async ({ page }) => {
