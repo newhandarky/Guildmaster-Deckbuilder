@@ -96,15 +96,85 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .card-art { z-index: -2; overflow: hidden; }
 .card-art img { object-fit: cover; }
 .card-art-placeholder {
+  isolation: isolate;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 48% 35%, rgb(255 255 255 / .16) 0 11%, transparent 12%),
-    linear-gradient(145deg, rgb(255 255 255 / .13), transparent 42%),
+    linear-gradient(155deg, rgb(255 255 255 / .12), transparent 44%),
     linear-gradient(25deg, #334c6b, #18273c);
 }
-.card-character .card-art-placeholder { background: radial-gradient(circle at 50% 32%, #d8a96f 0 12%, transparent 13%), linear-gradient(150deg, #725038, #1b2e48 68%); }
-.card-supply .card-art-placeholder { background: radial-gradient(circle at 50% 48%, #91b6c9 0 18%, transparent 19%), linear-gradient(145deg, #355a68, #202d47); }
-.card-enemy .card-art-placeholder { background: radial-gradient(circle at 50% 35%, #d07883 0 14%, transparent 15%), linear-gradient(145deg, #663747, #291f35); }
-.card-boss .card-art-placeholder { background: radial-gradient(circle at 50% 35%, #d7a45e 0 14%, transparent 15%), linear-gradient(145deg, #652d35, #171722); }
+.card-fallback-scene, .card-fallback-scene > span { position: absolute; display: block; }
+.card-fallback-scene { inset: 0; }
+.card-fallback-backdrop {
+  inset: 12% 8% 28%;
+  border: 1px solid rgb(229 239 255 / .14);
+  border-radius: 44% 44% 22% 22%;
+  background: linear-gradient(145deg, rgb(255 255 255 / .12), transparent 55%);
+  transform: rotate(-4deg);
+}
+.card-fallback-orbit {
+  top: 22%;
+  left: 50%;
+  width: 52%;
+  aspect-ratio: 1;
+  border: clamp(1px, .08rem, 2px) solid rgb(238 244 255 / .35);
+  border-radius: 50%;
+  box-shadow: 0 0 0 .5rem rgb(255 255 255 / .035), 0 0 2rem rgb(178 214 255 / .14);
+  transform: translateX(-50%);
+}
+.card-fallback-ground {
+  right: -12%;
+  bottom: 14%;
+  left: -12%;
+  height: 30%;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(to bottom, rgb(8 16 29 / .38), rgb(7 13 24 / .92));
+  transform: rotate(-3deg);
+}
+.card-fallback-figure {
+  z-index: 2;
+  top: 31%;
+  left: 50%;
+  width: 31%;
+  height: 42%;
+  border: 1px solid rgb(255 255 255 / .2);
+  border-radius: 50% 50% 18% 18%;
+  background: linear-gradient(145deg, rgb(245 225 183 / .92), rgb(79 101 134 / .9) 52%, rgb(15 25 42 / .96) 53%);
+  box-shadow: 0 .7rem 1.2rem rgb(0 0 0 / .28);
+  transform: translateX(-50%);
+}
+.card-fallback-accent {
+  z-index: 3;
+  top: 47%;
+  left: 50%;
+  width: 11%;
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 255 255 / .5);
+  background: #d4e8ff;
+  box-shadow: 0 0 .8rem rgb(202 231 255 / .75);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.card-character .card-art-placeholder { background: linear-gradient(150deg, #725038, #1b2e48 68%); }
+.card-character .card-fallback-figure { width: 35%; height: 45%; background: linear-gradient(145deg, #f2d39a 0 26%, #a86f45 27% 46%, #263b59 47%); }
+.card-character .card-fallback-accent { top: 52%; background: #f0c46e; box-shadow: 0 0 .8rem rgb(240 196 110 / .72); }
+
+.card-supply .card-art-placeholder { background: linear-gradient(145deg, #355a68, #202d47); }
+.card-supply .card-fallback-orbit { top: 27%; width: 46%; border-radius: 18%; transform: translateX(-50%) rotate(45deg); }
+.card-supply .card-fallback-figure { top: 38%; width: 32%; height: 32%; border-radius: 12%; background: linear-gradient(145deg, #d4eef2, #567d8c 54%, #182b42 55%); transform: translateX(-50%) rotate(45deg); }
+.card-supply .card-fallback-accent { top: 46%; width: 8%; background: #aee3e8; }
+
+.card-enemy .card-art-placeholder { background: linear-gradient(145deg, #663747, #291f35); }
+.card-enemy .card-fallback-figure { top: 34%; width: 43%; height: 38%; border-radius: 46% 46% 26% 26%; background: linear-gradient(155deg, #ce8992 0 18%, #713b50 19% 50%, #1d1a2d 51%); }
+.card-enemy .card-fallback-accent { top: 48%; width: 8%; background: #ff9cab; box-shadow: -.75rem 0 0 #ff9cab, .75rem 0 0 #ff9cab; transform: translateX(-50%); }
+
+.card-boss .card-art-placeholder { background: linear-gradient(145deg, #652d35, #171722); }
+.card-boss .card-fallback-orbit { top: 18%; width: 64%; border-color: rgb(239 190 108 / .46); box-shadow: 0 0 0 .65rem rgb(239 190 108 / .04), 0 0 2rem rgb(239 190 108 / .18); }
+.card-boss .card-fallback-figure { top: 29%; width: 48%; height: 49%; border-radius: 40% 40% 12% 12%; background: linear-gradient(145deg, #dfb367 0 16%, #7b343d 17% 44%, #171722 45%); }
+.card-boss .card-fallback-accent { top: 47%; width: 13%; background: #f0bd62; box-shadow: 0 0 1rem rgb(240 189 98 / .9); }
+
+.card-full-art .card-art-placeholder { background: linear-gradient(145deg, #395774, #1b2f47 58%, #19243a); }
+.card-full-art .card-fallback-figure { top: 36%; width: 28%; height: 34%; border-radius: 22% 22% 40% 40%; background: linear-gradient(145deg, #d8e7f4, #6c91ad 48%, #243b57 49%); }
+.card-full-art .card-fallback-accent { top: 45%; background: #cae8ff; }
 
 .card-title-scrim {
   position: absolute;
