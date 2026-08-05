@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { openGame } from './game-entry.js';
 
 test('responsive presentation art is shared by cards and details without changing authority', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/?e2ePresentationAsset=valid');
+  await openGame(page, '/?e2ePresentationAsset=valid');
 
   const cardArt = page.locator('[data-asset-key="demo:starter/newcomer"]').first();
   const cardImage = cardArt.locator('img');
@@ -21,13 +22,13 @@ test('responsive presentation art is shared by cards and details without changin
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
-  await page.goto('/');
+  await openGame(page);
   await expect(page.getByText(revisionBefore ?? '')).toBeVisible();
   expect(await page.locator('[data-legal-action="true"]').count()).toBe(legalActionsBefore);
 });
 
 test('a broken approved source falls back to the existing CSS placeholder', async ({ page }) => {
-  await page.goto('/?e2ePresentationAsset=broken');
+  await openGame(page, '/?e2ePresentationAsset=broken');
   const art = page.locator('[data-asset-key="demo:starter/newcomer"]').first();
   await expect(art.locator('[data-image-fallback="visible"]')).toBeVisible();
   await expect(art.locator('[data-html-artwork="true"]')).toBeVisible();
@@ -49,7 +50,7 @@ for (const viewport of [
 ]) {
   test(`presentation images preserve card geometry at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await page.goto('/?e2ePresentationAsset=valid');
+    await openGame(page, '/?e2ePresentationAsset=valid');
     const card = page.locator('[data-asset-key="demo:starter/newcomer"]').first().locator('xpath=ancestor::button');
     const box = await card.boundingBox();
     expect(box).not.toBeNull();

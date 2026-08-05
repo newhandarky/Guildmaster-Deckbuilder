@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { openGame } from './game-entry.js';
 
 test('desktop card details show an authoritative combat preview before dispatch', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
 
   const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
@@ -20,7 +21,7 @@ test('desktop card details show an authoritative combat preview before dispatch'
 
 test('desktop card details show current, cost, and remaining purchase power', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await openGame(page);
   const endPhase = page.getByTestId('end-phase');
   await endPhase.click();
   await endPhase.click();
@@ -38,7 +39,7 @@ test('desktop card details show current, cost, and remaining purchase power', as
 
 test('lifecycle-dependent preview withholds unresolved combat values', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/?e2eScenario=lifecycle-choice');
+  await openGame(page, '/?e2eScenario=lifecycle-choice');
   await page.getByTestId('end-phase').click();
   await page.getByTestId('lifecycle-dock').getByRole('button', { name: '繼續', exact: true }).click();
 
@@ -52,7 +53,7 @@ test('lifecycle-dependent preview withholds unresolved combat values', async ({ 
 
 test('combat preview remains scrollable and actionable on the existing narrow layout', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('end-phase').click();
   const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
   await monsterRow.locator('[data-legal-action="true"]').first().click();

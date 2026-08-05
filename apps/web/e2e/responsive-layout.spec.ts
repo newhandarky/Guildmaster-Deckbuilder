@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openGame } from './game-entry.js';
 
 const viewportCases = [
   { name: 'phone portrait', width: 390, height: 844, cardWidth: 112 },
@@ -11,7 +12,7 @@ const viewportCases = [
 for (const viewport of viewportCases) {
   test(`${viewport.name} keeps the single-page table inside the document`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.goto('/');
+    await openGame(page);
 
     await expect(page.getByTestId('game-table-layout')).toBeVisible();
     await expectNoDocumentOverflow(page);
@@ -35,7 +36,7 @@ for (const viewport of viewportCases) {
 
 test('card rows own compact overflow without widening the page', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await openGame(page);
 
   const handRow = page.getByTestId('hand').locator('.card-row');
   expect(await handRow.evaluate((row) => row.scrollWidth > row.clientWidth)).toBe(true);
@@ -48,7 +49,7 @@ for (const viewport of [
 ]) {
   test(`desktop utility column keeps controls beside the table without overlap at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await page.goto('/');
+    await openGame(page);
 
     const playBox = await page.getByTestId('game-play-column').boundingBox();
     const utility = page.getByTestId('game-utility-column');
@@ -76,7 +77,7 @@ for (const viewport of [
 }
 
 test('Replay diagnostics are collapsed by default and keyboard operable', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const diagnostics = page.getByTestId('replay-diagnostics');
   const summary = diagnostics.locator('summary');
 
@@ -92,7 +93,7 @@ test('Replay diagnostics are collapsed by default and keyboard operable', async 
 
 test('card details use a bottom sheet in portrait and a side sheet in landscape', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await openGame(page);
   await page.getByTestId('hand').getByRole('button').first().click();
 
   const portraitBox = await page.getByRole('dialog').boundingBox();
@@ -110,7 +111,7 @@ test('card details use a bottom sheet in portrait and a side sheet in landscape'
 
 test('low-height lifecycle interaction remains reachable without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 844, height: 390 });
-  await page.goto('/?e2eScenario=lifecycle-choice');
+  await openGame(page, '/?e2eScenario=lifecycle-choice');
   await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
 
   const rail = page.getByTestId('interaction-rail');

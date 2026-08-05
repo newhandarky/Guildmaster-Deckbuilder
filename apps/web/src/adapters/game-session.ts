@@ -5,6 +5,8 @@ import type {
   DomainEvent,
   EngineError,
   GameCommand,
+  GameStatus,
+  Phase,
   PlayerView,
   ReplayDiagnostic,
 } from '@guildmaster/game-protocol';
@@ -16,12 +18,24 @@ export type SessionPersistenceStatus = {
   replayHistoryComplete: boolean;
 };
 
+export type SessionEntrySummary = {
+  schemaVersion: 1;
+  canContinue: boolean;
+  gameId: string;
+  revision: number;
+  round: number;
+  phase: Phase;
+  status: GameStatus;
+  replayHistoryComplete: boolean;
+};
+
 export type SessionUpdate = {
   view: PlayerView;
   definitions: Readonly<Record<string, CardDefinition>>;
   events: DomainEvent[];
   legalCommands: GameCommand[];
   actionPreviews: ActionPreviewSet;
+  entrySummary: SessionEntrySummary;
   persistence: SessionPersistenceStatus;
   replayHistoryComplete: boolean;
   error?: EngineError | undefined;
