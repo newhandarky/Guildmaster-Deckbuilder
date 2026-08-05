@@ -131,6 +131,7 @@
 - 桌機核心鍵盤路徑已覆蓋階段推進、合法卡牌詳情、具體動作確認、dispatch 後焦點交接，以及結算／新遠征焦點交接；卡片名稱會區分「開啟詳情」與實際合法動作
 - WCAG A／AA automated gate、skip link、44px 觸控目標、320px reflow／200% 文字放大、reduced motion、forced colors 與破壞性重新開局確認
 - 桌機回饋已提供五階段進度、legal Commands 動作摘要、卡片狀態圖例及最新 accepted event；不複製 engine legality 或建立 optimistic state
+- 桌機本機存檔回饋已提供 versioned persistence status：新對局、成功保存、current／legacy restore 與 storage failure 的僅記憶體警告；狀態綁定 revision，且 storage failure 不再被包裝成規則錯誤
 - 討伐／購買詳情已接入 deterministic `ActionPreviewSet`：一般討伐、health damage、購買剩餘值與未固定的 command-before lifecycle 分支都有 schema／query／session／UI regression；preview 不進入 Snapshot 或改變 RNG／revision
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單

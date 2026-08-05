@@ -46,6 +46,20 @@ test('opening game shows the human guild, hand, and a valid action', async ({ pa
   await expect(page.getByTestId('hand').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('end-phase')).toBeEnabled();
   await expect(page.getByTestId('interaction-hint')).toContainText('可操作');
+  await expect(page.getByTestId('save-status')).toHaveText('本機：新對局 · 尚未保存');
+});
+
+test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('end-phase').click();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
+  await expect(page.getByText('版本 1')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：已恢復本機進度');
+  await expect(page.getByTestId('restore-notice')).toHaveText('已恢復最近的本機進度。');
+  await expect(page.getByText('版本 1')).toBeVisible();
+  await expect(page.getByTestId('end-phase')).toBeEnabled();
 });
 
 test('empty adventurer and item supplies show approved copy while monsters remain full', async ({ page }) => {
@@ -223,6 +237,7 @@ test('malformed local save is cleared and starts a playable new game', async ({ 
   await page.goto('/');
   await expect(page.getByTestId('human-card-count')).toContainText('手牌 5');
   await expect(page.getByTestId('end-phase')).toBeEnabled();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：新對局 · 尚未保存');
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
 });
 
@@ -237,6 +252,8 @@ test('legacy local save restores the persisted phase', async ({ page }) => {
   });
   await page.reload();
   await expect(page.getByTestId('interaction-hint')).toContainText('討伐階段');
+  await expect(page.getByTestId('save-status')).toHaveText('本機：已恢復本機進度');
+  await expect(page.getByTestId('restore-notice')).toContainText('沒有完整 Replay history');
 });
 
 test('replay runner reports malformed JSON without changing the live game', async ({ page }) => {
@@ -362,6 +379,20 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
   await expect(page.getByTestId('replay-report')).toContainText('只能在對局結束後匯出');
+});
+
+test('scoreboard keeps the memory-only warning when the final save fails', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Storage.prototype, 'setItem', {
+      configurable: true,
+      value: () => { throw new DOMException('Storage unavailable', 'QuotaExceededError'); },
+    });
+  });
+  await page.goto('/?e2eScenario=all-bosses-endgame');
+  await finishAllBossesGame(page);
+  await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
+  await expect(page.getByTestId('save-status')).toHaveText('本機：僅保留在此分頁');
+  await expect(page.getByTestId('storage-warning')).toContainText('重新整理前請勿關閉');
 });
 
 test('deterministic all-bonds journey triggers the registered bond end condition through UI play', async ({ page }) => {

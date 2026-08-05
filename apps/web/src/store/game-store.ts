@@ -1,6 +1,7 @@
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { create } from 'zustand';
-import { LocalGameSession, type ReplayRunnerReport, type SessionUpdate } from '../adapters/local-session/LocalGameSession.js';
+import type { ReplayRunnerReport, SessionUpdate } from '../adapters/game-session.js';
+import { LocalGameSession } from '../adapters/local-session/LocalGameSession.js';
 import { resolveE2EScenario } from '../app/e2e-scenarios.js';
 import { createWebRuleset } from '../app/ruleset.js';
 

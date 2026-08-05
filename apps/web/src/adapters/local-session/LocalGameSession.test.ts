@@ -43,15 +43,21 @@ const consent = (accepted: EffectDefinition['body']): EffectDefinition['body'] =
   outcomes: { accepted, declined: modify(0), cancelled: modify(0), expired: modify(0) }
 });
 
-function memoryStorage(): Storage {
+function memoryStorage(options: { failReads?: boolean; failWrites?: boolean } = {}): Storage {
   const values = new Map<string, string>();
   return {
     get length() { return values.size; },
     clear: () => values.clear(),
-    getItem: (key) => values.get(key) ?? null,
+    getItem: (key) => {
+      if (options.failReads) throw new DOMException('Storage unavailable', 'SecurityError');
+      return values.get(key) ?? null;
+    },
     key: (index) => [...values.keys()][index] ?? null,
     removeItem: (key) => { values.delete(key); },
-    setItem: (key, value) => { values.set(key, value); }
+    setItem: (key, value) => {
+      if (options.failWrites) throw new DOMException('Storage unavailable', 'QuotaExceededError');
+      values.set(key, value);
+    }
   };
 }
 
@@ -91,6 +97,76 @@ function seedPendingConsentSave(ruleset: ReturnType<typeof createRuleset>): void
 describe('LocalGameSession transactional boundary', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage());
+  });
+
+  it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const session = new LocalGameSession(ruleset);
+    expect(session.current().persistence).toEqual({
+      schemaVersion: 1,
+      state: 'fresh',
+      revision: 0,
+      replayHistoryComplete: true,
+    });
+
+    const saved = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(saved.persistence).toEqual({
+      schemaVersion: 1,
+      state: 'saved',
+      revision: saved.view.revision,
+      replayHistoryComplete: true,
+    });
+    expect(JSON.parse(JSON.stringify(saved.persistence))).toEqual(saved.persistence);
+
+    const restored = new LocalGameSession(ruleset).current();
+    expect(restored.persistence).toEqual({
+      schemaVersion: 1,
+      state: 'restored',
+      revision: saved.view.revision,
+      replayHistoryComplete: true,
+    });
+    expect(restored.view).toMatchObject({ gameId: saved.view.gameId, revision: saved.view.revision });
+  });
+
+  it('marks snapshot-only saves as restored without fabricating replay history', () => {
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    seedConsentSave(ruleset);
+    const restored = new LocalGameSession(ruleset).current();
+    expect(restored.persistence).toMatchObject({
+      schemaVersion: 1,
+      state: 'restored',
+      revision: 0,
+      replayHistoryComplete: false,
+    });
+    expect(restored.replayHistoryComplete).toBe(false);
+  });
+
+  it('keeps accepted progress playable and separates storage failure from engine errors', () => {
+    vi.stubGlobal('localStorage', memoryStorage({ failWrites: true }));
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const update = new LocalGameSession(ruleset).submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(update.error).toBeUndefined();
+    expect(update.view).toMatchObject({ revision: 1, phase: 'combat' });
+    expect(update.persistence).toEqual({
+      schemaVersion: 1,
+      state: 'memory-only',
+      revision: 1,
+      replayHistoryComplete: true,
+    });
+  });
+
+  it('reports memory-only immediately when local storage cannot be read', () => {
+    vi.stubGlobal('localStorage', memoryStorage({ failReads: true }));
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const current = new LocalGameSession(ruleset).current();
+    expect(current.error).toBeUndefined();
+    expect(current.view).toMatchObject({ revision: 0, phase: 'action1' });
+    expect(current.persistence).toEqual({
+      schemaVersion: 1,
+      state: 'memory-only',
+      revision: 0,
+      replayHistoryComplete: true,
+    });
   });
 
   it('returns action previews tied to the current game, actor, revision, and legal commands', () => {
