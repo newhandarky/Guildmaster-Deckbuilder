@@ -3,6 +3,7 @@ import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
+import { CardStateLegend } from '../features/game/table/CardStateLegend.js';
 import { GameHeader } from '../features/game/table/GameHeader.js';
 import { GameNotices } from '../features/game/table/GameNotices.js';
 import { GameResultsScreen } from '../features/game/table/GameResultsScreen.js';
@@ -11,6 +12,7 @@ import { HandPanel } from '../features/game/table/HandPanel.js';
 import { PlayerStatusStrip } from '../features/game/table/PlayerStatusStrip.js';
 import { ReplayDiagnosticsPanel } from '../features/game/table/ReplayDiagnosticsPanel.js';
 import { TurnControlDock } from '../features/game/table/TurnControlDock.js';
+import { buildLegalActionSummary } from '../features/game/table/gameplay-feedback.js';
 import { buildInteractionHint, phaseDisplayName } from '../features/game/table/phase-copy.js';
 import { useLifecycleFocus } from '../features/game/table/use-lifecycle-focus.js';
 import { CardDetailsPanel } from '../ui/components/CardDetailsPanel.js';
@@ -59,6 +61,7 @@ export function App() {
     viewerActive: view.activePlayerId === view.viewerId,
     phase: view.phase,
   });
+  const legalActionSummary = buildLegalActionSummary(legalCommands);
   const legalEquipCommands = legalCommands.filter(
     (command): command is Extract<GameCommand, { type: 'EQUIP_ITEM' }> => command.type === 'EQUIP_ITEM',
   );
@@ -178,6 +181,7 @@ export function App() {
         ref={interactionFallbackRef}
         scopeKey={`${view.gameId}:${view.revision}`}
         interactionHint={interactionHint}
+        actionSummary={legalActionSummary}
         phaseName={phaseDisplayName(view.phase)}
         canEndPhase={Boolean(endPhaseCommand)}
         equipmentSelected={Boolean(equipmentCardId)}
@@ -187,6 +191,7 @@ export function App() {
         onCancelEquipment={() => setEquipmentCardId(undefined)}
         onRestart={restartAndClear}
       />
+      <CardStateLegend />
     </div>}
     activity={<ActivityPanel events={events} diagnostics={replayDiagnostics} />}
     details={<CardDetailsPanel

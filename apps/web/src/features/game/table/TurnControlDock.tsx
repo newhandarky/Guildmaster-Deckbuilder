@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useRef, useState } from 'react';
 
 type Props = {
   interactionHint: string;
+  actionSummary: string;
   phaseName: string;
   canEndPhase: boolean;
   equipmentSelected: boolean;
@@ -14,6 +15,7 @@ type Props = {
 export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function TurnControlDock(
   {
     interactionHint,
+    actionSummary,
     phaseName,
     canEndPhase,
     equipmentSelected,
@@ -63,6 +65,7 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
         aria-atomic="true"
         tabIndex={-1}
       >{interactionHint}</p>
+      <p id="legal-action-summary" className="legal-action-summary" data-testid="legal-action-summary">{actionSummary}</p>
     </div>
     {restartConfirmation ? <div className="controls restart-confirmation" role="group" aria-label="確認重新開始">
       <p>重新開始會放棄目前尚未完成的對局。</p>
@@ -72,7 +75,7 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
       }}>確認重新開始</button>
       <button type="button" onClick={cancelRestart}>繼續目前對局</button>
     </div> : <div className="controls">
-      <button data-testid="end-phase" className="primary" type="button" disabled={!canEndPhase} aria-describedby="interaction-hint" onClick={onEndPhase}>
+      <button data-testid="end-phase" className="primary" type="button" disabled={!canEndPhase} aria-describedby="interaction-hint legal-action-summary" onClick={onEndPhase}>
         結束{phaseName}階段
       </button>
       {equipmentSelected ? <button type="button" onClick={onCancelEquipment}>取消配戴</button> : null}

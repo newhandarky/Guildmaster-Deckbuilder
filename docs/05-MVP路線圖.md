@@ -130,6 +130,7 @@
 - 已建立 e2e-mode 的 typed、validated 原創示範 scenario registry；它透過一般 `LocalGameSession`、合法 Commands 與 Rules Module 觸發「全魔王擊敗」及「全羈絆完成」兩種已註冊終局，覆蓋 final round、單次結算、scoreboard 與重新開局的空白 replay history。這是 runtime／測試能力，不表示正式基礎卡表或其全部終局觸發資料已完成。
 - 桌機核心鍵盤路徑已覆蓋階段推進、合法卡牌詳情、具體動作確認、dispatch 後焦點交接，以及結算／新遠征焦點交接；卡片名稱會區分「開啟詳情」與實際合法動作
 - WCAG A／AA automated gate、skip link、44px 觸控目標、320px reflow／200% 文字放大、reduced motion、forced colors 與破壞性重新開局確認
+- 桌機回饋已提供五階段進度、legal Commands 動作摘要、卡片狀態圖例及最新 accepted event；不複製 engine legality 或建立 optimistic state
 - 效能與手機橫向基本檢查
 - 內容與素材授權清單
 - Presentation asset manifest、尺寸／hash／權利檢查，以及逐批小型素材 PR
