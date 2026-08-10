@@ -47,6 +47,7 @@ pnpm check
 
 - 預設 runtime 仍是可玩的**原創示範內容包**；另有明確 opt-in 的 provisional foundation pack，接入 34 個中性名稱候選（含首批十一種道具／裝備），但不是完整、逐字對應的官方卡表，也不會自動升為 production 內容。候選物資 01／05 可依卡種從棄牌堆取回卡片，04 可棄魔王後抽牌，08「抽 2」、10「棄 1 後抽 2」、13「取回非同名法師卡」、15「從手牌／隊伍／棄牌堆移除 1 張」、17「抽 3 後棄 1」、18「配戴者仍在隊伍時，每個裝備實例於擊敗目標後抽 1」與 27「依隊伍職業種類抽牌」亦已透過資料驅動效果啟用；選牌效果使用可跨 Snapshot／Replay 恢復的版本化 card-use continuation，其餘卡面效果維持停用。
 - 個別卡牌的複雜效果、協助者、羈絆輪抽與 Vol.1 尚未啟用。
+- optional Rules Module composition schema v1 已提供 core／optional 兩層 canonical 排序、精確版本相依／衝突驗證與 Snapshot／Replay identity；建立 ruleset 時會隔離並深層凍結模組及其規則資料、拒絕重複或錯誤 owner 的 zone，所有公開 query／evaluator 也會先驗證完整 registry。E2E 中性協助者只驗證組合能力，不代表正式協助者內容已啟用。
 - 基礎版供應採已核准的 project policy：冒險者／物資可縮減至空而不凍結遊戲；三張循環錨點使魔物區的 committed state 始終正好三張。逐種類張數不是 playtest blocker。
 - 終局 E2E 只覆蓋目前 base Rules Module 已實際註冊、且可由原創示範 scenario 合法觸發的全魔王／全羈絆條件；完整正式基礎卡表與其他未確認終局資料仍待覆核。
 - 沒有連線、帳號、伺服器、房間或遠端 Session；這些只保留了 protocol／adapter 邊界。

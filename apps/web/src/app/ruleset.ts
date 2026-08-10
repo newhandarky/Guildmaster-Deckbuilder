@@ -77,6 +77,28 @@ const consentModule: RulesModule = {
   }],
 };
 
+/** E2E-only neutral helper proving explicit optional module composition. */
+const optionalHelperModule: RulesModule = {
+  id: 'e2e:helper/expanded-party',
+  version: '1.0.0',
+  config: { helperDefinitionId: 'e2e:helper/expanded-party' },
+  composition: {
+    schemaVersion: 1,
+    kind: 'optional',
+    priority: 10,
+    dependencies: [{ moduleId: baseRulesModule.id, version: baseRulesModule.version }],
+  },
+  createInitialState: () => ({ active: true, helperDefinitionId: 'e2e:helper/expanded-party' }),
+  zoneDefinitions: [{
+    zoneId: 'e2e:helper/active',
+    kind: 'singleSlot',
+    visibility: 'public',
+    rulesModuleId: 'e2e:helper/expanded-party',
+  }],
+  getPartyLimit: (_state, _player, limit) => limit + 1,
+  onSupplyDepleted: () => 'handled',
+};
+
 export type WebContentMode = 'demo' | 'provisional-playtest';
 
 export const webContentModeOptions: Readonly<Record<WebContentMode, {
@@ -104,7 +126,9 @@ export function createWebRuleset(scenario?: E2EScenario, contentMode: WebContent
     ? choiceModule
     : scenario === 'lifecycle-consent'
       ? consentModule
-      : undefined;
+      : scenario === 'optional-helper'
+        ? optionalHelperModule
+        : undefined;
   return createRuleset(
     [scenario
       ? getE2EScenarioPack(scenario)

@@ -1,5 +1,5 @@
 import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
-import { baseRulesModule, createGame, createRuleset, dispatch, envelope, getLegalCommands, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
+import { baseRulesModule, createGame, createRuleset, dispatch, envelope, getLegalCommands, getPartyLimit, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
 import { createWebRuleset, webContentModeFromPackIds } from './ruleset.js';
 
@@ -7,6 +7,30 @@ describe('web content modes', () => {
   it('keeps demo as the production default', () => {
     const ruleset = createWebRuleset();
     expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:demo', contentStatus: 'demo' })]);
+  });
+
+  it('composes the neutral optional helper through state, Snapshot, Replay, and derived party capacity', () => {
+    const ruleset = createWebRuleset('optional-helper');
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'e2e:helper/expanded-party']);
+    const initialConfig = {
+      gameId: 'optional-helper-mode',
+      seed: 20260820,
+      players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }],
+      startingPlayerId: 'human-1',
+    };
+    const state = createGame(initialConfig, ruleset);
+
+    expect(state.rulesModules[1]?.compositionFingerprint).toBeTruthy();
+    expect(state.moduleState['e2e:helper/expanded-party']).toEqual({ active: true, helperDefinitionId: 'e2e:helper/expanded-party' });
+    expect(getPartyLimit(ruleset, state, state.players[0]!)).toBe(6);
+    expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
+    expect(replayGame({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      registry: replayRegistryFingerprint(ruleset),
+      initialConfig,
+      commands: [],
+    }, ruleset)).toMatchObject({ status: 'completed', finalSnapshot: serializeSnapshot(state) });
   });
 
   it('requires explicit provisional permission at the engine boundary', () => {

@@ -1,6 +1,7 @@
 import { isFiniteJsonValue, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
 import type { Ruleset, SupplyKind } from './ruleset.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type SupplyContinuityPolicy =
   | {
@@ -97,6 +98,8 @@ export function validateSupplyContinuityRegistry(ruleset: Ruleset): string[] {
 }
 
 export function validateSupplyContinuityState(state: GameState, ruleset: Ruleset): string[] {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) return [compatibility];
   const result = supplyContinuityPolicyFor(ruleset, 'monster');
   if (result.status !== 'ready') return [result.error];
   const policy = result.policy;

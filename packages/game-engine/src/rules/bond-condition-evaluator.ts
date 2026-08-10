@@ -1,6 +1,7 @@
 import type { BondCondition, BondConditionRule, BondEvaluation, BondPlayerZone, GameState, PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type BondEvaluationFailureReason =
   | 'REGISTRY_VERSION_MISMATCH'
@@ -15,10 +16,6 @@ export type BondEvaluationResult =
   | { status: 'unsupported'; reason: 'ORDER_POLICY_REQUIRED'; error: string }
   | { status: 'failed'; reason: BondEvaluationFailureReason; error: string };
 
-function registrySignature(modules: readonly { id: string; version: string }[]): string {
-  return modules.map(({ id, version }) => `${id}@${version}`).join('|');
-}
-
 function cardIdsInZones(player: PlayerState, zones: readonly BondPlayerZone[]): readonly string[] {
   return zones.flatMap((zone) => {
     switch (zone) {
@@ -29,8 +26,7 @@ function cardIdsInZones(player: PlayerState, zones: readonly BondPlayerZone[]): 
   });
 }
 
-/** A pure recursive predicate.  It never mutates state or advances RNG. */
-export function evaluateBondPredicate(condition: BondCondition, state: GameState, ruleset: Ruleset, player: PlayerState): boolean {
+function evaluateCompatibleBondPredicate(condition: BondCondition, state: GameState, ruleset: Ruleset, player: PlayerState): boolean {
   switch (condition.kind) {
     case 'defeated-bosses-at-least': return player.history.defeatedBosses >= condition.amount;
     case 'defeated-monsters-at-least': return player.history.defeatedMonsters >= condition.amount;
@@ -40,10 +36,17 @@ export function evaluateBondPredicate(condition: BondCondition, state: GameState
     case 'card-type-present': return cardIdsInZones(player, condition.zones).some((cardId) => getDefinition(ruleset.registry, state, cardId).type === condition.cardType);
     case 'party-member-present': return player.party.some((slot) => !condition.definitionId || state.cards[slot.adventurerId]?.definitionId === condition.definitionId);
     case 'equipment-present': return player.party.some((slot) => slot.equipmentId && (!condition.definitionId || state.cards[slot.equipmentId]?.definitionId === condition.definitionId));
-    case 'all': return condition.conditions.every((child) => evaluateBondPredicate(child, state, ruleset, player));
-    case 'any': return condition.conditions.some((child) => evaluateBondPredicate(child, state, ruleset, player));
-    case 'not': return !evaluateBondPredicate(condition.condition, state, ruleset, player);
+    case 'all': return condition.conditions.every((child) => evaluateCompatibleBondPredicate(child, state, ruleset, player));
+    case 'any': return condition.conditions.some((child) => evaluateCompatibleBondPredicate(child, state, ruleset, player));
+    case 'not': return !evaluateCompatibleBondPredicate(condition.condition, state, ruleset, player);
   }
+}
+
+/** A pure recursive predicate. It never mutates state or advances RNG. */
+export function evaluateBondPredicate(condition: BondCondition, state: GameState, ruleset: Ruleset, player: PlayerState): boolean {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) throw new Error(compatibility);
+  return evaluateCompatibleBondPredicate(condition, state, ruleset, player);
 }
 
 function rulesForBond(ruleset: Ruleset, bondId: string): readonly BondConditionRule[] {
@@ -64,8 +67,9 @@ function orderRules(rules: readonly BondConditionRule[]): BondEvaluationResult |
  * as an explicit mechanical compatibility adapter.
  */
 export function evaluateBondCondition(state: GameState, ruleset: Ruleset, playerId: string, bondId: string): BondEvaluationResult {
-  if (registrySignature(state.rulesModules) !== registrySignature(ruleset.modules)) {
-    return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: 'Bond registry fingerprint does not match this ruleset.' };
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) {
+    return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: compatibility };
   }
   const player = state.players.find((candidate) => candidate.id === playerId);
   if (!player) return { status: 'failed', reason: 'UNKNOWN_PLAYER', error: `Unknown player: ${playerId}.` };

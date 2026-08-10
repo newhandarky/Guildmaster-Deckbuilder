@@ -1,6 +1,7 @@
 import { EquipmentEligibilityInputSchema, type EquipmentCombatModifierEvaluation, type EquipmentCombatModifierRule, type EquipmentEligibilityCondition, type EquipmentEligibilityInput, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type EquipmentCombatModifierEvaluationResult =
   | { status: 'ready'; evaluation: EquipmentCombatModifierEvaluation }
@@ -8,10 +9,9 @@ export type EquipmentCombatModifierEvaluationResult =
   | { status: 'failed'; reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH' | 'INVALID_INPUT' | 'INVALID_COMBAT_VALUE'; error: string };
 
 function registryError(state: GameState, ruleset: Ruleset): Extract<EquipmentCombatModifierEvaluationResult, { status: 'failed' }> | undefined {
-  const stateSignature = state.rulesModules.map(({ id, version }) => `${id}@${version}`).join('|');
-  const rulesetSignature = ruleset.modules.map(({ id, version }) => `${id}@${version}`).join('|');
   if (state.rulesModules.some(({ id }) => !ruleset.modules.some((module) => module.id === id)) || ruleset.modules.some(({ id }) => !state.rulesModules.some((module) => module.id === id))) return { status: 'failed', reason: 'UNKNOWN_MODULE', error: 'Equipment combat modifier Rules Module registry contains an unknown module.' };
-  if (stateSignature !== rulesetSignature) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: 'Equipment combat modifier Rules Module registry version mismatch.' };
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: compatibility };
   return undefined;
 }
 

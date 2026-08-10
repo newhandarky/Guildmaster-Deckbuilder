@@ -47,7 +47,13 @@ describe('core abstraction contracts', () => {
   it('composes Rules Module end and scoring hooks', () => {
     const hookModule: RulesModule = { id: 'test:hooks', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', endConditions: [{ id: 'test:ready', evaluate: (state) => state.moduleState['test:hooks'] === 'ready' }], getScoreContributions: (state) => [{ playerId: state.players[0]!.id, ruleId: 'test:bonus', amount: 7, label: '測試加分' }] };
     const ruleset = createRuleset([testPack], [baseRulesModule, hookModule]);
-    const state = makeGame(); state.moduleState['test:hooks'] = 'ready';
+    const state = createGame({
+      gameId: 'hooks',
+      seed: 19,
+      players: [{ id: 'p1', name: '玩家', kind: 'human' }, { id: 'p2', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'p1',
+    }, ruleset);
+    state.moduleState['test:hooks'] = 'ready';
     expect(getEndCondition(ruleset, state)).toBe('test:ready');
     expect(getScoreboard(state, ruleset).find((row) => row.playerId === 'p1')!.honor).toBe(7);
   });

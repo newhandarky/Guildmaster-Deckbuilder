@@ -11,6 +11,7 @@ import { validateSupplyContinuityState } from '../rules/supply-continuity-evalua
 import { validatePendingCombatRewardContinuation } from './combat-reward-pipeline.js';
 import { validatePendingCardUseContinuation } from './card-use-effect-pipeline.js';
 import { validatePendingDynamicCardChoice } from './pending-dynamic-choice-validation.js';
+import { rulesModuleRegistryIdentity } from '../rules/rules-module-composition.js';
 function firstDifference(left: unknown, right: unknown, path = '$'): string | undefined {
   if (Object.is(left, right)) return undefined;
   if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) return path;
@@ -44,7 +45,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   if (JSON.stringify(envelope.rulesModules) !== JSON.stringify(envelope.state.rulesModules)) throw new Error('Snapshot Rules Module manifest mismatch.');
   if (ruleset) {
     const packs = ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash }));
-    const modules = ruleset.modules.map(({ id, version, config }) => ({ id, version, ...(config ? { config } : {}) }));
+    const modules = ruleset.modules.map(rulesModuleRegistryIdentity);
     if (JSON.stringify(envelope.contentPacks) !== JSON.stringify(packs) || JSON.stringify(envelope.rulesModules) !== JSON.stringify(modules)) throw new Error('Snapshot registry fingerprint does not match the active ruleset.');
   }
   const state = structuredClone(envelope.state) as GameState; state.effectState ??= {};

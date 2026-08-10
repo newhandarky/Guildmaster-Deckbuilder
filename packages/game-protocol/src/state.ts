@@ -25,7 +25,7 @@ export type EndState = { conditionId: string; finalRoundEndPlayerId: string; tri
 
 export type GameState = {
   schemaVersion: 2; engineVersion: string; rulesetVersion: string;
-  contentPacks: { id: string; version: string; hash: string }[]; rulesModules: { id: string; version: string; config?: Record<string, unknown> }[];
+  contentPacks: { id: string; version: string; hash: string }[]; rulesModules: { id: string; version: string; config?: Record<string, unknown>; compositionFingerprint?: string }[];
   gameId: string; seed: number; rngState: number; revision: number; status: GameStatus;
   players: PlayerState[]; activePlayerId: string; startingPlayerId: string; round: number; phase: Phase;
   cards: Record<string, CardInstance>; zones: Record<ZoneId, ZoneState>;

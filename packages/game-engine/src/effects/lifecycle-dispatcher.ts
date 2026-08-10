@@ -103,6 +103,8 @@ function hookPreviewUncertainty(state: GameState, ruleset: Ruleset, hooks: reado
 }
 
 export function inspectLifecyclePreviewUncertainty(state: GameState, ruleset: Ruleset, payload: LifecyclePayload, context: EffectContext, viewerId: string): EffectPreviewUncertainty {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) throw new Error(compatibility);
   const candidates = candidateHooks(ruleset, payload).filter((hook) => hook.kind !== 'continuous');
   const hooks = matchingHooks(state, ruleset, payload).filter((hook) => hook.kind !== 'continuous');
   const equipmentUncertainty = matchingEquipmentTriggers(state, ruleset, payload, context).reduce<EffectPreviewUncertainty>((merged, resolved) => {
@@ -115,6 +117,8 @@ export function inspectLifecyclePreviewUncertainty(state: GameState, ruleset: Ru
 }
 
 export function inspectPendingLifecyclePreviewUncertainty(state: GameState, ruleset: Ruleset, viewerId: string): EffectPreviewUncertainty {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) throw new Error(compatibility);
   const pending = state.effectState.pendingLifecycle;
   if (!pending) return { usesRandomness: false, observesHiddenInformation: false };
   return hookPreviewUncertainty(state, ruleset, [pending.currentHook, ...pending.remainingHooks].map((ref) => findHook(ruleset, ref)), pending.context, viewerId);

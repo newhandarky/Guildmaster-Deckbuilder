@@ -150,6 +150,24 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
 });
 
+test('explicit optional helper composition reaches PlayerView and persisted Snapshot identity', async ({ page }) => {
+  await openGame(page, '/?e2eScenario=optional-helper');
+  await expect(page.getByRole('heading', { name: '隊伍（5/6）' })).toBeVisible();
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  expect(persisted.snapshot.rulesModules).toEqual([
+    expect.objectContaining({ id: 'base:rules' }),
+    expect.objectContaining({
+      id: 'e2e:helper/expanded-party',
+      version: '1.0.0',
+      compositionFingerprint: expect.any(String),
+    }),
+  ]);
+  expect(persisted.snapshot.state.moduleState['e2e:helper/expanded-party']).toEqual({
+    active: true,
+    helperDefinitionId: 'e2e:helper/expanded-party',
+  });
+});
+
 test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');

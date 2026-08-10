@@ -3,6 +3,7 @@ import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { evaluateEquipmentCombatModifiers } from './equipment-combat-modifier-evaluator.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type CombatEvaluationResult =
   | { status: 'ready'; evaluation: CombatEvaluation }
@@ -11,10 +12,9 @@ export type CombatEvaluationResult =
 export type CombatPartyPrefix = { slotCount: number; power: number; participantCardIds: readonly string[] };
 
 function registryError(state: GameState, ruleset: Ruleset): Extract<CombatEvaluationResult, { status: 'failed' }> | undefined {
-  const stateSignature = state.rulesModules.map(({ id, version }) => `${id}@${version}`).join('|');
-  const rulesetSignature = ruleset.modules.map(({ id, version }) => `${id}@${version}`).join('|');
   if (state.rulesModules.some(({ id }) => !ruleset.modules.some((module) => module.id === id)) || ruleset.modules.some(({ id }) => !state.rulesModules.some((module) => module.id === id))) return { status: 'failed', reason: 'UNKNOWN_MODULE', error: 'Combat Rules Module registry contains an unknown module.' };
-  if (stateSignature !== rulesetSignature) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: 'Combat Rules Module registry version mismatch.' };
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: compatibility };
   return undefined;
 }
 
@@ -79,6 +79,7 @@ export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: str
 
 /** Fixes the exact ordered party prefix consumed by one authoritative attack. */
 export function evaluateCombatPartyPrefix(state: GameState, ruleset: Ruleset, playerId: string, requiredCombat: number): CombatPartyPrefix | undefined {
+  if (validateRulesetStateCompatibility(state, ruleset)) return undefined;
   if (!Number.isFinite(requiredCombat) || requiredCombat < 0) return undefined;
   const player = getPlayer(state, playerId);
   let power = player.turnCombatBonus;

@@ -1,7 +1,7 @@
 import { baseDemoContentPack } from '@guildmaster/content-base';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
-const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent'] as const;
+const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent', 'optional-helper'] as const;
 
 export type E2EScenario = (typeof scenarioIds)[number];
 
@@ -17,7 +17,8 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
   'tagged-card-layout': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
   'empty-partial-supplies': { bossCopies: 2, bonds: baseDemoContentPack.bonds!, emptyPartialSupplies: true },
   'lifecycle-choice': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
-  'lifecycle-consent': { bossCopies: 2, bonds: baseDemoContentPack.bonds! }
+  'lifecycle-consent': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
+  'optional-helper': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
 };
 
 /**

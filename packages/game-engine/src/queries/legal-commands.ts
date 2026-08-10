@@ -1,6 +1,6 @@
 import { ActionPreviewSetSchema, type ActionPreviewItem, type ActionPreviewSet, type AttackResolutionCondition, type AttackResolutionResult, type CombatRewardCondition, type CommandEnvelope, type GameCommand, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
-import type { Ruleset } from '../rules/ruleset.js';
+import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
@@ -145,6 +145,8 @@ function purchaseIsLegalInAnyPreview(preview: CommandBeforePreviewResult, rulese
 }
 
 export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: string): number {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) throw new Error(compatibility);
   const player = getPlayer(state, playerId);
   const handPower = player.hand.reduce((sum, cardId) => sum + (getDefinition(ruleset.registry, state, cardId).purchasePower ?? 0), 0);
   return handPower + player.turnPurchaseBonus - player.turnPurchaseSpent;
@@ -171,6 +173,7 @@ function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, ca
 }
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
+  if (validateRulesetStateCompatibility(state, ruleset)) return [];
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
   if (validateSupplyContinuityState(state, ruleset).length) return [];
   const consent = state.effectState.pendingCounterConsent;

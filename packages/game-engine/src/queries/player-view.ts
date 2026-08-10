@@ -1,9 +1,11 @@
 import type { GameState, PlayerView } from '@guildmaster/game-protocol';
 import { getPlayer } from '../model/factories.js';
-import { getPartyLimit, type Ruleset } from '../rules/ruleset.js';
+import { getPartyLimit, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 
 export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: string): PlayerView {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) throw new Error(compatibility);
   const continuityErrors = validateSupplyContinuityState(state, ruleset);
   if (continuityErrors.length) throw new Error(continuityErrors.join(' '));
   const player = getPlayer(state, viewerId);

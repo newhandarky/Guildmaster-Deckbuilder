@@ -28,4 +28,6 @@ export * from './rules/continuous-evaluator.js';
 export * from './rules/bond-condition-evaluator.js';
 export * from './rules/dice-evaluator.js';
 export * from './rules/counter-consent-evaluator.js';
+export * from './rules/rules-module-composition.js';
+export * from './rules/ruleset-compatibility.js';
 export * from './rules/ruleset.js';

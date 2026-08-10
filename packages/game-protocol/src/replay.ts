@@ -11,9 +11,9 @@ const id = z.string().trim().min(1);
 const jsonValue: z.ZodType<unknown> = z.lazy(() => z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(jsonValue), z.record(jsonValue)]));
 const player = z.object({ id, name: id, kind: z.enum(['human', 'ai']) }).strict();
 const manifest = z.object({ id, version: id, hash: id }).strict();
-const moduleFingerprint = z.object({ id, version: id, configFingerprint: z.string() }).strict();
+const moduleFingerprint = z.object({ id, version: id, configFingerprint: z.string(), compositionFingerprint: z.string().optional() }).strict();
 
-export type ReplayRulesModuleFingerprint = { id: string; version: string; configFingerprint: string };
+export type ReplayRulesModuleFingerprint = { id: string; version: string; configFingerprint: string; compositionFingerprint?: string };
 export type ReplayRegistryFingerprint = { engineVersion: string; rulesetVersion: string; contentPacks: readonly { id: string; version: string; hash: string }[]; rulesModules: readonly ReplayRulesModuleFingerprint[] };
 export type ReplayInitialConfig = { gameId: string; seed: number; players: readonly { id: string; name: string; kind: PlayerKind }[]; startingPlayerId: string };
 export type ReplayDivergence = { path: string; expected: unknown; actual: unknown };

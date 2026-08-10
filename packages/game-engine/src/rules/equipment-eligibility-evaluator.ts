@@ -2,6 +2,7 @@ import { EquipmentEligibilityInputSchema, type EquipmentEligibilityCondition, ty
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type EquipmentEligibilityEvaluationResult =
   | { status: 'ready'; evaluation: EquipmentEligibilityEvaluation }
@@ -9,10 +10,9 @@ export type EquipmentEligibilityEvaluationResult =
   | { status: 'failed'; reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH' | 'UNKNOWN_RULE' | 'INVALID_INPUT'; error: string };
 
 function registryError(state: GameState, ruleset: Ruleset): Extract<EquipmentEligibilityEvaluationResult, { status: 'failed' }> | undefined {
-  const stateSignature = state.rulesModules.map(({ id, version }) => `${id}@${version}`).join('|');
-  const rulesetSignature = ruleset.modules.map(({ id, version }) => `${id}@${version}`).join('|');
   if (state.rulesModules.some(({ id }) => !ruleset.modules.some((module) => module.id === id)) || ruleset.modules.some(({ id }) => !state.rulesModules.some((module) => module.id === id))) return { status: 'failed', reason: 'UNKNOWN_MODULE', error: 'Equipment eligibility Rules Module registry contains an unknown module.' };
-  if (stateSignature !== rulesetSignature) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: 'Equipment eligibility Rules Module registry version mismatch.' };
+  const compatibility = validateRulesetStateCompatibility(state, ruleset);
+  if (compatibility) return { status: 'failed', reason: 'REGISTRY_VERSION_MISMATCH', error: compatibility };
   return undefined;
 }
 

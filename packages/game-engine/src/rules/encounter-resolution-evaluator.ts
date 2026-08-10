@@ -21,6 +21,7 @@ import type {
   GameState
 } from '@guildmaster/game-protocol';
 import type { Ruleset } from './ruleset.js';
+import { rulesModuleRegistryIdentity } from './rules-module-composition.js';
 
 type ValidEncounter = { encounter: EnemyEncounterState; targets: EnemyTargetState[]; policy: EncounterResolutionPolicy; registry: EncounterRegistryFingerprint };
 type ValidationResult = { ok: true; value: ValidEncounter } | { ok: false; failure: EncounterEvaluationFailure };
@@ -38,7 +39,7 @@ function validateRegistry(state: GameState, ruleset: Ruleset): EncounterEvaluati
   const stateRegistry: EncounterRegistryFingerprint = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
   if (JSON.stringify(stateRegistry) !== JSON.stringify(fingerprint(state, ruleset))) return fail('REGISTRY_VERSION_MISMATCH', 'Encounter policy registry fingerprint mismatch.');
   const packs = ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash }));
-  const modules = ruleset.modules.map(({ id, version, config }) => ({ id, version, ...(config ? { config } : {}) }));
+  const modules = ruleset.modules.map(rulesModuleRegistryIdentity);
   if (JSON.stringify(state.contentPacks) !== JSON.stringify(packs) || JSON.stringify(state.rulesModules) !== JSON.stringify(modules)) return fail('REGISTRY_VERSION_MISMATCH', 'Encounter content or module configuration fingerprint mismatch.');
   return undefined;
 }

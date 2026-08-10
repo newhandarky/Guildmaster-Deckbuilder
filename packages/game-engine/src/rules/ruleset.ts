@@ -1,13 +1,18 @@
-import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type OptionalRulesModuleComposition, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
+import { composeRulesModules } from './rules-module-composition.js';
+import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 import { validateSupplyContinuityPolicy, validateSupplyContinuityRegistry, type SupplyContinuityPolicy } from './supply-continuity-evaluator.js';
+
+export { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
 export type EndCondition = { id: string; priority?: number; evaluate: (state: GameState) => boolean };
 export type ScoreContribution = { playerId: string; ruleId: string; amount: number; label: string };
 export type RulesModule = {
   id: string; version: string; config?: Record<string, unknown>;
+  composition?: OptionalRulesModuleComposition;
   createInitialState?: () => unknown; zoneDefinitions?: readonly ZoneDefinition[];
   getPartyLimit: (state: GameState, player: PlayerState, currentLimit: number) => number;
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
@@ -87,11 +92,20 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   return { packs: manifests, definitions, starter: base.starter, bonds: base.bonds, replacementMap };
 }
 export function createRuleset(packs: readonly ContentPack[], modules: readonly RulesModule[], options?: ContentRegistryOptions): Ruleset {
-  const moduleIds = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
   for (const module of modules) {
-    if (!module.id.trim() || !module.version.trim() || !isFiniteJsonValue(module.config ?? {})) throw new Error(`Rules Module ${module.id || '<empty>'} has invalid identity or config.`);
+    if (!module.id.trim() || module.id !== module.id.trim() || !module.version.trim() || module.version !== module.version.trim() || !isFiniteJsonValue(module.config ?? {})) throw new Error(`Rules Module ${module.id || '<empty>'} has invalid identity or config.`);
+  }
+  const composedModules = composeRulesModules(modules);
+  const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
+  for (const module of composedModules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
+    for (const zone of module.zoneDefinitions ?? []) {
+      if (!zone.zoneId.trim() || zone.zoneId !== zone.zoneId.trim()) throw new Error(`Rules Module ${module.id} has an invalid zone ID.`);
+      if (zone.rulesModuleId !== module.id) throw new Error(`Rules Module zone ownership mismatch: ${zone.zoneId} must belong to ${module.id}.`);
+      if (zoneRefs.has(zone.zoneId)) throw new Error(`Conflicting Rules Module zone: ${zone.zoneId}.`);
+      zoneRefs.add(zone.zoneId);
+    }
     for (const hook of module.lifecycleHooks ?? []) { const errors = validateLifecycleHook(hook, module.id); const ref = `${module.id}\u0000${hook.hookId}`; if (hookRefs.has(ref)) errors.push(`Duplicate lifecycle hook: ${module.id}/${hook.hookId}.`); hookRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.combatRules ?? []) { const errors = validateCombatRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (combatRefs.has(ref)) errors.push(`Duplicate combat rule: ${module.id}/${rule.ruleId}.`); combatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.attackResolutionPolicies ?? []) { const errors = validateAttackResolutionPolicy(policy, module.id); const policyId = typeof policy === 'object' && policy !== null && 'policyId' in policy ? String(policy.policyId) : '<invalid>'; const ref = `${module.id}\u0000${policyId}`; if (attackRefs.has(ref)) errors.push(`Duplicate attack resolution policy: ${module.id}/${policyId}.`); attackRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
@@ -101,31 +115,25 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const rule of module.equipmentCombatModifierRules ?? []) { const errors = validateEquipmentCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentCombatRefs.has(ref)) errors.push(`Duplicate equipment combat modifier rule: ${module.id}/${rule.ruleId}.`); equipmentCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamOverflowPolicies ?? []) { const errors = validateTeamOverflowPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (overflowRefs.has(ref)) errors.push(`Duplicate team overflow policy: ${module.id}/${policy.policyId}.`); overflowRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const config of module.supplyRowConfigurations ?? []) { const errors = validateSupplyRowConfiguration(config, module.id); const ref = `${module.id}\u0000${config.configurationId}`; const pair = `${config.sourceDeckZoneId}\u0000${config.targetRowZoneId}`; if (supplyRefs.has(ref)) errors.push(`Duplicate supply configuration: ${module.id}/${config.configurationId}.`); if (supplyPairs.has(pair)) errors.push(`Duplicate supply deck/row configuration: ${pair}.`); supplyRefs.add(ref); supplyPairs.add(pair); if (errors.length) throw new Error(errors.join(' ')); }
-    for (const policy of module.supplyRowRefreshPolicies ?? []) { const errors = validateSupplyRowRefreshPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.refreshPolicyId}`; if (refreshRefs.has(ref)) errors.push(`Duplicate supply refresh policy: ${module.id}/${policy.refreshPolicyId}.`); if (!modules.flatMap((candidate) => candidate.supplyRowConfigurations ?? []).some((config) => config.configurationId === policy.supplyRowConfigurationId)) errors.push(`Unknown supply configuration: ${policy.supplyRowConfigurationId}.`); refreshRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.supplyRowRefreshPolicies ?? []) { const errors = validateSupplyRowRefreshPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.refreshPolicyId}`; if (refreshRefs.has(ref)) errors.push(`Duplicate supply refresh policy: ${module.id}/${policy.refreshPolicyId}.`); if (!composedModules.flatMap((candidate) => candidate.supplyRowConfigurations ?? []).some((config) => config.configurationId === policy.supplyRowConfigurationId)) errors.push(`Unknown supply configuration: ${policy.supplyRowConfigurationId}.`); refreshRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.supplyContinuityPolicies ?? []) { const errors = validateSupplyContinuityPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (continuityRefs.has(ref)) errors.push(`Duplicate supply continuity policy: ${module.id}/${policy.policyId}.`); continuityRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.continuousRules ?? []) { const errors = validateContinuousRule(rule, module.id); const ref = `${module.id}\u0000${rule.effectId}`; if (continuousRefs.has(ref)) errors.push(`Duplicate continuous rule: ${module.id}/${rule.effectId}.`); continuousRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.bondConditionRules ?? []) { const errors = validateBondConditionRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (bondRefs.has(ref)) errors.push(`Duplicate bond condition rule: ${module.id}/${rule.ruleId}.`); bondRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const die of module.diceDefinitions ?? []) { const errors = validateDiceDefinition(die, module.id); const ref = `${module.id}\u0000${die.diceId}`; if (diceRefs.has(ref)) errors.push(`Duplicate dice definition: ${module.id}/${die.diceId}.`); diceRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.counterConsentPolicies ?? []) { const errors = validateCounterConsentPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (consentRefs.has(ref)) errors.push(`Duplicate counter consent policy: ${module.id}/${policy.policyId}.`); consentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
   }
-  const ruleset = { registry: createContentRegistry(packs, options), modules };
-  for (const module of modules) for (const policy of module.attackResolutionPolicies ?? []) {
-    const owner = modules.find(({ id }) => id === policy.encounterPolicy.moduleId);
+  const ruleset = { registry: createContentRegistry(packs, options), modules: composedModules };
+  for (const module of composedModules) for (const policy of module.attackResolutionPolicies ?? []) {
+    const owner = composedModules.find(({ id }) => id === policy.encounterPolicy.moduleId);
     if (!owner?.encounterResolutionPolicies?.some(({ policyId }) => policyId === policy.encounterPolicy.policyId)) throw new Error(`Attack resolution policy ${module.id}/${policy.policyId} references unknown encounter policy ${policy.encounterPolicy.moduleId}/${policy.encounterPolicy.policyId}.`);
   }
   const continuityErrors = validateSupplyContinuityRegistry(ruleset);
   if (continuityErrors.length) throw new Error(continuityErrors.join(' '));
   return ruleset;
 }
-export function validateRulesetStateCompatibility(state: GameState, ruleset: Ruleset): string | undefined {
-  const packs = ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash }));
-  const modules = ruleset.modules.map(({ id, version, config }) => ({ id, version, ...(config ? { config } : {}) }));
-  if (JSON.stringify(state.contentPacks) !== JSON.stringify(packs)) return 'Content Pack registry fingerprint mismatch.';
-  if (JSON.stringify(state.rulesModules) !== JSON.stringify(modules)) return 'Rules Module registry fingerprint mismatch.';
-  return undefined;
-}
-export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { const base = ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER); const continuous = evaluateContinuousEffects(state, ruleset); if (continuous.status !== 'ready') throw new Error(continuous.error); return Math.max(0, base + continuous.evaluation.active.filter((effect) => effect.target === 'team-capacity').reduce((sum, effect) => sum + effect.amount, 0)); }
+export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility); const base = ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER); const continuous = evaluateContinuousEffects(state, ruleset); if (continuous.status !== 'ready') throw new Error(continuous.error); return Math.max(0, base + continuous.evaluation.active.filter((effect) => effect.target === 'team-capacity').reduce((sum, effect) => sum + effect.amount, 0)); }
 export function getEndCondition(ruleset: Ruleset, state: GameState): string | undefined {
+  const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility);
   return ruleset.modules.flatMap((module) => module.endConditions ?? []).sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)).find((condition) => condition.evaluate(state))?.id;
 }
-export function handleSupplyDepleted(ruleset: Ruleset, state: GameState, supply: SupplyKind): void { if (ruleset.modules.map((module) => module.onSupplyDepleted(state, supply)).includes('pendingOfficialRuling')) state.status = 'pendingOfficialRuling'; }
+export function handleSupplyDepleted(ruleset: Ruleset, state: GameState, supply: SupplyKind): void { const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility); if (ruleset.modules.map((module) => module.onSupplyDepleted(state, supply)).includes('pendingOfficialRuling')) state.status = 'pendingOfficialRuling'; }

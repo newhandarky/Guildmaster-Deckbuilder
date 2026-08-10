@@ -2,6 +2,7 @@ import { ReplayBundleSchema, isFiniteJsonValue, stableJsonFingerprint, type Repl
 import { createGame } from './create-game.js';
 import { dispatch } from './dispatch.js';
 import { restoreSnapshot, serializeSnapshot } from './snapshot.js';
+import { rulesModuleCompositionFingerprint } from '../rules/rules-module-composition.js';
 import type { Ruleset } from '../rules/ruleset.js';
 
 const engineVersion = '0.2.0';
@@ -12,7 +13,12 @@ export function replayRegistryFingerprint(ruleset: Ruleset): ReplayRegistryFinge
     engineVersion,
     rulesetVersion,
     contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })),
-    rulesModules: ruleset.modules.map(({ id, version, config }) => ({ id, version, configFingerprint: stableJsonFingerprint(config ?? {}) }))
+    rulesModules: ruleset.modules.map(({ id, version, config, composition }) => ({
+      id,
+      version,
+      configFingerprint: stableJsonFingerprint(config ?? {}),
+      ...(composition ? { compositionFingerprint: rulesModuleCompositionFingerprint(composition) } : {}),
+    }))
   };
 }
 

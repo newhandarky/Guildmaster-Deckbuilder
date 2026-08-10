@@ -2,6 +2,7 @@ import { isFiniteJsonValue, type DomainEvent, type GameState, type PlayerKind } 
 import { createCard } from '../model/factories.js';
 import { baseZoneIds } from '../model/zones.js';
 import { shuffle } from '../ports/random.js';
+import { rulesModuleRegistryIdentity } from '../rules/rules-module-composition.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { refillConfiguredSupplyRows } from './supply.js';
 import { assertGameStateInvariants } from './state-invariants.js';
@@ -16,7 +17,7 @@ function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState
   const zones = Object.fromEntries(ruleset.modules.flatMap((module) => module.zoneDefinitions ?? []).map((definition) => [definition.zoneId, { ...definition, cardIds: [] }]));
   const moduleState = Object.fromEntries(ruleset.modules.map((module) => [module.id, module.createInitialState?.() ?? {}]));
   if (!isFiniteJsonValue(moduleState)) throw new Error('Rules Module initial state must contain finite, acyclic, plain JSON data only.');
-  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map((module) => ({ id: module.id, version: module.version, ...(module.config ? { config: module.config } : {}) })), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
+  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map(rulesModuleRegistryIdentity), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
 }
 export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameState {
   const state = createEmptyState(config, ruleset); const events: DomainEvent[] = [];
