@@ -2,7 +2,7 @@ import { DomainEventSchema, GameStateSchema, SnapshotEnvelopeSchema, isFiniteJso
 import { baseZoneIds } from '../model/zones.js';
 import { validatePostCommandContinuationState, validateTransactionEventSequence } from './post-command-pipeline.js';
 import type { Ruleset } from '../rules/ruleset.js';
-import { assertGameStateInvariants } from './state-invariants.js';
+import { assertGameStateInvariants, assertRulesetGameStateInvariants } from './state-invariants.js';
 import { validateEncounterStateAgainstRuleset } from '../rules/encounter-resolution-evaluator.js';
 import { validatePendingCounterConsentState } from '../rules/counter-consent-evaluator.js';
 import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect } from '../effects/executor.js';
@@ -50,7 +50,9 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   }
   const state = structuredClone(envelope.state) as GameState; state.effectState ??= {};
   assertGameStateInvariants(state);
+  if (!ruleset && Object.values(state.zones).some(({ visibility }) => visibility === 'hidden')) throw new Error('Snapshot with hidden Rules Module zones requires the active ruleset for canonical restore.');
   if (ruleset) {
+    assertRulesetGameStateInvariants(state, ruleset);
     const encounterError = validateEncounterStateAgainstRuleset(state, ruleset);
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);
     const consentError = validatePendingCounterConsentState(state, ruleset);

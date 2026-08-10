@@ -10,6 +10,7 @@ import { getZone } from '../model/zones.js';
 import { attachCardToEnemyTarget, createEnemyEncounter, createEnemyTarget, damageEnemyTarget, defeatEnemyTarget, finishEnemyEncounter, removeEnemyTarget } from '../engine/encounter-resolution.js';
 import { evaluateDiceRoll } from '../rules/dice-evaluator.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
+import { evaluateTeamCapacityEnforcement } from '../rules/team-capacity-enforcement-evaluator.js';
 
 export type EffectOrderResolution = { status: 'ready'; orderedIds: readonly string[] } | { status: 'unsupported'; reason: 'ORDER_POLICY_REQUIRED' };
 /** Never infer trigger/replacement ordering from array order or active player. */
@@ -22,7 +23,7 @@ export function resolveEffectOrder(entries: readonly { id: string; priority?: nu
 
 export type EffectExecutionResult = { status: 'completed' | 'suspended' | 'failed' | 'unsupported'; events: DomainEvent[]; error?: string };
 export type EffectPreviewUncertainty = { usesRandomness: boolean; observesHiddenInformation: boolean };
-const domainEvent = (state: GameState, events: DomainEvent[], type: string, message: string) => events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message });
+const domainEvent = (state: GameState, events: DomainEvent[], type: string, message: string, details?: Pick<DomainEvent, 'moduleId' | 'payload'>) => events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...details });
 const playerId = (ref: import('@guildmaster/game-protocol').EffectPlayerRef, context: EffectContext) => ref.kind === 'controller' ? context.controllerId : ref.kind === 'player-id' ? ref.playerId : context.playerRefs?.[ref.key];
 function numberValue(value: import('@guildmaster/game-protocol').EffectNumberValue, state: GameState, ruleset: Ruleset, context: EffectContext): number | undefined {
   if (typeof value === 'number') return value;
@@ -257,7 +258,32 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'grant-combat-reward') { const recipient = playerId(node.recipient, context); if (!recipient) return { status: 'failed', events, error: 'Combat reward recipient could not be resolved.' }; const rewards: EffectNode[] = node.rewards.map((reward) => reward.kind === 'draw' ? { kind: 'draw', player: { kind: 'player-id', playerId: recipient }, count: reward.count } : reward.kind === 'purchase-bonus' ? { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'player-id', playerId: recipient } }, amount: reward.amount } : reward.kind === 'combat-bonus' ? { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'player-id', playerId: recipient } }, amount: reward.amount } : { kind: 'modify-value', target: { kind: 'player-counter', player: { kind: 'player-id', playerId: recipient }, resourceId: reward.resourceId }, amount: reward.amount }); const result = runNodes(state, ruleset, rewards, context, executionId, events); if (result.status !== 'completed') return result; domainEvent(state, events, 'COMBAT_REWARD_GRANTED', 'Effect granted a data-driven combat reward.'); continue; }
     if (node.kind === 'draw') { const id = playerId(node.player, context); const count = numberValue(node.count, state, ruleset, context); if (!id || count === undefined) return { status: 'failed', events, error: 'Draw player or count could not be resolved.' }; drawCards(state, id, count, events); continue; }
     if (node.kind === 'refresh-supply-row') { const refresh = evaluateSupplyRowRefresh(state, ruleset, node.refreshPolicyId); if (refresh.status !== 'ready') return { status: refresh.status, events, error: refresh.error }; const evaluation = refresh.evaluation; const policy = ruleset.modules.flatMap((module) => module.supplyRowRefreshPolicies ?? []).find((entry) => entry.refreshPolicyId === node.refreshPolicyId)!; const config = ruleset.modules.flatMap((module) => module.supplyRowConfigurations ?? []).find((entry) => entry.moduleId === evaluation.configuration.moduleId && entry.configurationId === evaluation.configuration.configurationId)!; const row = getZone(state, evaluation.targetRowZoneId).cardIds; const destination = getZone(state, evaluation.destinationZoneId).cardIds; const moved = policy.ordering.startsWith('reverse') ? [...evaluation.rowCardIds].reverse() : evaluation.rowCardIds; for (const cardId of evaluation.rowCardIds) { const index = row.indexOf(cardId); if (index < 0) return { status: 'failed', events, error: 'Refresh row changed during evaluation.' }; row.splice(index, 1); } if (policy.ordering.endsWith('top')) destination.push(...moved); else destination.unshift(...moved); if (policy.refill) refillSupplyConfiguration(state, ruleset, config, events); domainEvent(state, events, 'SUPPLY_ROW_REFRESHED', `Supply row refreshed by ${node.refreshPolicyId}.`); continue; }
-    if (node.kind === 'enforce-team-capacity') return { status: 'failed', events, error: 'Team capacity enforcement runtime is not registered yet.' };
+    if (node.kind === 'enforce-team-capacity') {
+      const enforcement = evaluateTeamCapacityEnforcement(state, ruleset, node.policyId);
+      if (enforcement.status !== 'ready') return { status: enforcement.status, events, error: enforcement.error };
+      for (const playerEvaluation of enforcement.evaluation.players) {
+        if (!playerEvaluation.overflowCount) continue;
+        const player = state.players.find(({ id }) => id === playerEvaluation.playerId);
+        if (!player || playerEvaluation.candidateIds.length !== playerEvaluation.overflowCount) return { status: 'failed', events, error: 'Team capacity enforcement candidates are invalid.' };
+        for (const cardId of playerEvaluation.candidateIds) {
+          const index = player.party.findIndex(({ adventurerId }) => adventurerId === cardId);
+          if (index < 0) return { status: 'failed', events, error: 'Team capacity enforcement candidate is no longer in the party.' };
+          const [slot] = player.party.splice(index, 1);
+          player.discardPile.push(slot!.adventurerId);
+          if (slot!.equipmentId) player.discardPile.push(slot!.equipmentId);
+        }
+        domainEvent(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 因隊伍上限降低而移出最右側成員。`, {
+          moduleId: enforcement.evaluation.policy.moduleId,
+          payload: {
+            schemaVersion: 1,
+            kind: 'team-overflow',
+            policy: { moduleId: enforcement.evaluation.policy.moduleId, policyId: enforcement.evaluation.policy.policyId },
+            candidateIds: [...playerEvaluation.candidateIds],
+          },
+        });
+      }
+      continue;
+    }
     if (node.kind === 'modify-value') { const id = playerId(node.target.player, context); if (!id) return { status: 'failed', events, error: 'Value target player could not be resolved.' }; const player = getPlayer(state, id); if (node.target.kind === 'turn-purchase-bonus') player.turnPurchaseBonus += node.amount; else if (node.target.kind === 'turn-combat-bonus') player.turnCombatBonus += node.amount; else { const resourceId = node.target.resourceId; const counter = player.counters.find((item) => item.resourceId === resourceId); if (counter) counter.amount += node.amount; else player.counters.push({ resourceId, amount: node.amount, visibility: 'ownerOnly' }); } domainEvent(state, events, 'EFFECT_VALUE_MODIFIED', 'Effect modified a serializable value.'); continue; }
     if (node.kind === 'create-enemy-encounter' || node.kind === 'create-enemy-target' || node.kind === 'attach-card-to-enemy-target' || node.kind === 'damage-enemy-target' || node.kind === 'defeat-enemy-target' || node.kind === 'remove-enemy-target' || node.kind === 'finish-enemy-encounter') { const result = node.kind === 'create-enemy-encounter' ? createEnemyEncounter(state, ruleset, node, events) : node.kind === 'create-enemy-target' ? createEnemyTarget(state, ruleset, node, context, events) : node.kind === 'attach-card-to-enemy-target' ? attachCardToEnemyTarget(state, ruleset, node, context, events) : node.kind === 'damage-enemy-target' ? damageEnemyTarget(state, ruleset, node, events) : node.kind === 'defeat-enemy-target' ? defeatEnemyTarget(state, ruleset, node, events) : node.kind === 'remove-enemy-target' ? removeEnemyTarget(state, ruleset, node, events) : finishEnemyEncounter(state, ruleset, node, events); if (!result.ok) return { status: 'failed', events, error: result.error }; continue; }
     const cardId = resolveCardId(node.card, context); if (!cardId) return { status: 'failed', events, error: 'Effect card reference could not be resolved.' };

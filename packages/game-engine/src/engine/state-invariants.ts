@@ -1,4 +1,5 @@
 import { isFiniteJsonValue, type GameState } from '@guildmaster/game-protocol';
+import type { Ruleset } from '../rules/ruleset.js';
 
 const duplicates = (values: readonly string[]): string[] => {
   const seen = new Set<string>();
@@ -99,4 +100,50 @@ export function validateGameStateInvariants(state: GameState): string[] {
 export function assertGameStateInvariants(state: GameState): void {
   const errors = validateGameStateInvariants(state);
   if (errors.length) throw new Error(`Invalid game state: ${errors.join(' ')}`);
+}
+
+/** Validates module-owned zone contracts and setup-selected card pools. */
+export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ruleset): string[] {
+  const errors: string[] = [];
+  const zoneDefinitions = ruleset.modules.flatMap((module) => module.zoneDefinitions ?? []);
+  for (const definition of zoneDefinitions) {
+    const zone = state.zones[definition.zoneId];
+    if (!zone) {
+      errors.push(`Rules Module zone ${definition.zoneId} is missing.`);
+      continue;
+    }
+    if (zone.kind !== definition.kind || zone.visibility !== definition.visibility || zone.rulesModuleId !== definition.rulesModuleId) {
+      errors.push(`Rules Module zone ${definition.zoneId} does not match its registered definition.`);
+    }
+  }
+  for (const module of ruleset.modules) for (const contribution of module.setupContributions ?? []) {
+    const configs = ruleset.modules.flatMap((candidate) => candidate.supplyRowConfigurations ?? [])
+      .filter(({ sourceDeckZoneId }) => sourceDeckZoneId === contribution.destinationZoneId);
+    const configurationIds = new Set(configs.map(({ configurationId }) => configurationId));
+    const allowedZoneIds = new Set([
+      contribution.destinationZoneId,
+      ...configs.map(({ targetRowZoneId }) => targetRowZoneId),
+      ...ruleset.modules.flatMap((candidate) => candidate.supplyRowRefreshPolicies ?? [])
+        .filter(({ supplyRowConfigurationId }) => configurationIds.has(supplyRowConfigurationId))
+        .map(({ destinationZoneId }) => destinationZoneId),
+    ]);
+    const allowedCardIds = new Set([...allowedZoneIds].flatMap((zoneId) => state.zones[zoneId]?.cardIds ?? []));
+    for (const zoneId of allowedZoneIds) for (const cardId of state.zones[zoneId]?.cardIds ?? []) {
+      const definitionId = state.cards[cardId]?.definitionId;
+      if (!definitionId || ruleset.registry.definitions[definitionId]?.type !== contribution.selector.value) {
+        errors.push(`Setup contribution ${contribution.contributionId} zone ${zoneId} contains a non-matching card ${cardId}.`);
+      }
+    }
+    for (const card of Object.values(state.cards)) {
+      if (ruleset.registry.definitions[card.definitionId]?.type === contribution.selector.value && !allowedCardIds.has(card.id)) {
+        errors.push(`Setup contribution ${contribution.contributionId} card ${card.id} left its registered zones.`);
+      }
+    }
+  }
+  return errors;
+}
+
+export function assertRulesetGameStateInvariants(state: GameState, ruleset: Ruleset): void {
+  const errors = validateRulesetGameStateInvariants(state, ruleset);
+  if (errors.length) throw new Error(`Invalid ruleset game state: ${errors.join(' ')}`);
 }

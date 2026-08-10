@@ -16,7 +16,7 @@ import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { applyEnemyTargetDamageEvaluation, defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
-import { validateGameStateInvariants } from './state-invariants.js';
+import { validateGameStateInvariants, validateRulesetGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
@@ -325,7 +325,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   const parsedEnvelope = CommandEnvelopeSchema.safeParse(envelope);
   if (!parsedEnvelope.success) return fail(state, 'INVALID_COMMAND', `Malformed command envelope: ${parsedEnvelope.error.issues[0]?.message ?? 'invalid input'}.`);
   envelope = parsedEnvelope.data;
-  const stateErrors = validateGameStateInvariants(state); if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
+  const stateErrors = [...validateGameStateInvariants(state), ...validateRulesetGameStateInvariants(state, ruleset)]; if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
   const registryError = validateRulesetStateCompatibility(state, ruleset); if (registryError) return fail(state, 'INVALID_COMMAND', registryError);
   const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return fail(state, 'INVALID_COMMAND', continuityErrors.join(' '));
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
@@ -485,7 +485,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   const result = dispatchInternal(state, ruleset, envelope);
   if (result.error) return result;
-  const errors = [...validateGameStateInvariants(result.state), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
+  const errors = [...validateGameStateInvariants(result.state), ...validateRulesetGameStateInvariants(result.state, ruleset), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
   if (errors.length || registryError) return fail(state, 'INVALID_COMMAND', `Command produced invalid state: ${[...errors, ...(registryError ? [registryError] : [])].join(' ')}`);
   return result;
 }

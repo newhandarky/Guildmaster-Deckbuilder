@@ -41,13 +41,20 @@ const registryFor = (state: GameState, ruleset: Ruleset): LifecycleRegistrySnaps
 });
 
 export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState, point: PostCommandBoundary, fact?: DomainEvent): LifecyclePayload {
+  const target = envelope.command.type === 'ATTACK_TARGET' ? state.enemyTargets[envelope.command.targetId] : undefined;
+  const targetMetadata = target ? {
+    targetId: target.targetId,
+    targetKind: target.kind,
+    cardInstanceId: target.cardInstanceId,
+    definitionId: state.cards[target.cardInstanceId]?.definitionId ?? '',
+  } : {};
   return {
     schemaVersion: 1,
     point,
     actorId: envelope.actorId,
     ...(fact
-      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId } }
-      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId } }),
+      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId, ...targetMetadata } }
+      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId, ...targetMetadata } }),
     phase: state.phase
   };
 }
