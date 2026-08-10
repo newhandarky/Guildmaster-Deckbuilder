@@ -64,7 +64,7 @@ export function validatePendingCardUseContinuation(state: GameState, ruleset: Ru
   if (!effect || !suspension || suspension.executionId !== executionId(pending.envelope)) return 'Card-use continuation effect or suspension is unavailable.';
   if (new Set(pending.events.map(({ eventId }) => eventId)).size !== pending.events.length) return 'Card-use continuation events must have unique IDs.';
   return choice
-    ? validatePendingChoiceAgainstEffect(choice, effect, state)
+    ? validatePendingChoiceAgainstEffect(choice, effect, state, ruleset)
     : validatePendingCounterConsentAgainstEffect(consent!, effect);
 }
 

@@ -6,7 +6,7 @@ import type { ProvisionalCardCandidate, ProvisionalFieldName } from '../provisio
  * First internal-only base-content slice.
  *
  * It intentionally exposes audited candidates under neutral display names. The
- * first immediate item effect is data-driven; all other card text stays explicitly
+ * enabled item effects are data-driven; all other card text stays explicitly
  * disabled and the pack can only be loaded through allowProvisionalPlaytest.
  */
 const foundationComposition = [
@@ -26,7 +26,10 @@ const foundationComposition = [
   ['base:adventurer/adventurer-07', 2],
   ['base:adventurer/adventurer-08', 2],
   // Internal digital playtest composition; source evidence does not establish per-card multiplicities.
+  ['base:resource/resource-01', 2],
   ['base:resource/resource-02', 2],
+  ['base:resource/resource-04', 2],
+  ['base:resource/resource-05', 2],
   ['base:resource/resource-08', 2],
   ['base:resource/resource-10', 2],
   ['base:resource/resource-17', 2],
@@ -42,7 +45,14 @@ const foundationComposition = [
 
 const candidates = new Map(baseProvisionalContentCatalog.candidates.map((candidate) => [candidate.definitionId, candidate]));
 const numericFields = ['cost', 'combat', 'purchasePower', 'honor'] as const;
-const enabledEffectIds = new Set(['base:resource/resource-08', 'base:resource/resource-10', 'base:resource/resource-17']);
+const enabledEffectIds = new Set([
+  'base:resource/resource-01',
+  'base:resource/resource-04',
+  'base:resource/resource-05',
+  'base:resource/resource-08',
+  'base:resource/resource-10',
+  'base:resource/resource-17',
+]);
 
 function candidateFor(definitionId: string): ProvisionalCardCandidate {
   const candidate = candidates.get(definitionId);
@@ -83,6 +93,7 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
     throw new Error(`Unsupported provisional foundation category: ${candidate.category}`);
   }
   const cardType = candidate.category === 'resource' ? stringValue(candidate, 'cardType') : undefined;
+  const profession = candidate.category === 'adventurer' ? stringValue(candidate, 'profession') : undefined;
   if (candidate.category === 'resource' && cardType !== 'item' && cardType !== 'equipment') throw new Error(`Unsupported provisional resource type: ${candidate.definitionId}.${cardType ?? '<missing>'}`);
   const effectEnabled = enabledEffectIds.has(candidate.definitionId);
   const definition: CardDefinition = {
@@ -93,12 +104,74 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
     source: 'provisional-foundation-playtest',
     tags: [
       ...(candidate.mechanicsTags ?? []),
+      ...(profession ? [`profession:${profession}`] : []),
       ...(candidate.category === 'starter' ? [] : [effectEnabled ? 'playtest:effect-enabled' : 'playtest:effects-disabled']),
     ],
   };
   for (const fieldName of numericFields) {
     const value = numericValue(candidate, fieldName);
     if (value !== undefined) definition[fieldName] = value;
+  }
+  if (candidate.definitionId === 'base:resource/resource-01') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-01-use',
+      body: {
+        kind: 'choose-card',
+        choiceId: 'base:resource/resource-01-recover-adventurer',
+        actor: { kind: 'controller' },
+        from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+        predicate: { kind: 'definition-type-in', values: ['adventurer'] },
+        selectedCardKey: 'recovered',
+        effect: {
+          kind: 'move-card',
+          card: { kind: 'context-card', key: 'recovered' },
+          from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+          to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+        },
+      },
+    };
+  }
+  if (candidate.definitionId === 'base:resource/resource-04') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-04-use',
+      body: {
+        kind: 'sequence',
+        effects: [
+          {
+            kind: 'choose-card',
+            choiceId: 'base:resource/resource-04-discard-boss',
+            actor: { kind: 'controller' },
+            from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+            predicate: { kind: 'definition-type-in', values: ['boss'] },
+            selectedCardKey: 'discard',
+            effect: { kind: 'discard-card', card: { kind: 'context-card', key: 'discard' }, from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } },
+          },
+          { kind: 'draw', player: { kind: 'controller' }, count: 3 },
+        ],
+      },
+    };
+  }
+  if (candidate.definitionId === 'base:resource/resource-05') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-05-use',
+      body: {
+        kind: 'choose-card',
+        choiceId: 'base:resource/resource-05-recover-equipment',
+        actor: { kind: 'controller' },
+        from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+        predicate: { kind: 'definition-type-in', values: ['equipment'] },
+        selectedCardKey: 'recovered',
+        effect: {
+          kind: 'move-card',
+          card: { kind: 'context-card', key: 'recovered' },
+          from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+          to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+        },
+      },
+    };
   }
   if (candidate.definitionId === 'base:resource/resource-08') {
     definition.useEffect = {
@@ -153,8 +226,8 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
 export const baseProvisionalFoundationContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-foundation',
-    version: '0.3.0',
-    hash: 'base-provisional-foundation-v3-card-use-continuations',
+    version: '0.4.0',
+    hash: 'base-provisional-foundation-v4-filtered-card-selection',
     role: 'base',
     contentStatus: 'provisional-playtest',
   },

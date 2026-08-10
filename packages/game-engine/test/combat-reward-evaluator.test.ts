@@ -47,6 +47,42 @@ describe('generic combat reward policy evaluation', () => {
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(4); expect(completed.state.players[0]!.turnCombatBonus).toBe(1); expect(completed.state.zones['base:monster-row']!.cardIds).toHaveLength(3); expect(completed.events.filter((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(2); expect(completed.events.filter((event) => event.type === 'ENEMY_DEFEATED')).toHaveLength(1);
   });
 
+  it('requires a ruleset and fails closed for tampered dynamic combat reward choices', () => {
+    const dynamicChoice: EffectDefinition['body'] = {
+      kind: 'choose-card',
+      choiceId: 'reward-card-choice',
+      actor: { kind: 'controller' },
+      from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+      predicate: { kind: 'definition-type-in', values: ['starter'] },
+      selectedCardKey: 'selected',
+      effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 1 },
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module([reward('dynamic-choice', { kind: 'always', value: true }, 1, dynamicChoice)])]);
+    const state = game(ruleset);
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== equipmentId);
+    state.players[0]!.discardPile.push(equipmentId);
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId: monster(state) }, 'dynamic-reward-root'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingCommand?.kind).toBe('combat-reward');
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).not.toContain(equipmentId);
+    const snapshot = serializeSnapshot(suspended.state);
+
+    expect(() => restoreSnapshot(snapshot)).toThrow(/dynamic card choice Snapshot requires the active ruleset/);
+    expect(restoreSnapshot(snapshot, ruleset)).toEqual(suspended.state);
+
+    const tampered = structuredClone(snapshot);
+    const pending = tampered.state.effectState.pendingChoice!;
+    const option = pending.options[0]!;
+    pending.options = [...pending.options, {
+      ...structuredClone(option),
+      id: equipmentId,
+      context: { ...structuredClone(option.context!), cardRefs: { ...option.context!.cardRefs, selected: equipmentId } },
+    }];
+    expect(getLegalCommands(tampered.state, ruleset, 'p1')).toEqual([]);
+    expect(() => restoreSnapshot(tampered, ruleset)).toThrow(/source zone and predicate/);
+  });
+
   it('preserves the original command transaction when command-before and combat reward both suspend', () => {
     const beforeChoice: LifecycleHook = { schemaVersion: 1, moduleId: 'test:combined', hookId: 'before-choice', point: 'command-before', kind: 'trigger', priority: 1, effect: { schemaVersion: 1, effectId: 'effect:before-choice', body: { kind: 'choice', choiceId: 'before-choice', actor: { kind: 'controller' }, options: [{ id: 'continue', effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } }] } } };
     const rewardChoice = reward('reward-choice', { kind: 'always', value: true }, 1, { kind: 'choice', choiceId: 'reward-choice', actor: { kind: 'controller' }, options: [{ id: 'accept', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 } }] });

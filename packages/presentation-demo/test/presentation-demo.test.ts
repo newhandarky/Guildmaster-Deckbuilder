@@ -22,7 +22,10 @@ describe('demo presentation package', () => {
   it('provides explicit neutral copy for enabled and disabled provisional resources', () => {
     expect(validatePresentationPack(provisionalFoundationPresentationPack)).toEqual({ valid: true, errors: [] });
     expect(provisionalFoundationPresentationPack.entries).toEqual([
+      expect.objectContaining({ definitionId: 'base:resource/resource-01', shortDisplayText: expect.stringContaining('取回 1 張冒險者') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-02', shortDisplayText: expect.stringContaining('尚未啟用') }),
+      expect.objectContaining({ definitionId: 'base:resource/resource-04', shortDisplayText: expect.stringContaining('棄 1 張魔王') }),
+      expect.objectContaining({ definitionId: 'base:resource/resource-05', shortDisplayText: expect.stringContaining('取回 1 張裝備') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-08', shortDisplayText: '使用：抽 2 張牌。' }),
       expect.objectContaining({ definitionId: 'base:resource/resource-10', shortDisplayText: expect.stringContaining('棄 1 張手牌') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-17', shortDisplayText: expect.stringContaining('抽 3 張牌') }),

@@ -1,4 +1,4 @@
-import { validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectCardLocation, type EffectContext, type EffectDefinition, type EffectNode, type GameState } from '@guildmaster/game-protocol';
+import { validateEffectCardPredicate, validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectCardLocation, type EffectCardPredicate, type EffectContext, type EffectDefinition, type EffectNode, type GameState } from '@guildmaster/game-protocol';
 import { drawCards } from '../engine/draw.js';
 import { getPlayer } from '../model/factories.js';
 import { nextRandom } from '../ports/random.js';
@@ -25,6 +25,34 @@ export type EffectPreviewUncertainty = { usesRandomness: boolean; observesHidden
 const domainEvent = (state: GameState, events: DomainEvent[], type: string, message: string) => events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message });
 const playerId = (ref: import('@guildmaster/game-protocol').EffectPlayerRef, context: EffectContext) => ref.kind === 'controller' ? context.controllerId : ref.kind === 'player-id' ? ref.playerId : context.playerRefs?.[ref.key];
 function commitState(target: GameState, source: GameState): void { Object.assign(target, source); }
+type DynamicCardChoiceNode = Extract<EffectNode, { kind: 'choose-card' }>;
+type ResolvedSelectableCardLocation = { kind: 'player-zone'; player: { kind: 'player-id'; playerId: string }; zone: 'hand' | 'discardPile' | 'playArea' };
+type DynamicCardChoiceCandidates = { status: 'ready'; actorId: string; source: ResolvedSelectableCardLocation; cardIds: string[] } | { status: 'failed'; error: string };
+
+function matchesCardPredicate(state: GameState, ruleset: Ruleset, cardId: string, predicate: EffectCardPredicate): boolean {
+  const card = state.cards[cardId];
+  const definition = card ? ruleset.registry.definitions[card.definitionId] : undefined;
+  if (!card || !definition) return false;
+  if (predicate.kind === 'definition-type-in') return predicate.values.includes(definition.type);
+  if (predicate.kind === 'definition-id-in') return predicate.values.includes(card.definitionId);
+  if (predicate.kind === 'tag-in') return predicate.values.some((tag) => definition.tags?.includes(tag));
+  if (predicate.kind === 'all') return predicate.predicates.every((entry) => matchesCardPredicate(state, ruleset, cardId, entry));
+  if (predicate.kind === 'any') return predicate.predicates.some((entry) => matchesCardPredicate(state, ruleset, cardId, entry));
+  return !matchesCardPredicate(state, ruleset, cardId, predicate.predicate);
+}
+
+function dynamicCardChoiceCandidates(state: GameState, ruleset: Ruleset, node: DynamicCardChoiceNode, context: EffectContext): DynamicCardChoiceCandidates {
+  const predicateErrors = node.predicate ? validateEffectCardPredicate(node.predicate) : [];
+  if (predicateErrors.length) return { status: 'failed', error: `Dynamic card choice predicate is invalid: ${predicateErrors.join(' ')}` };
+  const actorId = playerId(node.actor, context);
+  const source = resolveLocation(node.from, context);
+  if (!actorId || !source || source.kind !== 'player-zone' || source.player.kind !== 'player-id' || source.player.playerId !== actorId) return { status: 'failed', error: 'Dynamic card choice must resolve to the choosing actor\'s visible player zone.' };
+  if (source.zone === 'drawPile') return { status: 'failed', error: 'Dynamic card choice cannot expose a hidden draw pile.' };
+  const visibleSource: ResolvedSelectableCardLocation = { kind: 'player-zone', player: { kind: 'player-id', playerId: source.player.playerId }, zone: source.zone };
+  const predicate = node.predicate;
+  const cardIds = getPlayer(state, actorId)[visibleSource.zone].filter((cardId) => !predicate || matchesCardPredicate(state, ruleset, cardId, predicate));
+  return { status: 'ready', actorId, source: visibleSource, cardIds };
+}
 const noPreviewUncertainty = (): EffectPreviewUncertainty => ({ usesRandomness: false, observesHiddenInformation: false });
 const mergePreviewUncertainty = (values: readonly EffectPreviewUncertainty[]): EffectPreviewUncertainty => values.reduce((merged, value) => ({ usesRandomness: merged.usesRandomness || value.usesRandomness, observesHiddenInformation: merged.observesHiddenInformation || value.observesHiddenInformation }), noPreviewUncertainty());
 
@@ -113,7 +141,7 @@ function suspensionContinuations(nodes: readonly EffectNode[], target: { kind: S
   return suspensionContinuations(remaining, target);
 }
 
-export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster/game-protocol').PendingEffectChoice, effect: EffectDefinition, state?: GameState): string | undefined {
+export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster/game-protocol').PendingEffectChoice, effect: EffectDefinition, state?: GameState, ruleset?: Ruleset): string | undefined {
   const candidates = uniqueContinuations(suspensionContinuations([effect.body], { kind: 'choice', id: pending.choiceId }))
     .filter((candidate): candidate is SuspensionContinuation & { match: Extract<SuspensionMatch, { kind: 'choice' }> } => candidate.match.kind === 'choice');
   const node = candidates[0]?.match.node;
@@ -132,8 +160,9 @@ export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster
     const expectedSource = resolveLocation(node.from, pending.context);
     if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || expectedSource.kind !== 'player-zone' || expectedSource.player.kind !== 'player-id' || expectedSource.player.playerId !== expectedActorId || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
     if (state) {
-      const player = state.players.find(({ id }) => id === expectedActorId);
-      if (!player || JSON.stringify(player[expectedSource.zone]) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone.';
+      if (!ruleset) return 'Dynamic card choice validation requires the active ruleset.';
+      const resolved = dynamicCardChoiceCandidates(state, ruleset, node, pending.context);
+      if (resolved.status !== 'ready' || JSON.stringify(resolved.cardIds) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone and predicate.';
     }
   }
   return JSON.stringify(candidates[0]!.remaining) === JSON.stringify(pending.remaining)
@@ -159,11 +188,9 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'conditional') { const valid = node.condition.kind === 'always' ? node.condition.value : (() => { const id = resolveCardId(node.condition.card, context); const location = resolveLocation(node.condition.location, context); try { return Boolean(id && location && state.cards[id] && isCardAtLocation(state, location, id)); } catch { return false; } })(); const next = valid ? node.whenTrue : node.whenFalse; return runNodes(state, ruleset, [...(next ? [next] : []), ...nodes.slice(index + 1)], context, executionId, events); }
     if (node.kind === 'choice') { const actorId = playerId(node.actor, context); if (!actorId) return { status: 'failed', events, error: 'Choice actor could not be resolved.' }; state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options: node.options, remaining: nodes.slice(index + 1), context }; domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit player choice.'); return { status: 'suspended', events }; }
     if (node.kind === 'choose-card') {
-      const actorId = playerId(node.actor, context); const source = resolveLocation(node.from, context);
-      if (!actorId || !source || source.kind !== 'player-zone' || source.player.kind !== 'player-id' || source.player.playerId !== actorId) return { status: 'failed', events, error: 'Dynamic card choice must resolve to the choosing actor\'s visible player zone.' };
-      if (source.zone === 'drawPile') return { status: 'failed', events, error: 'Dynamic card choice cannot expose a hidden draw pile.' };
-      const visibleSource = { ...source, zone: source.zone };
-      const candidates = [...getPlayer(state, actorId)[visibleSource.zone]];
+      const resolved = dynamicCardChoiceCandidates(state, ruleset, node, context);
+      if (resolved.status !== 'ready') return { status: 'failed', events, error: resolved.error };
+      const { actorId, source: visibleSource, cardIds: candidates } = resolved;
       if (!candidates.length) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
       const options = candidates.map((cardId) => ({
         id: cardId,

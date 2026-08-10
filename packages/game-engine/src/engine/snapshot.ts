@@ -10,6 +10,7 @@ import { dispatch } from './dispatch.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { validatePendingCombatRewardContinuation } from './combat-reward-pipeline.js';
 import { validatePendingCardUseContinuation } from './card-use-effect-pipeline.js';
+import { validatePendingDynamicCardChoice } from './pending-dynamic-choice-validation.js';
 function firstDifference(left: unknown, right: unknown, path = '$'): string | undefined {
   if (Object.is(left, right)) return undefined;
   if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) return path;
@@ -56,6 +57,11 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     const continuityErrors = validateSupplyContinuityState(state, ruleset);
     if (continuityErrors.length) throw new Error(`Snapshot supply continuity mismatch: ${continuityErrors.join(' ')}`);
   }
+  if (state.effectState.pendingChoice?.source) {
+    if (!ruleset) throw new Error('Pending dynamic card choice Snapshot requires the active ruleset for canonical restore.');
+    const choiceError = validatePendingDynamicCardChoice(state, ruleset);
+    if (choiceError) throw new Error(choiceError);
+  }
   const pending = state.effectState.pendingLifecycle;
   if (pending) {
     const rollbackState = GameStateSchema.parse(pending.rollbackState) as GameState; assertGameStateInvariants(rollbackState);
@@ -69,7 +75,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const programError = !hook || !suspension
         ? 'Pending lifecycle hook or suspension is missing.'
         : state.effectState.pendingChoice
-          ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect, state)
+          ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect, state, ruleset)
           : validatePendingCounterConsentAgainstEffect(state.effectState.pendingCounterConsent!, hook.effect);
       if (programError) throw new Error(programError);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CommandEnvelope, ContentPack, DomainEvent, EffectDefinition, GameCommand, LifecycleHook } from '@guildmaster/game-protocol';
+import { EFFECT_CARD_PREDICATE_LIMITS, type CommandEnvelope, type ContentPack, type DomainEvent, type EffectCardPredicate, type EffectDefinition, type GameCommand, type LifecycleHook } from '@guildmaster/game-protocol';
 import { createContentRegistry, createGame, createRuleset, dispatch, envelope, getLegalCommands, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseZoneIds } from '../src/model/zones.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
@@ -43,6 +43,7 @@ const discardThenDrawPack: ContentPack = {
                 choiceId: 'test:item/discard-card',
                 actor: { kind: 'controller' },
                 from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+                predicate: { kind: 'definition-type-in', values: ['starter'] },
                 selectedCardKey: 'discard',
                 effect: { kind: 'discard-card', card: { kind: 'context-card', key: 'discard' }, from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } },
               },
@@ -55,6 +56,46 @@ const discardThenDrawPack: ContentPack = {
 };
 
 const discardThenDrawRuleset = createRuleset([discardThenDrawPack], [baseRulesModule]);
+
+const filteredRecoveryPack: ContentPack = {
+  ...drawItemPack,
+  manifest: { ...drawItemPack.manifest, id: 'test:card-use-filtered-choice', version: '4', hash: 'card-use-filtered-choice-v4' },
+  definitions: drawItemPack.definitions.map((definition) => {
+    if (definition.id === 'test:item/spear') return { ...definition, tags: [...(definition.tags ?? []), 'test:recoverable'] };
+    return definition.id === 'test:item/ration'
+      ? {
+        ...definition,
+        useEffect: {
+          schemaVersion: 1,
+          effectId: 'test:item/recover-equipment',
+          body: {
+            kind: 'choose-card',
+            choiceId: 'test:item/recover-equipment-choice',
+            actor: { kind: 'controller' },
+            from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+            predicate: {
+              kind: 'all',
+              predicates: [
+                { kind: 'any', predicates: [{ kind: 'definition-type-in', values: ['equipment'] }, { kind: 'definition-id-in', values: ['test:unused'] }] },
+                { kind: 'tag-in', values: ['test:recoverable'] },
+                { kind: 'not', predicate: { kind: 'definition-id-in', values: ['test:item/ration'] } },
+              ],
+            },
+            selectedCardKey: 'recovered',
+            effect: {
+              kind: 'move-card',
+              card: { kind: 'context-card', key: 'recovered' },
+              from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+              to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+            },
+          },
+        },
+        }
+      : definition;
+  }),
+};
+
+const filteredRecoveryRuleset = createRuleset([filteredRecoveryPack], [baseRulesModule]);
 
 const commandBeforeChoiceHook: LifecycleHook = {
   schemaVersion: 1,
@@ -121,6 +162,74 @@ describe('data-driven card use effects', () => {
         ? { ...definition, useEffect: { schemaVersion: 1 as const, effectId: 'test:hidden-card-choice', body: hiddenDrawPileEffect } }
         : definition),
     }])).toThrow(/Invalid card use effect/);
+
+    const duplicatePredicateValues = structuredClone(filteredRecoveryPack);
+    const filteredItem = duplicatePredicateValues.definitions.find(({ id }) => id === 'test:item/ration')!;
+    const filteredChoice = filteredItem.useEffect!.body as Extract<EffectDefinition['body'], { kind: 'choose-card' }>;
+    filteredChoice.predicate = { kind: 'definition-type-in', values: ['equipment', 'equipment'] };
+    expect(() => createContentRegistry([duplicatePredicateValues])).toThrow(/Predicate values must be unique/);
+  });
+
+  it('rejects non-canonical and over-budget card predicates before registration', () => {
+    const packWithPredicate = (predicate: EffectCardPredicate): ContentPack => {
+      const pack = structuredClone(filteredRecoveryPack);
+      const item = pack.definitions.find(({ id }) => id === 'test:item/ration')!;
+      (item.useEffect!.body as Extract<EffectDefinition['body'], { kind: 'choose-card' }>).predicate = predicate;
+      return pack;
+    };
+    const leaf = (value: string): EffectCardPredicate => ({ kind: 'definition-type-in', values: [value] });
+    let tooDeep: EffectCardPredicate = leaf('equipment');
+    for (let depth = 0; depth < EFFECT_CARD_PREDICATE_LIMITS.maxDepth; depth += 1) tooDeep = { kind: 'not', predicate: tooDeep };
+    const tooManyNodes = (depth: number): EffectCardPredicate => depth === 0
+      ? leaf('equipment')
+      : { kind: 'all', predicates: [tooManyNodes(depth - 1), tooManyNodes(depth - 1)] };
+    const totalValueBranches = Array.from({ length: 5 }, (_, branch) => ({
+      kind: 'definition-id-in' as const,
+      values: Array.from({ length: EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode }, (_value, index) => `test:${branch}:${index}`),
+    }));
+
+    expect(() => createContentRegistry([packWithPredicate(leaf(' equipment '))])).toThrow(/must not have leading or trailing whitespace/);
+    expect(() => createContentRegistry([packWithPredicate(tooDeep)])).toThrow(/maximum depth/);
+    expect(() => createContentRegistry([packWithPredicate({ kind: 'all', predicates: Array.from({ length: EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode + 1 }, () => leaf('equipment')) })])).toThrow(/maximum branch count/);
+    expect(() => createContentRegistry([packWithPredicate({ kind: 'definition-id-in', values: Array.from({ length: EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode + 1 }, (_, index) => `test:${index}`) })])).toThrow(/maximum values per node/);
+    expect(() => createContentRegistry([packWithPredicate({ kind: 'all', predicates: totalValueBranches })])).toThrow(/maximum total value count/);
+    expect(() => createContentRegistry([packWithPredicate(tooManyNodes(6))])).toThrow(/maximum node count/);
+  });
+
+  it('filters authoritative card candidates and omits unusable items from legal commands', () => {
+    const state = createGame({ gameId: 'card-use-filtered-choice', seed: 13, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, filteredRecoveryRuleset);
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/ration')!.id;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    const adventurerId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:adventurer/a')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== equipmentId && id !== adventurerId);
+    const player = state.players[0]!;
+    player.hand.push(itemId);
+    player.discardPile.push(adventurerId);
+
+    expect(getLegalCommands(state, filteredRecoveryRuleset, 'p1')).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+
+    player.discardPile.push(equipmentId);
+    expect(getLegalCommands(state, filteredRecoveryRuleset, 'p1')).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    const suspended = dispatch(state, filteredRecoveryRuleset, envelope(state, 'p1', { type: 'USE_ITEM', cardId: itemId }, 'filtered-choice-root'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([equipmentId]);
+
+    const tampered = structuredClone(serializeSnapshot(suspended.state));
+    const pendingChoice = tampered.state.effectState.pendingChoice!;
+    const option = pendingChoice.options[0]!;
+    pendingChoice.options = [...pendingChoice.options, {
+      ...structuredClone(option),
+      id: adventurerId,
+      context: { ...structuredClone(option.context!), cardRefs: { ...option.context!.cardRefs, recovered: adventurerId } },
+    }];
+    expect(() => restoreSnapshot(tampered, filteredRecoveryRuleset)).toThrow(/source zone and predicate/);
+
+    const choice = getLegalCommands(suspended.state, filteredRecoveryRuleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === equipmentId)!;
+    const completed = dispatch(suspended.state, filteredRecoveryRuleset, envelope(suspended.state, 'p1', choice, 'filtered-choice-resolution'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.hand).toContain(equipmentId);
+    expect(completed.state.players[0]!.discardPile).toContain(adventurerId);
+    expect(completed.state.revision).toBe(1);
   });
 
   it('round-trips a dynamic card choice and commits the root item command exactly once', () => {

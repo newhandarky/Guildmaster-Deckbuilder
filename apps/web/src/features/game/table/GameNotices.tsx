@@ -11,7 +11,7 @@ type Props = {
 export function GameNotices({ status, persistence, contentMode, error }: Props) {
   return <>
     {contentMode === 'provisional-playtest'
-      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：已接入首批物資與三項道具效果；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。</aside>
+      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：已接入首批物資與六項道具效果；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。</aside>
       : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">

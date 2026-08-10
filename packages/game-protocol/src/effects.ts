@@ -7,6 +7,20 @@ export type EffectCardRef = { kind: 'context-card'; key: string } | { kind: 'car
 export type PlayerZoneName = 'drawPile' | 'hand' | 'discardPile' | 'playArea';
 export type EffectCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: PlayerZoneName } | { kind: 'party'; player: EffectPlayerRef; position: number } | { kind: 'equipment'; player: EffectPlayerRef; partyPosition: number } | { kind: 'shared-zone'; zoneId: string } | { kind: 'removed' };
 export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> };
+export type EffectCardPredicate =
+  | { kind: 'definition-type-in'; values: readonly string[] }
+  | { kind: 'definition-id-in'; values: readonly string[] }
+  | { kind: 'tag-in'; values: readonly string[] }
+  | { kind: 'all'; predicates: readonly EffectCardPredicate[] }
+  | { kind: 'any'; predicates: readonly EffectCardPredicate[] }
+  | { kind: 'not'; predicate: EffectCardPredicate };
+export const EFFECT_CARD_PREDICATE_LIMITS = {
+  maxDepth: 16,
+  maxNodes: 64,
+  maxBranchesPerNode: 16,
+  maxValuesPerNode: 32,
+  maxTotalValues: 128,
+} as const;
 export type EffectCondition = { kind: 'always'; value: boolean } | { kind: 'has-card-at'; card: EffectCardRef; location: EffectCardLocation };
 export type EffectValueTarget = { kind: 'turn-purchase-bonus'; player: EffectPlayerRef } | { kind: 'turn-combat-bonus'; player: EffectPlayerRef } | { kind: 'player-counter'; player: EffectPlayerRef; resourceId: string };
 export type CombatReward = { kind: 'draw'; count: number } | { kind: 'purchase-bonus'; amount: number } | { kind: 'combat-bonus'; amount: number } | { kind: 'counter'; resourceId: string; amount: number };
@@ -14,7 +28,7 @@ export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
   | { kind: 'choice'; choiceId: string; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
-  | { kind: 'choose-card'; choiceId: string; actor: EffectPlayerRef; from: EffectSelectableCardLocation; selectedCardKey: string; effect: EffectNode }
+  | { kind: 'choose-card'; choiceId: string; actor: EffectPlayerRef; from: EffectSelectableCardLocation; predicate?: EffectCardPredicate; selectedCardKey: string; effect: EffectNode }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
@@ -113,6 +127,16 @@ const locationSchema: z.ZodType<EffectCardLocation> = z.discriminatedUnion('kind
   z.object({ kind: z.literal('removed') }).strict()
 ]);
 const selectableCardLocationSchema = z.object({ kind: z.literal('player-zone'), player: playerRefSchema, zone: z.enum(['hand', 'discardPile', 'playArea']) }).strict();
+const canonicalPredicateValue = z.string().min(1).refine((value) => value === value.trim(), 'Predicate values must not have leading or trailing whitespace.');
+const uniqueNonEmptyValues = z.array(canonicalPredicateValue).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode).refine((values) => new Set(values).size === values.length, 'Predicate values must be unique.');
+const cardPredicateSchema: z.ZodType<EffectCardPredicate> = z.lazy(() => z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('definition-type-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('definition-id-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('tag-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('all'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
+  z.object({ kind: z.literal('any'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
+  z.object({ kind: z.literal('not'), predicate: cardPredicateSchema }).strict(),
+] as const)) as unknown as z.ZodType<EffectCardPredicate>;
 const conditionSchema: z.ZodType<EffectCondition> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
   z.object({ kind: z.literal('has-card-at'), card: cardRefSchema, location: locationSchema }).strict()
@@ -135,7 +159,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
   z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
   z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
-  z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, actor: playerRefSchema, from: selectableCardLocationSchema, selectedCardKey: nonEmpty, effect: EffectNodeSchema }).strict(),
+  z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, actor: playerRefSchema, from: selectableCardLocationSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, effect: EffectNodeSchema }).strict(),
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),
   z.object({ kind: z.literal('request-counter-consent'), requestId: nonEmpty, policy: policyRefSchema, counterOwner: playerRefSchema, outcomes: z.object({ accepted: EffectNodeSchema, declined: EffectNodeSchema, cancelled: EffectNodeSchema, expired: EffectNodeSchema }).strict() }).strict(),
@@ -156,8 +180,69 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
 ] as const)) as unknown as z.ZodType<EffectNode>;
 export const EffectDefinitionSchema: z.ZodType<EffectDefinition> = z.object({ schemaVersion: z.literal(1), effectId: nonEmpty, body: EffectNodeSchema }).strict();
 
+const objectValue = (value: unknown): Record<string, unknown> | undefined => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+
+/** Iterative preflight shared by registry validation and runtime candidate evaluation. */
+export function validateEffectCardPredicate(predicate: unknown): string[] {
+  const stack: Array<{ value: unknown; depth: number }> = [{ value: predicate, depth: 1 }];
+  let nodes = 0;
+  let totalValues = 0;
+  while (stack.length) {
+    const current = stack.pop()!;
+    const entry = objectValue(current.value);
+    if (!entry) continue;
+    nodes += 1;
+    if (current.depth > EFFECT_CARD_PREDICATE_LIMITS.maxDepth) return [`Effect card predicate exceeds maximum depth of ${EFFECT_CARD_PREDICATE_LIMITS.maxDepth}.`];
+    if (nodes > EFFECT_CARD_PREDICATE_LIMITS.maxNodes) return [`Effect card predicate exceeds maximum node count of ${EFFECT_CARD_PREDICATE_LIMITS.maxNodes}.`];
+    if (entry.kind === 'definition-type-in' || entry.kind === 'definition-id-in' || entry.kind === 'tag-in') {
+      if (!Array.isArray(entry.values)) continue;
+      if (entry.values.length > EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode) return [`Effect card predicate exceeds maximum values per node of ${EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode}.`];
+      totalValues += entry.values.length;
+      if (totalValues > EFFECT_CARD_PREDICATE_LIMITS.maxTotalValues) return [`Effect card predicate exceeds maximum total value count of ${EFFECT_CARD_PREDICATE_LIMITS.maxTotalValues}.`];
+      if (entry.values.some((value) => typeof value === 'string' && value !== value.trim())) return ['Predicate values must not have leading or trailing whitespace.'];
+      continue;
+    }
+    if (entry.kind === 'all' || entry.kind === 'any') {
+      if (!Array.isArray(entry.predicates)) continue;
+      if (entry.predicates.length > EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) return [`Effect card predicate exceeds maximum branch count of ${EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode}.`];
+      for (const child of entry.predicates) stack.push({ value: child, depth: current.depth + 1 });
+      continue;
+    }
+    if (entry.kind === 'not') stack.push({ value: entry.predicate, depth: current.depth + 1 });
+  }
+  return [];
+}
+
+function validateEffectPredicateBudgets(effect: EffectDefinition): string[] {
+  const queue: unknown[] = [effect.body];
+  while (queue.length) {
+    const node = objectValue(queue.pop());
+    if (!node) continue;
+    if (node.kind === 'choose-card') {
+      if (node.predicate !== undefined) {
+        const errors = validateEffectCardPredicate(node.predicate);
+        if (errors.length) return errors;
+      }
+      queue.push(node.effect);
+      continue;
+    }
+    if (node.kind === 'sequence' && Array.isArray(node.effects)) queue.push(...node.effects);
+    else if (node.kind === 'conditional') queue.push(node.whenTrue, node.whenFalse);
+    else if ((node.kind === 'choice' || node.kind === 'random' || node.kind === 'roll-die') && Array.isArray(node.options ?? node.outcomes)) {
+      const branches = (node.options ?? node.outcomes) as unknown[];
+      for (const branch of branches) queue.push(objectValue(branch)?.effect);
+    } else if (node.kind === 'request-counter-consent') {
+      const outcomes = objectValue(node.outcomes);
+      if (outcomes) queue.push(...Object.values(outcomes));
+    }
+  }
+  return [];
+}
+
 export function validateEffectDefinition(effect: EffectDefinition): string[] {
   if (!isFiniteJsonValue(effect)) return ['Effect definition must contain finite, acyclic, plain JSON data only.'];
+  const predicateErrors = validateEffectPredicateBudgets(effect);
+  if (predicateErrors.length) return predicateErrors;
   const parsed = EffectDefinitionSchema.safeParse(effect);
   return parsed.success ? [] : parsed.error.issues.map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`);
 }

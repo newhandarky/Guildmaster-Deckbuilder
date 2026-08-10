@@ -41,6 +41,40 @@ describe('Rules Module lifecycle dispatcher', () => {
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.turnPurchaseBonus).toBe(7); expect(result.state.effectState).toEqual({});
   });
 
+  it('requires a ruleset and fails closed for tampered dynamic lifecycle choices', () => {
+    const dynamic = hook('test:dynamic-choice', 'choose-card', 'turn-start', 1, {
+      kind: 'choose-card',
+      choiceId: 'dynamic-lifecycle-card',
+      actor: { kind: 'controller' },
+      from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+      predicate: { kind: 'definition-type-in', values: ['starter'] },
+      selectedCardKey: 'selected',
+      effect: modify(1),
+    });
+    const ruleset = createRuleset([testPack], [baseRulesModule, module('test:dynamic-choice', [dynamic])]);
+    const state = gameFor(ruleset);
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== equipmentId);
+    state.players[0]!.hand.push(equipmentId);
+    expect(dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'turn-start', actorId: 'p1' }, { controllerId: 'p1' }).status).toBe('suspended');
+    expect(state.effectState.pendingChoice?.options.map(({ id }) => id)).not.toContain(equipmentId);
+    const snapshot = serializeSnapshot(state);
+
+    expect(() => restoreSnapshot(snapshot)).toThrow(/dynamic card choice Snapshot requires the active ruleset/);
+    expect(restoreSnapshot(snapshot, ruleset)).toEqual(state);
+
+    const tampered = structuredClone(snapshot);
+    const pending = tampered.state.effectState.pendingChoice!;
+    const option = pending.options[0]!;
+    pending.options = [...pending.options, {
+      ...structuredClone(option),
+      id: equipmentId,
+      context: { ...structuredClone(option.context!), cardRefs: { ...option.context!.cardRefs, selected: equipmentId } },
+    }];
+    expect(getLegalCommands(tampered.state, ruleset, 'p1')).toEqual([]);
+    expect(() => restoreSnapshot(tampered, ruleset)).toThrow(/source zone and predicate/);
+  });
+
   it('rolls back all earlier hooks when a later hook fails', () => {
     const bad = hook('test:bad', 'bad', 'turn-start', 2, { kind: 'sequence', effects: [modify(2), { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } }] });
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:first', [hook('test:first', 'first', 'turn-start', 1, modify(1))]), module('test:bad', [bad])]); const state = gameFor(ruleset); const before = structuredClone(state);

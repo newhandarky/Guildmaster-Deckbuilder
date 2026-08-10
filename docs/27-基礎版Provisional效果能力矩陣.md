@@ -57,7 +57,7 @@
 3. **已完成 P2：responsive game table shell。** 固定單頁 DOM／鍵盤順序、interaction rail、收合式 Replay 診斷與五種 viewport regression；規則仍由 session authority 提供。
 4. **已完成 P3a：incremental presentation asset pipeline。** Demo 顯示資料已與 core contract 分離；完整 pack 可搭配部分素材覆蓋，approved responsive WebP、焦點、權利與 hash 由獨立 manifest 驗證，缺圖維持 CSS placeholder。
 5. **進行中 P3b：原創 demo assets／可用性驗證。** Accessibility／usability baseline 已完成 WCAG A／AA gate、鍵盤焦點、44px target、reflow、reduced-motion 與 forced-colors regression；素材依 starter＋冒險者、道具＋裝備、魔物、魔王分批核准，不載入官方圖像。
-6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 27 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批四種道具／裝備已進供應牌列。候選物資 08 的即時「抽 2」，以及 10／17 的動態選牌、棄牌與抽牌，均完成 definition → legal Command → dispatch → Snapshot／Replay → UI 垂直接線。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative zone 候選與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。候選物資 02 只啟用通用購買／配戴流程，卡面效果仍停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
+6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 30 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批七種道具／裝備已進供應牌列。候選物資 01／05 的棄牌堆卡種取回、04 的棄魔王後抽牌、08 的即時「抽 2」，以及 10／17 的動態選牌、棄牌與抽牌，均完成 definition → legal Command → dispatch → Snapshot／Replay → UI 垂直接線。`choose-card` 支援 JSON-only 的 definition type／ID／tag 與 all／any／not predicate；legal query、executor 與 canonical restore 共用同一候選語意。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative zone 候選與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。候選物資 02 只啟用通用購買／配戴流程，卡面效果仍停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目
 

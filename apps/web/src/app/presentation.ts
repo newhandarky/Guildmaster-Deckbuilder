@@ -37,6 +37,9 @@ export const presentationResolver = createPresentationResolver(
 
 export const lifecycleCopyResolver = createLifecycleCopyResolver({
   choices: [
+    { choiceId: 'base:resource/resource-01-recover-adventurer', title: '選擇要取回的冒險者', description: '將選擇的冒險者從棄牌堆加入手牌。' },
+    { choiceId: 'base:resource/resource-04-discard-boss', title: '選擇要棄置的魔王', description: '棄置選擇的魔王後，抽 3 張牌。' },
+    { choiceId: 'base:resource/resource-05-recover-equipment', title: '選擇要取回的裝備', description: '將選擇的裝備從棄牌堆加入手牌。' },
     { choiceId: 'base:resource/resource-10-discard', title: '選擇要棄置的手牌', description: '棄置選擇的手牌後，抽 2 張牌。' },
     { choiceId: 'base:resource/resource-17-discard', title: '選擇要棄置的手牌', description: '這張道具已抽牌；請選擇 1 張手牌棄置。' },
   ],

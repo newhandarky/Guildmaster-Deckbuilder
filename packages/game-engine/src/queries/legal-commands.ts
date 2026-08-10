@@ -11,6 +11,7 @@ import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.j
 import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { executeEffect } from '../effects/executor.js';
+import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -189,6 +190,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   const pending = state.effectState.pendingChoice;
   if (pending) {
     if (pending.actorId !== actorId) return [];
+    if (pending.source && validatePendingDynamicCardChoice(state, ruleset)) return [];
     const pendingCommand = state.effectState.pendingCommand?.envelope.command;
     const options = pendingCommand?.type === 'ATTACK_TARGET' && state.effectState.pendingCommand?.kind !== 'combat-reward'
       ? pending.options.filter((option) => attackIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand.targetId))

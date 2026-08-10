@@ -54,6 +54,89 @@ describe('web content modes', () => {
   });
 
   it.each([
+    { itemDefinitionId: 'base:resource/resource-01', targetType: 'adventurer', excludedType: 'equipment' },
+    { itemDefinitionId: 'base:resource/resource-05', targetType: 'equipment', excludedType: 'adventurer' },
+  ])('recovers only $targetType cards for $itemDefinitionId', ({ itemDefinitionId, targetType, excludedType }) => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: `foundation-recovery-${itemDefinitionId}`,
+      seed: 20260808,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const itemId = Object.values(state.cards).find((card) => card.definitionId === itemDefinitionId)!.id;
+    const targetId = Object.values(state.cards).find((card) => ruleset.registry.definitions[card.definitionId]?.type === targetType)!.id;
+    const excludedId = Object.values(state.cards).find((card) => ruleset.registry.definitions[card.definitionId]?.type === excludedType && card.id !== itemId)!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== targetId && id !== excludedId);
+    const player = state.players[0]!;
+    player.hand.push(itemId);
+    player.discardPile.push(excludedId, targetId);
+
+    expect(getLegalCommands(state, ruleset, player.id)).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    const suspended = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, `foundation-use-${itemDefinitionId}`));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([targetId]);
+
+    const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === targetId)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, `foundation-resolve-${itemDefinitionId}`));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.hand).toContain(targetId);
+    expect(completed.state.players[0]!.discardPile).toContain(excludedId);
+    expect(completed.state.players[0]!.playArea).toContain(itemId);
+    expect(completed.state.revision).toBe(1);
+    expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);
+  });
+
+  it.each([
+    'base:resource/resource-01',
+    'base:resource/resource-04',
+    'base:resource/resource-05',
+  ])('omits $itemDefinitionId when its filtered choice has no candidates', (itemDefinitionId) => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: `foundation-no-candidate-${itemDefinitionId}`,
+      seed: 20260811,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const itemId = Object.values(state.cards).find((card) => card.definitionId === itemDefinitionId)!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId);
+    state.players[0]!.hand.push(itemId);
+
+    expect(getLegalCommands(state, ruleset, 'human-1')).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+  });
+
+  it('requires and discards a boss card before resource-04 draws three cards', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: 'foundation-discard-boss',
+      seed: 20260809,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-04')!.id;
+    const bossId = Object.values(state.cards).find((card) => ruleset.registry.definitions[card.definitionId]?.type === 'boss')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== bossId);
+    const player = state.players[0]!;
+    player.drawPile.push(...player.party.splice(-3).map(({ adventurerId }) => adventurerId));
+    player.hand.push(itemId, bossId);
+
+    const suspended = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'foundation-use-resource-04'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([bossId]);
+    const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === bossId)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, 'foundation-resolve-resource-04'));
+
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.discardPile).toContain(bossId);
+    expect(completed.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(3);
+    expect(completed.state.revision).toBe(1);
+    expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);
+  });
+
+  it.each([
     { definitionId: 'base:resource/resource-10', drawCount: 2, expectedHandCount: 6 },
     { definitionId: 'base:resource/resource-17', drawCount: 3, expectedHandCount: 7 },
   ])('persists and resolves the card choice for $definitionId', ({ definitionId, drawCount, expectedHandCount }) => {

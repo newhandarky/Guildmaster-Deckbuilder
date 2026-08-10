@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { baseProvisionalContentCatalog, baseProvisionalFoundationContentPack } from '../src/index.js';
 
 describe('provisional foundation Content Pack', () => {
-  it('publishes a deliberately gated foundation slice with one immediate item effect', () => {
+  it('publishes a deliberately gated foundation slice with filtered and immediate item effects', () => {
     expect(baseProvisionalFoundationContentPack.manifest).toMatchObject({
       id: 'base:provisional-foundation',
       contentStatus: 'provisional-playtest',
       role: 'base',
     });
-    expect(baseProvisionalFoundationContentPack.definitions).toHaveLength(27);
+    expect(baseProvisionalFoundationContentPack.definitions).toHaveLength(30);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'adventurer')).toBe(true);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'monster')).toBe(true);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'boss')).toBe(true);
@@ -16,6 +16,9 @@ describe('provisional foundation Content Pack', () => {
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'item')).toBe(true);
     const enabled = baseProvisionalFoundationContentPack.definitions.filter(({ tags }) => tags?.includes('playtest:effect-enabled'));
     expect(enabled).toEqual([
+      expect.objectContaining({ id: 'base:resource/resource-01', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: { kind: 'definition-type-in', values: ['adventurer'] } }) }) }),
+      expect.objectContaining({ id: 'base:resource/resource-04', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
+      expect.objectContaining({ id: 'base:resource/resource-05', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: { kind: 'definition-type-in', values: ['equipment'] } }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-08', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: 2 } }) }),
       expect.objectContaining({ id: 'base:resource/resource-10', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-17', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
@@ -36,6 +39,7 @@ describe('provisional foundation Content Pack', () => {
         expect(definition[field]).toBe(candidate?.fields.find((entry) => entry.field === field)?.candidateValue);
       }
     }
+    expect(baseProvisionalFoundationContentPack.definitions.find(({ id }) => id === 'base:adventurer/adventurer-01')?.tags).toContain('profession:support');
   });
 
   it('uses only the approved three-copy cycle anchor', () => {
@@ -46,7 +50,10 @@ describe('provisional foundation Content Pack', () => {
   it('keeps provisional resource multiplicities explicitly owned by the digital pack', () => {
     expect(baseProvisionalFoundationContentPack.definitions.filter(({ type }) => type === 'item' || type === 'equipment'))
       .toEqual([
+        expect.objectContaining({ id: 'base:resource/resource-01', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-02', copies: 2, cost: 3 }),
+        expect.objectContaining({ id: 'base:resource/resource-04', copies: 2, cost: 2 }),
+        expect.objectContaining({ id: 'base:resource/resource-05', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-08', copies: 2, cost: 4 }),
         expect.objectContaining({ id: 'base:resource/resource-10', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-17', copies: 2, cost: 4 }),
