@@ -1,7 +1,8 @@
 import type { EffectDefinition } from './effects.js';
+import type { EquipmentEventTrigger } from './lifecycle.js';
 
 export type CardType = string;
-export type CardDefinition = { id: string; name: string; type: CardType; copies: number; cost?: number; combat?: number; purchasePower?: number; honor?: number; itemEffect?: 'purchase+2' | 'combat+2'; useEffect?: EffectDefinition; source: string; tags?: string[] };
+export type CardDefinition = { id: string; name: string; type: CardType; copies: number; cost?: number; combat?: number; purchasePower?: number; honor?: number; itemEffect?: 'purchase+2' | 'combat+2'; useEffect?: EffectDefinition; equipmentEventTriggers?: readonly EquipmentEventTrigger[]; source: string; tags?: string[] };
 export type CardInstance = { id: string; definitionId: string; ownerId?: string; state?: Record<string, unknown> };
 export type PackManifest = { id: string; version: string; hash: string; role?: 'base' | 'expansion'; contentStatus?: 'demo' | 'provisional-playtest' | 'official-audited'; dependencies?: readonly string[]; conflicts?: readonly string[]; compatibleRuleset?: { min: string; max?: string } };
 export type ReplacementDeclaration = { replacementDefinitionId: string; replacesDefinitionId: string; priority?: number };

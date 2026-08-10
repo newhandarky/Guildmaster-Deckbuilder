@@ -23,7 +23,7 @@ describe('base provisional content catalog', () => {
     expect(fields.some((field) => field.status === 'verified')).toBe(true); // FAQ-confirmed errata only
   });
 
-  it('maps the official profession icons and reads the six previously incomplete adventurer effects', () => {
+  it('maps adventurer professions, resource affinities, and the six previously incomplete effects', () => {
     const find = (id: string) => baseProvisionalContentCatalog.candidates.find((candidate) => candidate.definitionId === id)!;
     const value = (id: string, field: string) => find(id).fields.find((entry) => entry.field === field)!;
     expect(value('base:adventurer/adventurer-01', 'profession').candidateValue).toBe('support');
@@ -31,6 +31,13 @@ describe('base provisional content catalog', () => {
     expect(value('base:adventurer/adventurer-03', 'profession').candidateValue).toBe('mage');
     expect(value('base:adventurer/adventurer-04', 'profession').candidateValue).toBe('tank');
     expect(value('base:adventurer/adventurer-07', 'profession').candidateValue).toBe('ranged');
+    expect(value('base:starter/adventurer-01', 'profession')).toMatchObject({ candidateValue: 'support', sourceLocation: expect.stringContaining('第 1 張') });
+    expect(value('base:starter/adventurer-02', 'profession')).toMatchObject({ candidateValue: 'melee', sourceLocation: expect.stringContaining('第 5 張') });
+    expect(value('base:starter/adventurer-03', 'profession')).toMatchObject({ candidateValue: 'mage', sourceLocation: expect.stringContaining('第 2 張') });
+    expect(value('base:starter/adventurer-04', 'profession')).toMatchObject({ candidateValue: 'tank', sourceLocation: expect.stringContaining('第 3 張') });
+    expect(value('base:starter/adventurer-05', 'profession')).toMatchObject({ candidateValue: 'ranged', sourceLocation: expect.stringContaining('第 4 張') });
+    expect(find('base:resource/resource-13').mechanicsTags).toEqual(['affinity:mage']);
+    expect(find('base:resource/resource-19').mechanicsTags).toEqual(['affinity:mage', 'affinity:support']);
     for (const id of ['adventurer-06', 'adventurer-09', 'adventurer-19', 'adventurer-22', 'adventurer-26', 'adventurer-29']) {
       expect(value(`base:adventurer/${id}`, 'effect')).toMatchObject({ status: 'provisional', confidence: 'medium' });
     }

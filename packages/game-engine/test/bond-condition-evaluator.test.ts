@@ -69,7 +69,7 @@ describe('generic bond condition evaluation', () => {
     const targetId = Object.values(state.enemyTargets).find((target) => target.kind === 'monster')!.targetId;
     const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
     expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingPostCommand?.facts.some((fact) => fact.type === 'BOND_COMPLETED')).toBe(true);
-    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
     const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!;
     const complete = dispatch(restored, ruleset, envelope(restored, 'p1', command));
     expect(complete.error).toBeUndefined(); expect(complete.state.players[0]!.bonds[0]!.completed).toBe(true); expect(complete.events.filter((entry) => entry.type === 'BOND_COMPLETED')).toHaveLength(1); expect(complete.state.revision).toBe(1);

@@ -5,6 +5,6 @@ export default defineConfig({
   fullyParallel: false,
   reporter: 'list',
   use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
-  webServer: { command: 'pnpm exec vite --mode e2e --host 127.0.0.1 --port 4173', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
+  webServer: { command: 'node_modules/.bin/vite --mode e2e --host 127.0.0.1 --port 4173', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
 });

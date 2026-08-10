@@ -47,7 +47,7 @@ export const demoPresentationPack: PresentationPack = {
 export const provisionalFoundationPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-foundation-neutral',
-    version: '4.0.0',
+    version: '7.0.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
@@ -101,6 +101,14 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌；此為 provisional 候選效果。',
     },
     {
+      definitionId: 'base:resource/resource-13',
+      displayName: '候選物資 13',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：從棄牌堆取回 1 張非同名法師卡。',
+      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張法師關聯卡加入手牌；同名物資不能被選擇。此為 provisional 候選效果。',
+    },
+    {
       definitionId: 'base:resource/resource-15',
       displayName: '候選物資 15',
       portraitAssetKey: 'placeholder:provisional-item',
@@ -115,6 +123,22 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAltText: '候選道具的中性圖像 placeholder',
       shortDisplayText: '使用：抽 3 張牌，然後棄 1 張手牌。',
       detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌；此為 provisional 候選效果。',
+    },
+    {
+      definitionId: 'base:resource/resource-18',
+      displayName: '候選物資 18',
+      portraitAssetKey: 'placeholder:provisional-equipment',
+      portraitAltText: '候選裝備的中性圖像 placeholder',
+      shortDisplayText: '配戴者仍在隊伍時，每次擊敗目標後抽 1 張牌。',
+      detailDisplayText: '本次行動玩家擊敗目標後，若此裝備仍掛在自己的隊伍中，該裝備實例會觸發並抽 1 張牌；多個實例各自觸發。此為 provisional 候選效果。',
+    },
+    {
+      definitionId: 'base:resource/resource-27',
+      displayName: '候選物資 27',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：依目前隊伍中的職業種類數抽牌。',
+      detailDisplayText: '行動階段使用後，計算目前隊伍中不同的冒險者職業種類，並抽取等量卡牌；同職業只計算一次。此為 provisional 候選效果。',
     },
   ],
 };

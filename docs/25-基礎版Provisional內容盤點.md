@@ -6,7 +6,7 @@
 
 | 類別 | 候選數 | 來源 | 狀態 |
 | --- | ---: | --- | --- |
-| 起始內容 | 7 | 規則書印刷頁 3、`card-07.jpg` | 起始區域與基本數值 provisional；未印出的欄位不推測 |
+| 起始內容 | 7 | 規則書印刷頁 3、`card-07.jpg` | 起始區域、基本數值與五名冒險者職業 provisional；未印出的欄位不推測 |
 | 冒險者 | 30 種／總數 60 | `card-01.jpg`、規則書印刷頁 2、4 | 名稱、費用、戰力、榮譽、職業與效果 provisional |
 | 物資 | 28 種／總數 59 | `card-03.jpg`、規則書印刷頁 2、4 | 種類、費用、卡面效果 provisional；逐種類張數未知但不再 blocking |
 | 魔物 | 14 種／總數 32 | `card-05.jpg`、規則書印刷頁 2、5 | 戰力、購買力、榮譽與結算效果 provisional；骷髏戰士確認 3 張，其他逐種類張數未知但不再 blocking |
@@ -28,6 +28,8 @@
 
 逐種類張數已降為非阻擋的來源 metadata 缺口；不得把未知數位組成宣稱為官方實體配比。
 
-目前已建立 `base:provisional-foundation` 內部垂直切片：7 個起始定義、8 種冒險者、8 種物資、4 種魔物與 4 張魔王，共 31 個中性名稱定義。此切片的數值來自候選 catalog；物資逐種類張數仍缺乏來源證據，因此目前各採 2 張作為 pack 自有的數位 playtest 組成，不宣稱等同官方實體配比。它必須由遠征入口明確選擇，並由 engine `allowProvisionalPlaytest` 閘門授權；存檔／Replay 使用 `0.5.0` 的獨立 manifest 指紋，不能與 Demo 或舊 foundation 存檔混用。
+`equipmentEventTriggers` schema v1 使用明確的兩層排序：仍在 event actor 隊伍中的裝備實例永遠先於 Rules Module hooks；裝備實例依 party slot 排序，同一 definition 的多個 trigger 才使用自身 priority。裝備與 module 的 priority 屬於不同 domain，不互相比較。
 
-這仍不是完整基礎版 playtest Content Pack。候選物資 01、04、05、08、10、15、17 標記為 `playtest:effect-enabled`：01／05 依卡種從棄牌堆取回冒險者／裝備，04 棄 1 張手牌中的魔王後抽 3 張，08 執行「抽 2 張牌」，10 執行「棄 1 張手牌後抽 2 張」，15 從手牌／隊伍／棄牌堆選擇並移除 1 張牌，17 執行「抽 3 張後棄 1 張手牌」。動態選牌由 authoritative visible sources 與 versioned predicate 產生合法選項，並把選中卡片的 canonical source location 寫入 Effect context；版本化 card-use continuation 保存 root Command、回滾點、事件與 context，可跨 Snapshot／Replay 恢復，完成時只提交一次 revision。移除有配戴裝備的隊員時，裝備依明確 policy 置入棄牌堆；沒有候選時 legal Commands 不會列出該道具。候選物資 02 已接入購買／配戴流程；引擎也已支援 JSON-only 的「裝備＋配戴者職業／tag → 隊伍前綴戰力修正」，但現有欄位證據未建立此卡的確切加成數值，因此 catalog 將其效果記為 exception，runtime 仍標記 `playtest:effects-disabled`，不得猜值啟用。UI 會持續顯示其餘效果未啟用；完整裝配仍需協助者 adapter、個別時序與第二人覆核。production 預設仍是原創 Demo，provisional 不得自動載入。
+目前已建立 `base:provisional-foundation` 內部垂直切片：7 個起始定義、8 種冒險者、11 種物資、4 種魔物與 4 張魔王，共 34 個中性名稱定義。此切片的數值來自候選 catalog；物資逐種類張數仍缺乏來源證據，因此目前各採 2 張作為 pack 自有的數位 playtest 組成，不宣稱等同官方實體配比。它必須由遠征入口明確選擇，並由 engine `allowProvisionalPlaytest` 閘門授權；存檔／Replay 使用 `0.8.0` 的獨立 manifest 指紋，不能與 Demo 或舊 foundation 存檔混用。
+
+這仍不是完整基礎版 playtest Content Pack。候選物資 01、04、05、08、10、13、15、17、18、27 標記為 `playtest:effect-enabled`：01／05 依卡種從棄牌堆取回冒險者／裝備，04 棄 1 張手牌中的魔王後抽 3 張，08 執行「抽 2 張牌」，10 執行「棄 1 張手牌後抽 2 張」，13 從棄牌堆取回 1 張非同名法師卡，15 從手牌／隊伍／棄牌堆選擇並移除 1 張牌，17 執行「抽 3 張後棄 1 張手牌」，18 在擊敗目標的 event-after 邊界，依仍掛在本次行動玩家隊伍上的裝備實例各抽 1 張，27 依目前隊伍中的不同職業種類抽牌。resource-18 使用 content-owned `equipmentEventTriggers`，以 party slot 及同卡 trigger priority 決定順序；Effect context 固定綁定來源裝備、持有者與裝備位置，第一版只接受不會 suspension 的 immediate Effect。resource-13 的 predicate 同時辨識冒險者 `profession:mage` 和物資 `affinity:mage`，再以 definition ID 排除所有同名卡；兩種 tag 分開建模，避免把物資關聯誤寫成冒險者職業。resource-27 使用 JSON-only `party-distinct-tag-count` 讀取隊伍冒險者的 `profession:` tag，同職業只計一次；起始五名冒險者的職業與正確卡表定位已一併補齊。動態選牌由 authoritative visible sources 與 versioned predicate 產生合法選項，並把選中卡片的 canonical source location 寫入 Effect context；版本化 card-use continuation 保存 root Command、回滾點、事件與 context，可跨 Snapshot／Replay 恢復，完成時只提交一次 revision。移除有配戴裝備的隊員時，裝備依明確 policy 置入棄牌堆；沒有候選時 legal Commands 不會列出該道具。候選物資 02 已接入購買／配戴流程；引擎也已支援 JSON-only 的「裝備＋配戴者職業／tag → 隊伍前綴戰力修正」，但現有欄位證據未建立此卡的確切加成數值，因此 catalog 將其效果記為 exception，runtime 仍標記 `playtest:effects-disabled`，不得猜值啟用。UI 會持續顯示其餘效果未啟用；完整裝配仍需協助者 adapter、個別時序與第二人覆核。production 預設仍是原創 Demo，provisional 不得自動載入。

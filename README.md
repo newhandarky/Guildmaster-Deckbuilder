@@ -34,7 +34,7 @@ pnpm check
 - 簡單 AI 只透過相同的合法 Command 介面操作；沒有另一套 AI 規則。
 - localStorage 自動保存版本化 Snapshot、近期事件與完整 Replay history；桌機頁首會以純文字標示新對局、已保存、已恢復或僅記憶體狀態，舊版 snapshot-only 存檔另明示 Replay history 不完整。
 - 桌機遠征入口使用原生 HTML 呈現新對局或最近進度摘要；繼續不改動 authoritative state，覆蓋既有存檔前必須二次確認，storage unavailable 時則明示只保留在目前分頁。
-- 遠征入口可明確選擇預設的原創 Demo，或內部限定的「基礎候選數值測試」模式；後者以 Content Pack 指紋保存／恢復，必須通過 engine `allowProvisionalPlaytest` 閘門，已接入首批八種物資與七項道具效果，並持續警告其餘效果尚未啟用。
+- 遠征入口可明確選擇預設的原創 Demo，或內部限定的「基礎候選數值測試」模式；後者以 Content Pack 指紋保存／恢復，必須通過 engine `allowProvisionalPlaytest` 閘門，已接入首批十一種物資與十項卡牌效果，並持續警告其餘效果尚未啟用。
 - Deterministic Playwright journey 會以原創示範內容走完真人討伐、招募、休息、AI 回合與 v3 local save reload；這是 runtime／測試穩定化能力，不是正式基礎卡表完成的宣告。
 - e2e mode 的 typed、validated 原創示範 scenario registry 也會以正常 UI 操作觸發已註冊的全魔王／全羈絆終局，驗證 final round、AI 收尾、單次 scoreboard、排名／榮譽／討伐統計，以及「開啟新遠征」後 revision、事件與 replay history 歸零；它不修改 engine state，也不增加 production debug 捷徑。
 - 規則核心 Vitest 回歸測試，涵蓋抽牌途中洗牌、展示不洗牌、隊伍滿員、過量派遣、道具休息棄置、供應牌庫耗盡與 Snapshot round-trip。
@@ -45,7 +45,7 @@ pnpm check
 
 ## 有意保留的限制
 
-- 預設 runtime 仍是可玩的**原創示範內容包**；另有明確 opt-in 的 provisional foundation pack，接入 31 個中性名稱候選（含首批八種道具／裝備），但不是完整、逐字對應的官方卡表，也不會自動升為 production 內容。候選物資 01／05 可依卡種從棄牌堆取回卡片，04 可棄魔王後抽牌，08「抽 2」、10「棄 1 後抽 2」、15「從手牌／隊伍／棄牌堆移除 1 張」與 17「抽 3 後棄 1」亦已透過 Effect AST 啟用；選牌效果使用可跨 Snapshot／Replay 恢復的版本化 card-use continuation，其餘卡面效果維持停用。
+- 預設 runtime 仍是可玩的**原創示範內容包**；另有明確 opt-in 的 provisional foundation pack，接入 34 個中性名稱候選（含首批十一種道具／裝備），但不是完整、逐字對應的官方卡表，也不會自動升為 production 內容。候選物資 01／05 可依卡種從棄牌堆取回卡片，04 可棄魔王後抽牌，08「抽 2」、10「棄 1 後抽 2」、13「取回非同名法師卡」、15「從手牌／隊伍／棄牌堆移除 1 張」、17「抽 3 後棄 1」、18「配戴者仍在隊伍時，每個裝備實例於擊敗目標後抽 1」與 27「依隊伍職業種類抽牌」亦已透過資料驅動效果啟用；選牌效果使用可跨 Snapshot／Replay 恢復的版本化 card-use continuation，其餘卡面效果維持停用。
 - 個別卡牌的複雜效果、協助者、羈絆輪抽與 Vol.1 尚未啟用。
 - 基礎版供應採已核准的 project policy：冒險者／物資可縮減至空而不凍結遊戲；三張循環錨點使魔物區的 committed state 始終正好三張。逐種類張數不是 playtest blocker。
 - 終局 E2E 只覆蓋目前 base Rules Module 已實際註冊、且可由原創示範 scenario 合法觸發的全魔王／全羈絆條件；完整正式基礎卡表與其他未確認終局資料仍待覆核。

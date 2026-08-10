@@ -32,8 +32,11 @@ const foundationComposition = [
   ['base:resource/resource-05', 2],
   ['base:resource/resource-08', 2],
   ['base:resource/resource-10', 2],
+  ['base:resource/resource-13', 2],
   ['base:resource/resource-15', 2],
   ['base:resource/resource-17', 2],
+  ['base:resource/resource-18', 2],
+  ['base:resource/resource-27', 2],
   ['base:monster/monster-01', 3],
   ['base:monster/monster-02', 1],
   ['base:monster/monster-03', 1],
@@ -52,8 +55,11 @@ const enabledEffectIds = new Set([
   'base:resource/resource-05',
   'base:resource/resource-08',
   'base:resource/resource-10',
+  'base:resource/resource-13',
   'base:resource/resource-15',
   'base:resource/resource-17',
+  'base:resource/resource-18',
+  'base:resource/resource-27',
 ]);
 
 function candidateFor(definitionId: string): ProvisionalCardCandidate {
@@ -95,7 +101,9 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
     throw new Error(`Unsupported provisional foundation category: ${candidate.category}`);
   }
   const cardType = candidate.category === 'resource' ? stringValue(candidate, 'cardType') : undefined;
-  const profession = candidate.category === 'adventurer' ? stringValue(candidate, 'profession') : undefined;
+  const profession = candidate.category === 'adventurer' || (candidate.category === 'starter' && cardType === undefined)
+    ? stringValue(candidate, 'profession')
+    : undefined;
   if (candidate.category === 'resource' && cardType !== 'item' && cardType !== 'equipment') throw new Error(`Unsupported provisional resource type: ${candidate.definitionId}.${cardType ?? '<missing>'}`);
   const effectEnabled = enabledEffectIds.has(candidate.definitionId);
   const definition: CardDefinition = {
@@ -202,6 +210,41 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
       },
     };
   }
+  if (candidate.definitionId === 'base:resource/resource-13') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-13-use',
+      body: {
+        kind: 'choose-card',
+        choiceId: 'base:resource/resource-13-recover-mage-card',
+        actor: { kind: 'controller' },
+        from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+        predicate: {
+          kind: 'all',
+          predicates: [
+            {
+              kind: 'any',
+              predicates: [
+                { kind: 'tag-in', values: ['profession:mage'] },
+                { kind: 'tag-in', values: ['affinity:mage'] },
+              ],
+            },
+            {
+              kind: 'not',
+              predicate: { kind: 'definition-id-in', values: ['base:resource/resource-13'] },
+            },
+          ],
+        },
+        selectedCardKey: 'recovered',
+        effect: {
+          kind: 'move-card',
+          card: { kind: 'context-card', key: 'recovered' },
+          from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+          to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+        },
+      },
+    };
+  }
   if (candidate.definitionId === 'base:resource/resource-15') {
     definition.useEffect = {
       schemaVersion: 1,
@@ -249,14 +292,43 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
       },
     };
   }
+  if (candidate.definitionId === 'base:resource/resource-18') {
+    definition.equipmentEventTriggers = [{
+      schemaVersion: 1,
+      triggerId: 'base:resource/resource-18-after-defeat',
+      point: 'event-after',
+      eventType: 'ENEMY_DEFEATED',
+      priority: 100,
+      effect: {
+        schemaVersion: 1,
+        effectId: 'base:provisional-foundation/resource-18-after-defeat',
+        body: { kind: 'draw', player: { kind: 'controller' }, count: 1 },
+      },
+    }];
+  }
+  if (candidate.definitionId === 'base:resource/resource-27') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-27-use',
+      body: {
+        kind: 'draw',
+        player: { kind: 'controller' },
+        count: {
+          kind: 'party-distinct-tag-count',
+          player: { kind: 'controller' },
+          tagPrefix: 'profession:',
+        },
+      },
+    };
+  }
   return definition;
 }
 
 export const baseProvisionalFoundationContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-foundation',
-    version: '0.5.0',
-    hash: 'base-provisional-foundation-v5-multi-source-removal',
+    version: '0.8.0',
+    hash: 'base-provisional-foundation-v8-equipment-instance-event-triggers',
     role: 'base',
     contentStatus: 'provisional-playtest',
   },

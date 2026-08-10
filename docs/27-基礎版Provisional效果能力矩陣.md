@@ -42,6 +42,7 @@
 - generic multi-target encounter resolution 已 supported：JSON-only policy 可宣告 completion、target／attachment disposition 與 explicit registry ref；Effect AST、Snapshot、choice/lifecycle continuation 與 transaction rollback 均可重播。health target 另由 JSON-only attack-resolution policy 將 fixed damage、combat／party-prefix evaluation、`ATTACK_TARGET` query／dispatch 與 lethal reward continuation 接為同一 transaction；沒有 policy 時維持不可攻擊。未載入正式或 provisional 多部位魔王內容，也不推導官方 HP、討伐獎勵、終局或下一階段。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
 - JSON-only equipment combat modifier 可依裝備與配戴者 definition／tag、phase 或 counter 修正實際參戰的隊伍前綴戰力；legal query 與 authoritative attack dispatch 共用 evaluator。候選物資 02 的確切加成數值仍缺欄位證據，因此保持停用。
+- content-owned `equipmentEventTriggers` 會在 event-after 邊界，依本次 event actor 仍掛在隊伍的裝備實例逐一執行。schema v1 明定裝備 trigger 是早於 Rules Module hooks 的獨立 ordering tier；party slot 先決定實例順序，同一 definition 的多 trigger 再以 distinct priority 排序，兩個 priority domain 不互相比較。來源裝備、持有者及位置固定寫入 Effect context；第一版拒絕會 suspension 的互動節點。候選物資 18 已透過此契約接線。
 - reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch、continuous runtime、supply refresh、multi-target encounter、Snapshot resume 與 versioned Command Replay diagnostic export 均已 supported；不代表任何正式或 provisional 卡牌內容已載入。
@@ -59,14 +60,14 @@
 3. **已完成 P2：responsive game table shell。** 固定單頁 DOM／鍵盤順序、interaction rail、收合式 Replay 診斷與五種 viewport regression；規則仍由 session authority 提供。
 4. **已完成 P3a：incremental presentation asset pipeline。** Demo 顯示資料已與 core contract 分離；完整 pack 可搭配部分素材覆蓋，approved responsive WebP、焦點、權利與 hash 由獨立 manifest 驗證，缺圖維持 CSS placeholder。
 5. **進行中 P3b：原創 demo assets／可用性驗證。** Accessibility／usability baseline 已完成 WCAG A／AA gate、鍵盤焦點、44px target、reflow、reduced-motion 與 forced-colors regression；素材依 starter＋冒險者、道具＋裝備、魔物、魔王分批核准，不載入官方圖像。
-6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 31 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批八種道具／裝備已進供應牌列。候選物資 01／05 的棄牌堆卡種取回、04 的棄魔王後抽牌、08 的即時「抽 2」、10／17 的動態選牌、棄牌與抽牌，以及 15 的跨手牌／隊伍／棄牌堆選擇移除，均完成 definition → legal Command → dispatch → Snapshot／Replay → UI 垂直接線。`choose-card` 支援 JSON-only 的 definition type／ID／tag、all／any／not predicate、多個同玩家可見來源與 canonical source location；legal query、executor 與 canonical restore 共用同一候選語意。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative 候選／來源與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。裝備配戴者條件戰力 evaluator 已完成並接入實際 party prefix；候選物資 02 因來源未建立確切加成數值，仍只啟用通用購買／配戴流程並保持卡面效果停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
+6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 34 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批十一種道具／裝備已進供應牌列。候選物資 01／05 的棄牌堆卡種取回、04 的棄魔王後抽牌、08 的即時「抽 2」、10／17 的動態選牌、棄牌與抽牌、13 的非同名法師卡取回、15 的跨手牌／隊伍／棄牌堆選擇移除、18 的逐裝備實例擊敗後抽牌，以及 27 的隊伍 distinct-profession 動態抽牌，均完成內容資料到 authoritative dispatch、Snapshot／Replay 與 UI 的接線。`choose-card` 支援 JSON-only 的 definition type／ID／tag、all／any／not predicate、多個同玩家可見來源與 canonical source location；resource-18 的 immediate trigger 由卡牌 definition 擁有，event-after 只解析本次行動玩家仍掛在隊伍的裝備，依 party slot／priority 執行，engine 不含候選卡 ID。resource-13 分開辨識冒險者 `profession:mage` 與物資 `affinity:mage`，再排除同名 definition。Effect draw count 可用 `party-distinct-tag-count` 從公開隊伍狀態計算不同 tag，同職業只算一次。legal query、executor 與 canonical restore 共用同一候選語意。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative 候選／來源與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。裝備配戴者條件戰力 evaluator 已完成並接入實際 party prefix；候選物資 02 因來源未建立確切加成數值，仍只啟用通用購買／配戴流程並保持卡面效果停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目
 
 - **供應組成：** 其他物資／魔物的逐種類張數仍未知，但已明確不作為數位版或 playtest blocker；Content Pack 只需對自身宣告組成負責，且不得標示為官方實體配比。骷髏戰士確認為 3 張。
 - **供應耗盡後續：** 冒險者／物資公開列可縮減至空而不凍結遊戲並顯示對應訊息；骷髏戰士擊敗後回魔物牌庫底。Base supply 不設定 `pendingOfficialRuling`，魔物也不產生 depletion event。
 
-泛用 team capacity／overflow evaluation boundary 已實作，automatic 與 player-choice policy 都可由 query／dispatch 共用判定，choice 可跨 Snapshot 恢復完整 command transaction；未設定任何官方容量，亦未載入卡牌內容。特定裝備效果與任何正式／provisional 卡牌 reward／continuous 內容仍未實作。供應的兩個 legacy 項目已改為 supported／project-policy，不得再要求逐種份數或官方耗盡裁定。
+泛用 team capacity／overflow evaluation boundary 已實作，automatic 與 player-choice policy 都可由 query／dispatch 共用判定，choice 可跨 Snapshot 恢復完整 command transaction；未設定任何官方容量。除了 provisional resource-18 的 immediate equipment event trigger，其他正式／provisional reward／continuous 裝備效果仍未載入。供應的兩個 legacy 項目已改為 supported／project-policy，不得再要求逐種份數或官方耗盡裁定。
 
 ## 驗收條件
 

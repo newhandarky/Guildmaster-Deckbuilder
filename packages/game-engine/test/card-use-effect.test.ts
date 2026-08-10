@@ -470,7 +470,7 @@ describe('data-driven card use effects', () => {
 
     const tamperedState = structuredClone(snapshot);
     tamperedState.state.players[0]!.turnCombatBonus += 100;
-    expect(() => restoreSnapshot(tamperedState, ruleset)).toThrow(/Item post-command suspended state does not match canonical replay/);
+    expect(() => restoreSnapshot(tamperedState, ruleset)).toThrow(/Post-command suspended state does not match canonical replay/);
 
     const duplicateId = structuredClone(snapshot);
     duplicateId.state.effectState.pendingPostCommand!.resolutionEnvelopes![1]!.commandId = 'post-chain-root';

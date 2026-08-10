@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { validateSupplyContinuityPolicy, validateSupplyContinuityRegistry, type SupplyContinuityPolicy } from './supply-continuity-evaluator.js';
@@ -52,6 +52,17 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
       if (definition.type !== 'item') effectErrors.push('Only item definitions may declare useEffect.');
       if (definition.itemEffect) effectErrors.push('A card cannot declare both legacy itemEffect and useEffect.');
       if (effectErrors.length) throw new Error(`Invalid card use effect ${definition.id}: ${effectErrors.join(' ')}`);
+    }
+    if (definition.equipmentEventTriggers) {
+      const triggerErrors = definition.equipmentEventTriggers.flatMap(validateEquipmentEventTrigger);
+      if (definition.type !== 'equipment') triggerErrors.push('Only equipment definitions may declare equipmentEventTriggers.');
+      if (new Set(definition.equipmentEventTriggers.map(({ triggerId }) => triggerId)).size !== definition.equipmentEventTriggers.length) triggerErrors.push('Equipment event trigger IDs must be unique within a card definition.');
+      const groups = new Map<string, typeof definition.equipmentEventTriggers>();
+      for (const trigger of definition.equipmentEventTriggers) groups.set(`${trigger.point}\u0000${trigger.eventType}`, [...(groups.get(`${trigger.point}\u0000${trigger.eventType}`) ?? []), trigger]);
+      for (const triggers of groups.values()) {
+        if (triggers.length > 1 && (triggers.some(({ priority }) => priority === undefined) || new Set(triggers.map(({ priority }) => priority)).size !== triggers.length)) triggerErrors.push('Multiple equipment event triggers for one boundary require distinct explicit priorities.');
+      }
+      if (triggerErrors.length) throw new Error(`Invalid equipment event triggers ${definition.id}: ${triggerErrors.join(' ')}`);
     }
     if (definitions[definition.id]) throw new Error(`Duplicate card definition: ${definition.id}`);
     definitions[definition.id] = definition;

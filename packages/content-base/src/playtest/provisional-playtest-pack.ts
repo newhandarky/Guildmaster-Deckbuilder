@@ -6,7 +6,7 @@ export type ProvisionalPlaytestAssemblyFailure = { definitionId: string; field: 
 export type ProvisionalPlaytestAssemblyResult = { ok: true; pack: ContentPack } | { ok: false; failures: readonly ProvisionalPlaytestAssemblyFailure[] };
 
 const definitionTypes = new Set(['starter', 'adventurer', 'item', 'equipment', 'monster', 'boss', 'bond']);
-const supportedFields = new Set<ProvisionalFieldName>(['sourceName', 'cardType', 'copies', 'cost', 'combat', 'purchasePower', 'honor', 'setup']);
+const supportedFields = new Set<ProvisionalFieldName>(['sourceName', 'cardType', 'profession', 'copies', 'cost', 'combat', 'purchasePower', 'honor', 'setup']);
 const requiredByCategory: Readonly<Record<ProvisionalCardCandidate['category'], readonly ProvisionalFieldName[]>> = {
   starter: ['cardType', 'copies', 'setup'], adventurer: ['cardType', 'copies', 'cost', 'combat', 'honor'], resource: ['cardType', 'copies', 'cost'], monster: ['cardType', 'copies', 'combat', 'purchasePower', 'honor'], boss: ['cardType', 'copies', 'combat', 'purchasePower', 'honor'], bond: ['cardType', 'copies', 'honor', 'effect'], helper: ['cardType', 'copies', 'effect']
 };
@@ -44,7 +44,8 @@ export function assembleProvisionalPlaytestPack(catalog: ProvisionalBaseContentC
     const fields = Object.fromEntries(candidate.fields.filter(isRelevant).map((field) => [field.field, field.candidateValue]));
     const type = candidate.category === 'starter' ? 'starter' : fields.cardType;
     if (typeof type !== 'string' || !definitionTypes.has(type)) return undefined;
-    const definition: CardDefinition = { id: candidate.definitionId, name: placeholderName(candidate.definitionId), type, copies: typeof fields.copies === 'number' ? fields.copies : 0, source: 'provisional-playtest', ...(candidate.mechanicsTags?.length ? { tags: [...candidate.mechanicsTags] } : {}) };
+    const tags = [...(candidate.mechanicsTags ?? []), ...(typeof fields.profession === 'string' ? [`profession:${fields.profession}`] : [])];
+    const definition: CardDefinition = { id: candidate.definitionId, name: placeholderName(candidate.definitionId), type, copies: typeof fields.copies === 'number' ? fields.copies : 0, source: 'provisional-playtest', ...(tags.length ? { tags: [...new Set(tags)] } : {}) };
     for (const numericField of ['cost', 'combat', 'purchasePower', 'honor'] as const) if (typeof fields[numericField] === 'number') definition[numericField] = fields[numericField];
     return definition;
   }).filter((definition): definition is CardDefinition => definition !== undefined);

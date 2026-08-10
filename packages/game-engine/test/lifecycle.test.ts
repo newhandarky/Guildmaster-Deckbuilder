@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
+import type { ContentPack, EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { createGame, createRuleset, dispatch, dispatchLifecycle, envelope, getLegalCommands, restoreSnapshot, resumeLifecycleChoice, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule, Ruleset } from '../src/rules/ruleset.js';
@@ -10,6 +10,25 @@ const hook = (moduleId: string, hookId: string, point: LifecycleHook['point'], p
 const module = (id: string, hooks: readonly LifecycleHook[], version = '1'): RulesModule => ({ id, version, getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', lifecycleHooks: hooks });
 const gameFor = (ruleset: Ruleset) => createGame({ gameId: 'lifecycle-game', seed: 19, players: [{ id: 'p1', name: '玩家', kind: 'human' }, { id: 'p2', name: 'AI', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
 const choiceBody = (amount = 2): EffectDefinition['body'] => ({ kind: 'choice', choiceId: 'choose-bonus', actor: { kind: 'controller' }, options: [{ id: 'accept', effect: modify(amount) }, { id: 'decline', effect: modify(0) }] });
+const equipmentTriggerPack = (body: EffectDefinition['body'] = {
+  kind: 'conditional',
+  condition: { kind: 'has-card-at', card: { kind: 'context-card', key: 'sourceEquipment' }, location: { kind: 'context-location', key: 'sourceEquipment' } },
+  whenTrue: { kind: 'draw', player: { kind: 'controller' }, count: 1 },
+}): ContentPack => ({
+  ...testPack,
+  manifest: { ...testPack.manifest, version: 'equipment-trigger', hash: 'equipment-trigger' },
+  definitions: testPack.definitions.map((definition) => definition.id === 'test:item/spear' ? {
+    ...definition,
+    equipmentEventTriggers: [{
+      schemaVersion: 1,
+      triggerId: 'draw-after-defeat',
+      point: 'event-after',
+      eventType: 'ENEMY_DEFEATED',
+      priority: 10,
+      effect: { schemaVersion: 1, effectId: 'test:item/spear/draw-after-defeat', body },
+    }],
+  } : definition),
+});
 
 describe('Rules Module lifecycle dispatcher', () => {
   it('dispatches hooks from multiple modules in explicit priority order', () => {
@@ -118,6 +137,71 @@ describe('Rules Module lifecycle dispatcher', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:command', [before, after]), module('test:reward', [reward])]); const state = gameFor(ruleset); state.phase = 'combat'; const targetId = Object.values(state.enemyTargets).find((target) => target.kind === 'monster')!.targetId;
     const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.turnPurchaseBonus).toBe(7); expect(result.state.players[0]!.counters).toContainEqual({ resourceId: 'test:reward', amount: 3, visibility: 'ownerOnly' }); expect(result.events.some((entry) => entry.type === 'COMBAT_REWARD_GRANTED')).toBe(true);
+  });
+
+  it('executes content-owned equipment triggers once per attached actor instance in party-slot order', () => {
+    const ruleset = createRuleset([equipmentTriggerPack()], [baseRulesModule]);
+    const state = gameFor(ruleset);
+    const equipmentIds = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'test:item/spear').map(({ id }) => id);
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => !equipmentIds.includes(id));
+    state.players[0]!.party[0]!.equipmentId = equipmentIds[1]!;
+    state.players[0]!.party[1]!.equipmentId = equipmentIds[0]!;
+    state.players[1]!.party[0]!.equipmentId = equipmentIds[2]!;
+    state.players[0]!.drawPile.push(...state.players[0]!.hand.splice(-2));
+    const handBefore = state.players[0]!.hand.length;
+    const otherHandBefore = state.players[1]!.hand.length;
+
+    const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'event-after', eventType: 'ENEMY_DEFEATED', actorId: 'p1' }, { controllerId: 'p1' });
+
+    expect(result.status).toBe('completed');
+    expect(result.hookIds).toEqual([
+      `equipment:${equipmentIds[1]}:draw-after-defeat`,
+      `equipment:${equipmentIds[0]}:draw-after-defeat`,
+    ]);
+    expect(result.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(2);
+    expect(state.players[0]!.hand).toHaveLength(handBefore + 2);
+    expect(state.players[1]!.hand).toHaveLength(otherHandBefore);
+    expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
+  });
+
+  it('rolls equipment event effects back when a later module hook fails at the same boundary', () => {
+    const bad = hook('test:bad-after-equipment', 'bad', 'event-after', 1, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } });
+    bad.eventType = 'ENEMY_DEFEATED';
+    const ruleset = createRuleset([equipmentTriggerPack(modify(3))], [baseRulesModule, module('test:bad-after-equipment', [bad])]);
+    const state = gameFor(ruleset);
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== equipmentId);
+    state.players[0]!.party[0]!.equipmentId = equipmentId;
+    const before = structuredClone(state);
+
+    expect(dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'event-after', eventType: 'ENEMY_DEFEATED', actorId: 'p1' }, { controllerId: 'p1' })).toMatchObject({ status: 'failed', events: [] });
+    expect(state).toEqual(before);
+  });
+
+  it('applies the schema-v1 equipment-before-module precedence independently of cross-domain priority values', () => {
+    const moduleHook = hook('test:after-equipment', 'module-after-equipment', 'event-after', -100, modify(4));
+    moduleHook.eventType = 'ENEMY_DEFEATED';
+    const ruleset = createRuleset([equipmentTriggerPack(modify(3))], [baseRulesModule, module('test:after-equipment', [moduleHook])]);
+    const state = gameFor(ruleset);
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== equipmentId);
+    state.players[0]!.party[0]!.equipmentId = equipmentId;
+
+    const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'event-after', eventType: 'ENEMY_DEFEATED', actorId: 'p1' }, { controllerId: 'p1' });
+
+    expect(result).toMatchObject({ status: 'completed', hookIds: [`equipment:${equipmentId}:draw-after-defeat`, 'module-after-equipment'] });
+    expect(state.players[0]!.turnPurchaseBonus).toBe(7);
+  });
+
+  it('rejects equipment triggers on non-equipment cards and every suspending trigger program', () => {
+    const source = equipmentTriggerPack();
+    const wrongType: ContentPack = { ...source, definitions: source.definitions.map((definition) => definition.id === 'test:item/spear' ? { ...definition, type: 'item' } : definition) };
+    expect(() => createRuleset([wrongType], [baseRulesModule])).toThrow('Only equipment definitions');
+    expect(() => createRuleset([equipmentTriggerPack(choiceBody())], [baseRulesModule])).toThrow('must be immediate');
+    const nonCanonical: ContentPack = { ...source, definitions: source.definitions.map((definition) => definition.id === 'test:item/spear' ? { ...definition, equipmentEventTriggers: definition.equipmentEventTriggers!.map((trigger) => ({ ...trigger, eventType: ' ENEMY_DEFEATED' })) } : definition) };
+    expect(() => createRuleset([nonCanonical], [baseRulesModule])).toThrow('leading or trailing whitespace');
+    const duplicatePriority: ContentPack = { ...source, definitions: source.definitions.map((definition) => definition.id === 'test:item/spear' ? { ...definition, equipmentEventTriggers: [definition.equipmentEventTriggers![0]!, { ...definition.equipmentEventTriggers![0]!, triggerId: 'second-trigger' }] } : definition) };
+    expect(() => createRuleset([duplicatePriority], [baseRulesModule])).toThrow('distinct explicit priorities');
   });
 
   it('suspends a command-before hook and rolls back a failing event hook with the command', () => {

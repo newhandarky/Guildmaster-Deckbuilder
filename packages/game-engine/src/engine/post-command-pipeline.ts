@@ -228,7 +228,7 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (outer.envelope.gameId !== state.gameId || outer.envelope.expectedRevision !== state.revision) return 'Post-command command envelope is incompatible with current state.';
   const resolutions = outer.resolutionEnvelopes ?? [];
   const commandIds = [outer.envelope.commandId, ...resolutions.map(({ commandId }) => commandId)];
-  if (resolutions.length > 256 || new Set(commandIds).size !== commandIds.length || (resolutions.length > 0 && outer.envelope.command.type !== 'USE_ITEM') || resolutions.some((resolution) => resolution.gameId !== state.gameId || resolution.expectedRevision !== outer.envelope.expectedRevision || (resolution.command.type !== 'RESOLVE_EFFECT_CHOICE' && resolution.command.type !== 'RESPOND_COUNTER_CONSENT' && resolution.command.type !== 'CANCEL_COUNTER_CONSENT' && resolution.command.type !== 'EXPIRE_COUNTER_CONSENT'))) return 'Post-command resolution transcript is malformed or duplicated.';
+  if (resolutions.length > 256 || new Set(commandIds).size !== commandIds.length || resolutions.some((resolution) => resolution.gameId !== state.gameId || resolution.expectedRevision !== outer.envelope.expectedRevision || (resolution.command.type !== 'RESOLVE_EFFECT_CHOICE' && resolution.command.type !== 'RESPOND_COUNTER_CONSENT' && resolution.command.type !== 'CANCEL_COUNTER_CONSENT' && resolution.command.type !== 'EXPIRE_COUNTER_CONSENT'))) return 'Post-command resolution transcript is malformed or duplicated.';
   if (lifecycle.context.controllerId !== outer.envelope.actorId || (choice && (choice.actorId !== outer.envelope.actorId || !same(choice.context, lifecycle.context))) || (consent && (consent.requesterId !== outer.envelope.actorId || !same(consent.context, lifecycle.context)))) return 'Post-command actor or effect context mismatch.';
   const expectedExecutionId = `${lifecycle.dispatchId}:${lifecycle.currentHook.moduleId}:${lifecycle.currentHook.hookId}`;
   if ((choice?.executionId ?? consent?.executionId) !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
@@ -346,7 +346,7 @@ export function beginPostCommandPipeline(state: GameState, ruleset: Ruleset, env
 }
 
 /** Resolves the current hook choice, then advances only from the serialized outer cursor. */
-export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, actorId: string, executionId: string, choiceId: string, optionId: string): PostCommandPipelineResult {
+export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, actorId: string, executionId: string, choiceId: string, optionId: string, resolutionEnvelope: CommandEnvelope): PostCommandPipelineResult {
   const validationError = validatePostCommandContinuationState(state, ruleset);
   const saved = state.effectState.pendingPostCommand;
   if (!saved) return { status: 'failed', state, events: [], error: 'No pending post-command continuation.', rollback: 'none' };
@@ -358,7 +358,7 @@ export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, ac
   const cursor: PostCommandPipelineCursor = {
     continuationId: saved.continuationId,
     envelope: clone(saved.envelope),
-    ...(saved.resolutionEnvelopes?.length ? { resolutionEnvelopes: clone(saved.resolutionEnvelopes) } : {}),
+    resolutionEnvelopes: [...clone(saved.resolutionEnvelopes ?? []), clone(resolutionEnvelope)],
     rollbackState: clone(saved.rollbackState),
     facts: clone(saved.facts),
     factIndex: saved.factIndex,
@@ -375,14 +375,14 @@ export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, ac
 }
 
 /** Resolves a counter consent action, then advances only from the serialized outer cursor. */
-export function resumePostCommandCounterConsent(state: GameState, ruleset: Ruleset, actorId: string, requestId: string, action: 'accept' | 'decline' | 'cancel' | 'expire'): PostCommandPipelineResult {
+export function resumePostCommandCounterConsent(state: GameState, ruleset: Ruleset, actorId: string, requestId: string, action: 'accept' | 'decline' | 'cancel' | 'expire', resolutionEnvelope: CommandEnvelope): PostCommandPipelineResult {
   const validationError = validatePostCommandContinuationState(state, ruleset);
   const saved = state.effectState.pendingPostCommand;
   if (!saved) return { status: 'failed', state, events: [], error: 'No pending post-command continuation.', rollback: 'none' };
   if (validationError) return { status: 'failed', state, events: [], error: validationError, rollback: 'command' };
   const consent = state.effectState.pendingCounterConsent;
   if (!consent || requestId !== consent.requestId) return { status: 'failed', state, events: [], error: 'No matching pending post-command counter consent.', rollback: 'none' };
-  const cursor: PostCommandPipelineCursor = { continuationId: saved.continuationId, envelope: clone(saved.envelope), ...(saved.resolutionEnvelopes?.length ? { resolutionEnvelopes: clone(saved.resolutionEnvelopes) } : {}), rollbackState: clone(saved.rollbackState), facts: clone(saved.facts), factIndex: saved.factIndex, boundary: saved.boundary, events: clone([...saved.events]) };
+  const cursor: PostCommandPipelineCursor = { continuationId: saved.continuationId, envelope: clone(saved.envelope), resolutionEnvelopes: [...clone(saved.resolutionEnvelopes ?? []), clone(resolutionEnvelope)], rollbackState: clone(saved.rollbackState), facts: clone(saved.facts), factIndex: saved.factIndex, boundary: saved.boundary, events: clone([...saved.events]) };
   const resumed = resumeLifecycleCounterConsent(state, ruleset, actorId, requestId, action);
   appendLifecycleEvents(cursor, resumed.events);
   if (resumed.status === 'suspended') return suspend(state, cursor);

@@ -61,7 +61,7 @@ describe('generic equipment eligibility evaluation', () => {
     const hook: LifecycleHook = { schemaVersion: 1, moduleId: 'test:choice', hookId: 'after-attach', point: 'event-after', eventType: 'EQUIPMENT_ATTACHED', kind: 'trigger', priority: 1, effect: { schemaVersion: 1, effectId: 'test:choice/audit', body } };
     const ruleset = rules({ ...module('test:choice', []), lifecycleHooks: [hook] }); const state = game(ruleset); const ids = prepare(state); const command = { type: 'EQUIP_ITEM' as const, cardId: ids.equipmentId, adventurerId: ids.adventurerId };
     const suspended = dispatch(state, ruleset, envelope(state, 'p1', command)); expect(suspended.error).toBeUndefined(); expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingPostCommand).toMatchObject({ boundary: 'event-after' });
-    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const choice = getLegalCommands(restored, ruleset, 'p1')[0]!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', choice));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset); const choice = getLegalCommands(restored, ruleset, 'p1')[0]!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', choice));
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.party.find((slot) => slot.adventurerId === ids.adventurerId)!.equipmentId).toBe(ids.equipmentId); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(2); expect(completed.events.filter(({ type }) => type === 'EQUIPMENT_ATTACHED')).toHaveLength(1);
   });
 

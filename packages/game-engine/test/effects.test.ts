@@ -57,6 +57,41 @@ describe('serializable effect primitives', () => {
     expect(left.rngState).toBe(right.rngState); expect(left.players[0]!.turnPurchaseBonus).toBe(right.players[0]!.turnPurchaseBonus); expect(left.players[0]!.turnCombatBonus).toBe(right.players[0]!.turnCombatBonus);
   });
 
+  it('draws from a canonical distinct party-tag count without double-counting a profession', () => {
+    const state = makeGame();
+    const player = state.players[0]!;
+    state.cards[player.party[0]!.adventurerId]!.definitionId = 'test:adventurer/a';
+    const dynamicRuleset = {
+      ...testRuleset,
+      registry: {
+        ...testRuleset.registry,
+        definitions: {
+          ...testRuleset.registry.definitions,
+          'test:adventurer/a': { ...testRuleset.registry.definitions['test:adventurer/a']!, tags: ['profession:ranged'] },
+        },
+      },
+    };
+    const effect: EffectDefinition = {
+      schemaVersion: 1,
+      effectId: 'test:effect/distinct-profession-draw',
+      body: {
+        kind: 'draw',
+        player: { kind: 'controller' },
+        count: { kind: 'party-distinct-tag-count', player: { kind: 'controller' }, tagPrefix: 'profession:' },
+      },
+    };
+    player.drawPile.push(...player.hand.splice(0, 2));
+    const handBefore = player.hand.length;
+    const result = executeEffect(state, dynamicRuleset, effect, { controllerId: 'p1' }, 'distinct-professions');
+    expect(result).toMatchObject({ status: 'completed' });
+    expect(result.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(2);
+    expect(state.players[0]!.hand).toHaveLength(handBefore + 2);
+
+    const invalid: EffectDefinition = structuredClone(effect);
+    if (invalid.body.kind === 'draw' && typeof invalid.body.count !== 'number') invalid.body.count.tagPrefix = ' profession:';
+    expect(executeEffect(state, dynamicRuleset, invalid, { controllerId: 'p1' }, 'invalid-prefix')).toMatchObject({ status: 'failed', error: expect.stringContaining('leading or trailing whitespace') });
+  });
+
   it('moves cards atomically across player, party, equipment, removed, and module zones', () => {
     const state = makeGame(); state.zones['test:module-zone'] = { zoneId: 'test:module-zone', kind: 'moduleArea', cardIds: [], visibility: 'public', rulesModuleId: 'test:rules' };
     const cardId = state.players[0]!.hand.find((id) => testRuleset.registry.definitions[state.cards[id]!.definitionId]!.type === 'starter')!;

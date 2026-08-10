@@ -8,7 +8,7 @@ describe('provisional foundation Content Pack', () => {
       contentStatus: 'provisional-playtest',
       role: 'base',
     });
-    expect(baseProvisionalFoundationContentPack.definitions).toHaveLength(31);
+    expect(baseProvisionalFoundationContentPack.definitions).toHaveLength(34);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'adventurer')).toBe(true);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'monster')).toBe(true);
     expect(baseProvisionalFoundationContentPack.definitions.some(({ type }) => type === 'boss')).toBe(true);
@@ -21,8 +21,11 @@ describe('provisional foundation Content Pack', () => {
       expect.objectContaining({ id: 'base:resource/resource-05', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: { kind: 'definition-type-in', values: ['equipment'] } }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-08', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: 2 } }) }),
       expect.objectContaining({ id: 'base:resource/resource-10', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
+      expect.objectContaining({ id: 'base:resource/resource-13', type: 'item', copies: 2, tags: expect.arrayContaining(['affinity:mage']), useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: expect.objectContaining({ kind: 'all' }) }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-15', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', from: expect.objectContaining({ kind: 'one-of' }) }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-17', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
+      expect.objectContaining({ id: 'base:resource/resource-18', type: 'equipment', copies: 2, equipmentEventTriggers: [expect.objectContaining({ eventType: 'ENEMY_DEFEATED', effect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: 1 } }) })] }),
+      expect.objectContaining({ id: 'base:resource/resource-27', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: { kind: 'party-distinct-tag-count', player: { kind: 'controller' }, tagPrefix: 'profession:' } } }) }),
     ]);
     expect(baseProvisionalFoundationContentPack.definitions
       .filter((definition) => definition.type !== 'starter' && !enabled.some(({ id }) => id === definition.id))
@@ -41,6 +44,13 @@ describe('provisional foundation Content Pack', () => {
       }
     }
     expect(baseProvisionalFoundationContentPack.definitions.find(({ id }) => id === 'base:adventurer/adventurer-01')?.tags).toContain('profession:support');
+    expect(baseProvisionalFoundationContentPack.definitions.filter(({ id }) => id.startsWith('base:starter/adventurer-')).map(({ tags }) => tags?.find((tag) => tag.startsWith('profession:')))).toEqual([
+      'profession:support',
+      'profession:melee',
+      'profession:mage',
+      'profession:tank',
+      'profession:ranged',
+    ]);
   });
 
   it('uses only the approved three-copy cycle anchor', () => {
@@ -57,8 +67,11 @@ describe('provisional foundation Content Pack', () => {
         expect.objectContaining({ id: 'base:resource/resource-05', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-08', copies: 2, cost: 4 }),
         expect.objectContaining({ id: 'base:resource/resource-10', copies: 2, cost: 3 }),
+        expect.objectContaining({ id: 'base:resource/resource-13', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-15', copies: 2, cost: 4 }),
         expect.objectContaining({ id: 'base:resource/resource-17', copies: 2, cost: 4 }),
+        expect.objectContaining({ id: 'base:resource/resource-18', copies: 2, cost: 4 }),
+        expect.objectContaining({ id: 'base:resource/resource-27', copies: 2, cost: 5 }),
       ]);
   });
 });

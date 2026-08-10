@@ -127,7 +127,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     outer.rollbackState = structuredClone(GameStateSchema.parse(outer.rollbackState) as GameState); assertGameStateInvariants(outer.rollbackState);
     const error = validatePostCommandContinuationState(state, ruleset);
     if (error) throw new Error(error);
-    if (!ruleset && outer.envelope.command.type === 'USE_ITEM') throw new Error('Pending item post-command Snapshot requires the active ruleset for canonical restore.');
+    if (!ruleset) throw new Error('Pending post-command Snapshot requires the active ruleset for canonical restore.');
     if (ruleset) {
       let replayed = dispatch(structuredClone(outer.rollbackState), ruleset, structuredClone(outer.envelope));
       if (replayed.error) throw new Error(`Post-command canonical replay failed at the root command: ${replayed.error.message}`);
@@ -140,10 +140,8 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const normalizedCanonical = canonicalFacts.map((fact) => DomainEventSchema.parse(fact));
       const normalizedPersisted = outer.facts.map((fact) => DomainEventSchema.parse(fact));
       if (JSON.stringify(normalizedCanonical) !== JSON.stringify(normalizedPersisted)) throw new Error('Post-command facts must equal the complete ordered reducer fact segment.');
-      if (outer.envelope.command.type === 'USE_ITEM') {
-        const difference = firstDifference(replayed.state, state);
-        if (difference) throw new Error(`Item post-command suspended state does not match canonical replay at ${difference}.`);
-      }
+      const difference = firstDifference(replayed.state, state);
+      if (difference) throw new Error(`Post-command suspended state does not match canonical replay at ${difference}.`);
     }
   }
   if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');

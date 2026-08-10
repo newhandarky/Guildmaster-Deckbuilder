@@ -53,6 +53,72 @@ describe('web content modes', () => {
     expect(restoreSnapshot(serializeSnapshot(result.state), ruleset)).toEqual(result.state);
   });
 
+  it('draws once per distinct profession currently represented in the party for resource-27', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: 'foundation-resource-27',
+      seed: 20260815,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-27')!.id;
+    const extraSupportId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-01')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== extraSupportId);
+    const player = state.players[0]!;
+    const supportSlot = player.party.find(({ adventurerId }) => ruleset.registry.definitions[state.cards[adventurerId]!.definitionId]!.tags?.includes('profession:support'))!;
+    const mageSlot = player.party.find(({ adventurerId }) => ruleset.registry.definitions[state.cards[adventurerId]!.definitionId]!.tags?.includes('profession:mage'))!;
+    player.drawPile.push(...player.party.filter((slot) => slot !== supportSlot && slot !== mageSlot).map(({ adventurerId }) => adventurerId));
+    player.party = [supportSlot, mageSlot, { adventurerId: extraSupportId }];
+    player.hand.push(itemId);
+    const handBefore = player.hand.length;
+
+    const result = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'foundation-use-resource-27'));
+    expect(result.error).toBeUndefined();
+    expect(result.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(2);
+    expect(result.state.players[0]!.hand).toHaveLength(handBefore + 1);
+    expect(result.state.players[0]!.playArea).toContain(itemId);
+    expect(result.state.revision).toBe(1);
+    expect(restoreSnapshot(serializeSnapshot(result.state), ruleset)).toEqual(result.state);
+  });
+
+  it('triggers resource-18 only for attached instances whose wearer remains after combat', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: 'foundation-resource-18',
+      seed: 20260818,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const equipmentIds = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'base:resource/resource-18').map(({ id }) => id);
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => !equipmentIds.includes(id));
+    const player = state.players[0]!;
+    const participatingAdventurerId = player.party[0]!.adventurerId;
+    player.party[0]!.equipmentId = equipmentIds[1]!;
+    player.party.at(-1)!.equipmentId = equipmentIds[0]!;
+    player.drawPile.push(...player.hand.splice(-2));
+    state.phase = 'combat';
+    const attack = getLegalCommands(state, ruleset, player.id).find((command) => command.type === 'ATTACK_TARGET');
+    expect(attack).toBeDefined();
+    const target = state.enemyTargets[attack!.targetId]!;
+    const requiredCombat = ruleset.registry.definitions[state.cards[target.cardInstanceId]!.definitionId]!.combat!;
+    const firstAdventurerCombat = ruleset.registry.definitions[state.cards[participatingAdventurerId]!.definitionId]!.combat!;
+    player.turnCombatBonus = Math.max(0, requiredCombat - firstAdventurerCombat);
+    const handBefore = player.hand.length;
+
+    const result = dispatch(state, ruleset, envelope(state, player.id, attack!, 'foundation-attack-resource-18'));
+
+    expect(result.error).toBeUndefined();
+    expect(result.events.some(({ type }) => type === 'ENEMY_DEFEATED')).toBe(true);
+    expect(result.events.filter(({ type }) => type === 'CARD_DRAWN')).toHaveLength(1);
+    expect(result.events.filter(({ type }) => type === 'EFFECT_STARTED')).toHaveLength(1);
+    expect(result.state.players[0]!.hand).toHaveLength(handBefore + 1);
+    expect(result.state.players[0]!.party.some(({ adventurerId }) => adventurerId === participatingAdventurerId)).toBe(false);
+    expect(result.state.players[0]!.discardPile).toEqual(expect.arrayContaining([participatingAdventurerId, equipmentIds[1]!]));
+    expect(result.state.players[0]!.party.some(({ equipmentId }) => equipmentId === equipmentIds[0])).toBe(true);
+    expect(result.state.revision).toBe(1);
+    expect(restoreSnapshot(serializeSnapshot(result.state), ruleset)).toEqual(result.state);
+  });
+
   it.each([
     { itemDefinitionId: 'base:resource/resource-01', targetType: 'adventurer', excludedType: 'equipment' },
     { itemDefinitionId: 'base:resource/resource-05', targetType: 'equipment', excludedType: 'adventurer' },
@@ -92,6 +158,7 @@ describe('web content modes', () => {
     'base:resource/resource-01',
     'base:resource/resource-04',
     'base:resource/resource-05',
+    'base:resource/resource-13',
   ])('omits $itemDefinitionId when its filtered choice has no candidates', (itemDefinitionId) => {
     const ruleset = createWebRuleset(undefined, 'provisional-playtest');
     const state = createGame({
@@ -105,6 +172,42 @@ describe('web content modes', () => {
     state.players[0]!.hand.push(itemId);
 
     expect(getLegalCommands(state, ruleset, 'human-1')).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+  });
+
+  it('recovers a mage-affinity card while excluding non-mage cards and every resource-13 copy', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+    const state = createGame({
+      gameId: 'foundation-resource-13',
+      seed: 20260814,
+      players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    const stones = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'base:resource/resource-13');
+    const itemId = stones[0]!.id;
+    const excludedStoneId = stones[1]!.id;
+    const mageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-03')!.id;
+    const nonMageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-02')!.id;
+    for (const zone of Object.values(state.zones)) {
+      zone.cardIds = zone.cardIds.filter((id) => ![itemId, excludedStoneId, mageId, nonMageId].includes(id));
+    }
+    const player = state.players[0]!;
+    player.hand.push(itemId);
+    player.discardPile.push(nonMageId, excludedStoneId, mageId);
+
+    expect(getLegalCommands(state, ruleset, player.id)).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    const suspended = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'foundation-use-resource-13'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([mageId]);
+
+    const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === mageId)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, 'foundation-resolve-resource-13'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.hand).toContain(mageId);
+    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining([nonMageId, excludedStoneId]));
+    expect(completed.state.players[0]!.playArea).toContain(itemId);
+    expect(completed.state.revision).toBe(1);
+    expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);
   });
 
   it('requires and discards a boss card before resource-04 draws three cards', () => {

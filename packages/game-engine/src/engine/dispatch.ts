@@ -375,7 +375,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   }
   if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingPostCommand) {
     const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
-    const result = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumePostCommandCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
+    const result = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId, envelope) : resumePostCommandCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command), envelope);
     if (result.status === 'failed' || result.status === 'unsupported') return result.rollback === 'command' ? { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: result.error ?? '無法恢復 post-command lifecycle。' } } : fail(state, 'INVALID_COMMAND', result.error ?? '無法恢復 post-command lifecycle。');
     if (result.status === 'suspended') return { state: nextState, events: result.events };
     nextState.revision += 1;

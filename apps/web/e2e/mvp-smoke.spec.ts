@@ -159,7 +159,7 @@ test('provisional foundation mode is explicit, visibly limited, and restored by 
   await expect(entry.getByText(/內部測試模式：卡牌名稱使用中性代號/)).toBeVisible();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
 
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與七項道具效果');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與十項卡牌效果');
   await expect(page.getByText('基礎候選數值測試 · 單機人機對戰')).toBeVisible();
   const persistedPackId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.contentPacks[0].id);
   expect(persistedPackId).toBe('base:provisional-foundation');
