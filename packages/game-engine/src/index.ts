@@ -4,6 +4,7 @@ export * from './engine/snapshot.js';
 export * from './engine/replay.js';
 export * from './engine/state-invariants.js';
 export * from './engine/post-command-pipeline.js';
+export * from './engine/card-use-effect-pipeline.js';
 export * from './effects/executor.js';
 export * from './effects/movement.js';
 export * from './effects/lifecycle-dispatcher.js';

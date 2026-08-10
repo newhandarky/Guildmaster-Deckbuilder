@@ -43,6 +43,50 @@ export const demoPresentationPack: PresentationPack = {
   ],
 };
 
+/** Internal neutral copy for the first provisional resource slice. */
+export const provisionalFoundationPresentationPack: PresentationPack = {
+  manifest: {
+    id: 'presentation:provisional-foundation-neutral',
+    version: '2.0.0',
+    theme: 'neutral-text',
+    locale: 'zh-TW',
+  },
+  entries: [
+    {
+      definitionId: 'base:resource/resource-02',
+      displayName: '候選物資 02',
+      portraitAssetKey: 'placeholder:provisional-equipment',
+      portraitAltText: '候選裝備的中性圖像 placeholder',
+      shortDisplayText: '候選裝備；卡面效果尚未啟用。',
+      detailDisplayText: '可測試購買與配戴流程；此裝備的個別卡面效果尚未啟用。',
+    },
+    {
+      definitionId: 'base:resource/resource-08',
+      displayName: '候選物資 08',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：抽 2 張牌。',
+      detailDisplayText: '行動階段使用後抽 2 張牌；此為 provisional 候選效果，尚不代表正式卡表。',
+    },
+    {
+      definitionId: 'base:resource/resource-10',
+      displayName: '候選物資 10',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：棄 1 張手牌，然後抽 2 張牌。',
+      detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌；此為 provisional 候選效果。',
+    },
+    {
+      definitionId: 'base:resource/resource-17',
+      displayName: '候選物資 17',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：抽 3 張牌，然後棄 1 張手牌。',
+      detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌；此為 provisional 候選效果。',
+    },
+  ],
+};
+
 /**
  * Only approved runtime assets belong here. Empty/partial coverage is valid and
  * deliberately leaves the Web client on its neutral CSS placeholder.

@@ -1,4 +1,4 @@
-import { baseDemoContentPack } from '@guildmaster/content-base';
+import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { EffectDefinition } from '@guildmaster/game-protocol';
 import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
@@ -77,14 +77,41 @@ const consentModule: RulesModule = {
   }],
 };
 
-export function createWebRuleset(scenario?: E2EScenario) {
+export type WebContentMode = 'demo' | 'provisional-playtest';
+
+export const webContentModeOptions: Readonly<Record<WebContentMode, {
+  label: string;
+  description: string;
+  warning?: string;
+}>> = {
+  demo: {
+    label: '原創示範牌組',
+    description: '完整可玩、適合一般測試；使用原創文字內容與既有卡牌效果。',
+  },
+  'provisional-playtest': {
+    label: '基礎候選數值測試',
+    description: '載入候選起始卡、冒險者、首批四種物資、魔物與魔王數值。',
+    warning: '內部測試模式：卡牌名稱使用中性代號；已接入首批物資與三項道具效果，其餘個別效果尚未啟用。',
+  },
+};
+
+export function webContentModeFromPackIds(packIds: readonly string[]): WebContentMode {
+  return packIds.includes(baseProvisionalFoundationContentPack.manifest.id) ? 'provisional-playtest' : 'demo';
+}
+
+export function createWebRuleset(scenario?: E2EScenario, contentMode: WebContentMode = 'demo') {
   const scenarioModule = scenario === 'lifecycle-choice'
     ? choiceModule
     : scenario === 'lifecycle-consent'
       ? consentModule
       : undefined;
   return createRuleset(
-    [scenario ? getE2EScenarioPack(scenario) : baseDemoContentPack],
+    [scenario
+      ? getE2EScenarioPack(scenario)
+      : contentMode === 'provisional-playtest'
+        ? baseProvisionalFoundationContentPack
+        : baseDemoContentPack],
     [baseRulesModule, ...(scenarioModule ? [scenarioModule] : [])],
+    { allowProvisionalPlaytest: !scenario && contentMode === 'provisional-playtest' },
   );
 }

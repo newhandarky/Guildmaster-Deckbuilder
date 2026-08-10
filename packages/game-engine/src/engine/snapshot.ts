@@ -9,6 +9,20 @@ import { validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgains
 import { dispatch } from './dispatch.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { validatePendingCombatRewardContinuation } from './combat-reward-pipeline.js';
+import { validatePendingCardUseContinuation } from './card-use-effect-pipeline.js';
+function firstDifference(left: unknown, right: unknown, path = '$'): string | undefined {
+  if (Object.is(left, right)) return undefined;
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) return path;
+  if (Array.isArray(left) !== Array.isArray(right)) return path;
+  const leftRecord = left as Record<string, unknown>; const rightRecord = right as Record<string, unknown>;
+  const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort();
+  for (const key of keys) {
+    if (!(key in leftRecord) || !(key in rightRecord)) return `${path}.${key}`;
+    const difference = firstDifference(leftRecord[key], rightRecord[key], Array.isArray(left) ? `${path}[${key}]` : `${path}.${key}`);
+    if (difference) return difference;
+  }
+  return undefined;
+}
 export function serializeSnapshot(state: GameState): VersionedSnapshot { if (!isFiniteJsonValue(state)) throw new Error('Game state is not finite, acyclic plain JSON.'); GameStateSchema.parse(state); assertGameStateInvariants(state); return { schemaVersion: 2, engineVersion: state.engineVersion, rulesetVersion: state.rulesetVersion, contentPacks: structuredClone(state.contentPacks), rulesModules: structuredClone(state.rulesModules), state: structuredClone(state) }; }
 function migrateV1(snapshot: Record<string, unknown>): unknown {
   const state = snapshot.state as Record<string, unknown>; const shared = state.sharedZones as Record<string, string[]>;
@@ -55,7 +69,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const programError = !hook || !suspension
         ? 'Pending lifecycle hook or suspension is missing.'
         : state.effectState.pendingChoice
-          ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect)
+          ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect, state)
           : validatePendingCounterConsentAgainstEffect(state.effectState.pendingCounterConsent!, hook.effect);
       if (programError) throw new Error(programError);
     }
@@ -68,6 +82,27 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const optionSets = Object.values(command.optionCandidates);
       if (!choice || consent || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'PLAY_ADVENTURER' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `team-overflow:${command.envelope.commandId}` || choice.choiceId !== `team-overflow:${command.policy.policyId}` || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.candidateIds).size !== command.candidateIds.length || !command.candidateIds.every((id) => rollbackState.players.find(({ id: playerId }) => playerId === command.envelope.actorId)?.party.some((slot) => slot.adventurerId === id)) || !optionSets.every((set) => set.length === command.requiredSelectionCount && new Set(set).size === set.length && set.every((id) => command.candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidates[option.id])) throw new Error('Invalid team overflow continuation.');
       command.rollbackState = structuredClone(rollbackState); return state;
+    }
+    if (command.kind === 'card-use-effect') {
+      const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
+      const rollbackEffects = rollbackState.effectState;
+      if (Boolean(choice) === Boolean(consent) || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'USE_ITEM' || command.continuationId !== `card-use-effect:${command.envelope.commandId}` || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand) throw new Error('Invalid card-use continuation.');
+      const eventError = validateTransactionEventSequence(command.events, state, command.registry, command.envelope.commandId, ruleset);
+      if (eventError) throw new Error(eventError);
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending card-use Snapshot requires the active ruleset for canonical restore.');
+      const continuationError = validatePendingCardUseContinuation(state, ruleset);
+      if (continuationError) throw new Error(continuationError);
+      let canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error) throw new Error(`Card-use canonical replay failed at the root command: ${canonical.error.message}`);
+      for (const resolutionEnvelope of command.resolutionEnvelopes) {
+        canonical = dispatch(canonical.state, ruleset, structuredClone(resolutionEnvelope));
+        if (canonical.error) throw new Error(`Card-use canonical replay failed at a resolution command: ${canonical.error.message}`);
+      }
+      if (canonical.state.effectState.pendingCommand?.kind !== 'card-use-effect') throw new Error('Card-use canonical replay did not suspend at the expected effect boundary.');
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Card-use suspended state does not match canonical replay at ${difference}.`);
+      return state;
     }
     if (command.kind === 'combat-reward') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) }; const evaluation = command.evaluation;
@@ -86,14 +121,23 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     outer.rollbackState = structuredClone(GameStateSchema.parse(outer.rollbackState) as GameState); assertGameStateInvariants(outer.rollbackState);
     const error = validatePostCommandContinuationState(state, ruleset);
     if (error) throw new Error(error);
+    if (!ruleset && outer.envelope.command.type === 'USE_ITEM') throw new Error('Pending item post-command Snapshot requires the active ruleset for canonical restore.');
     if (ruleset) {
-      const replayed = dispatch(structuredClone(outer.rollbackState), ruleset, structuredClone(outer.envelope));
+      let replayed = dispatch(structuredClone(outer.rollbackState), ruleset, structuredClone(outer.envelope));
+      if (replayed.error) throw new Error(`Post-command canonical replay failed at the root command: ${replayed.error.message}`);
+      for (const resolutionEnvelope of outer.resolutionEnvelopes ?? []) {
+        replayed = dispatch(replayed.state, ruleset, structuredClone(resolutionEnvelope));
+        if (replayed.error) throw new Error(`Post-command canonical replay failed at a resolution command: ${replayed.error.message}`);
+      }
       const canonicalFacts = replayed.state.effectState.pendingPostCommand?.facts;
-      if (replayed.error) throw new Error(`Post-command canonical replay failed: ${replayed.error.message}`);
       if (!canonicalFacts) throw new Error('Post-command canonical replay did not suspend at the expected fact boundary.');
       const normalizedCanonical = canonicalFacts.map((fact) => DomainEventSchema.parse(fact));
       const normalizedPersisted = outer.facts.map((fact) => DomainEventSchema.parse(fact));
       if (JSON.stringify(normalizedCanonical) !== JSON.stringify(normalizedPersisted)) throw new Error('Post-command facts must equal the complete ordered reducer fact segment.');
+      if (outer.envelope.command.type === 'USE_ITEM') {
+        const difference = firstDifference(replayed.state, state);
+        if (difference) throw new Error(`Item post-command suspended state does not match canonical replay at ${difference}.`);
+      }
     }
   }
   if (pending && Boolean(state.effectState.pendingChoice) === Boolean(state.effectState.pendingCounterConsent)) throw new Error('Pending lifecycle dispatch must have exactly one matching suspension.');

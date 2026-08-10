@@ -4,11 +4,15 @@ import type { SessionPersistenceStatus } from '../../../adapters/game-session.js
 type Props = {
   status: GameStatus;
   persistence: SessionPersistenceStatus;
+  contentMode: 'demo' | 'provisional-playtest';
   error?: EngineError | undefined;
 };
 
-export function GameNotices({ status, persistence, error }: Props) {
+export function GameNotices({ status, persistence, contentMode, error }: Props) {
   return <>
+    {contentMode === 'provisional-playtest'
+      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：已接入首批物資與三項道具效果；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。</aside>
+      : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">
           {persistence.replayHistoryComplete

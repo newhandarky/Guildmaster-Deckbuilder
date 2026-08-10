@@ -1,8 +1,10 @@
 import { createPresentationAssetRegistry, createPresentationResolver } from '@guildmaster/presentation-core';
+import { createLifecycleCopyResolver } from '../ui/lifecycle/lifecycle-copy.js';
 import {
   demoPresentationAssetKeys,
   demoPresentationAssetManifest,
   demoPresentationPack,
+  provisionalFoundationPresentationPack,
 } from '@guildmaster/presentation-demo';
 
 /** Client-only composition. Nothing in this module is authoritative game state. */
@@ -29,6 +31,13 @@ const resolveAsset = (assetKey: string) => {
 };
 
 export const presentationResolver = createPresentationResolver(
-  [demoPresentationPack],
+  [demoPresentationPack, provisionalFoundationPresentationPack],
   { resolveAsset },
 );
+
+export const lifecycleCopyResolver = createLifecycleCopyResolver({
+  choices: [
+    { choiceId: 'base:resource/resource-10-discard', title: '選擇要棄置的手牌', description: '棄置選擇的手牌後，抽 2 張牌。' },
+    { choiceId: 'base:resource/resource-17-discard', title: '選擇要棄置的手牌', description: '這張道具已抽牌；請選擇 1 張手牌棄置。' },
+  ],
+});

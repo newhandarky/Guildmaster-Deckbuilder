@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { baseDemoContentPack } from '@guildmaster/content-base';
+import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
 import { baseRulesModule, createGame, createRuleset, dispatch, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
@@ -103,7 +103,9 @@ describe('LocalGameSession transactional boundary', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
     expect(session.current().entrySummary).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      contentMode: 'demo',
+      contentPackId: 'base:demo',
       canContinue: false,
       gameId: session.current().view.gameId,
       revision: 0,
@@ -137,7 +139,9 @@ describe('LocalGameSession transactional boundary', () => {
     });
     expect(restored.view).toMatchObject({ gameId: saved.view.gameId, revision: saved.view.revision });
     expect(restored.entrySummary).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      contentMode: 'demo',
+      contentPackId: 'base:demo',
       canContinue: true,
       gameId: restored.view.gameId,
       revision: restored.view.revision,
@@ -193,6 +197,34 @@ describe('LocalGameSession transactional boundary', () => {
       revision: 0,
       replayHistoryComplete: true,
     });
+  });
+
+  it('reports and restores the explicitly enabled provisional content fingerprint', () => {
+    const ruleset = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
+    const session = new LocalGameSession(ruleset);
+    expect(session.current().entrySummary).toMatchObject({
+      schemaVersion: 2,
+      contentMode: 'provisional-playtest',
+      contentPackId: 'base:provisional-foundation',
+      canContinue: false,
+    });
+    session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(new LocalGameSession(ruleset).current().entrySummary).toMatchObject({
+      contentMode: 'provisional-playtest',
+      contentPackId: 'base:provisional-foundation',
+      canContinue: true,
+    });
+  });
+
+  it('advances the local game sequence when replacing an incompatible content fingerprint', () => {
+    const demo = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const saved = new LocalGameSession(demo).restart();
+    expect(saved.view.gameId).toBe('local-2');
+
+    const provisional = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
+    const replaced = new LocalGameSession(provisional).restart();
+    expect(replaced.view.gameId).toBe('local-4');
+    expect(replaced.entrySummary).toMatchObject({ contentMode: 'provisional-playtest', canContinue: false });
   });
 
   it('returns action previews tied to the current game, actor, revision, and legal commands', () => {

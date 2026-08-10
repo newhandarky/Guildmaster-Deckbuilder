@@ -24,6 +24,7 @@ export type PostCommandPipelineResult = {
 export type PostCommandPipelineCursor = {
   continuationId: string;
   envelope: CommandEnvelope;
+  resolutionEnvelopes?: readonly CommandEnvelope[];
   rollbackState: GameState;
   facts: readonly DomainEvent[];
   factIndex: number;
@@ -225,6 +226,9 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   if (outer.schemaVersion !== 1 || outer.step !== 'resume-boundary' || outer.continuationId !== `post-command:${outer.envelope.commandId}`) return 'Malformed post-command continuation identity or step.';
   if (outer.envelope.command.type === 'RESOLVE_EFFECT_CHOICE') return 'Post-command continuation cannot contain a choice command.';
   if (outer.envelope.gameId !== state.gameId || outer.envelope.expectedRevision !== state.revision) return 'Post-command command envelope is incompatible with current state.';
+  const resolutions = outer.resolutionEnvelopes ?? [];
+  const commandIds = [outer.envelope.commandId, ...resolutions.map(({ commandId }) => commandId)];
+  if (resolutions.length > 256 || new Set(commandIds).size !== commandIds.length || (resolutions.length > 0 && outer.envelope.command.type !== 'USE_ITEM') || resolutions.some((resolution) => resolution.gameId !== state.gameId || resolution.expectedRevision !== outer.envelope.expectedRevision || (resolution.command.type !== 'RESOLVE_EFFECT_CHOICE' && resolution.command.type !== 'RESPOND_COUNTER_CONSENT' && resolution.command.type !== 'CANCEL_COUNTER_CONSENT' && resolution.command.type !== 'EXPIRE_COUNTER_CONSENT'))) return 'Post-command resolution transcript is malformed or duplicated.';
   if (lifecycle.context.controllerId !== outer.envelope.actorId || (choice && (choice.actorId !== outer.envelope.actorId || !same(choice.context, lifecycle.context))) || (consent && (consent.requesterId !== outer.envelope.actorId || !same(consent.context, lifecycle.context)))) return 'Post-command actor or effect context mismatch.';
   const expectedExecutionId = `${lifecycle.dispatchId}:${lifecycle.currentHook.moduleId}:${lifecycle.currentHook.hookId}`;
   if ((choice?.executionId ?? consent?.executionId) !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
@@ -296,6 +300,7 @@ function suspend(state: GameState, cursor: PostCommandPipelineCursor): PostComma
     schemaVersion: 1,
     continuationId: cursor.continuationId,
     envelope: clone(cursor.envelope),
+    ...(cursor.resolutionEnvelopes?.length ? { resolutionEnvelopes: clone(cursor.resolutionEnvelopes) } : {}),
     rollbackState: clone(cursor.rollbackState),
     facts: clone(cursor.facts),
     factIndex: cursor.factIndex,
@@ -324,12 +329,13 @@ export function continuePostCommandPipeline(state: GameState, ruleset: Ruleset, 
 }
 
 /** Starts post-command processing with reducer facts fixed exactly once. */
-export function beginPostCommandPipeline(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, rollbackState: GameState, facts: readonly DomainEvent[], events: readonly DomainEvent[]): PostCommandPipelineResult {
+export function beginPostCommandPipeline(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, rollbackState: GameState, facts: readonly DomainEvent[], events: readonly DomainEvent[], resolutionEnvelopes: readonly CommandEnvelope[] = []): PostCommandPipelineResult {
   const normalizedEvents = events.map((entry, index) => ({ ...clone(entry), eventId: `transaction:${envelope.commandId}:${index + 1}`, causedByCommandId: envelope.commandId }));
   const normalizedFacts = normalizedEvents.slice(normalizedEvents.length - facts.length);
   const cursor: PostCommandPipelineCursor = {
     continuationId: `post-command:${envelope.commandId}`,
     envelope: clone(envelope),
+    ...(resolutionEnvelopes.length ? { resolutionEnvelopes: clone(resolutionEnvelopes) } : {}),
     rollbackState: clone(rollbackState),
     facts: normalizedFacts,
     factIndex: 0,
@@ -352,6 +358,7 @@ export function resumePostCommandPipeline(state: GameState, ruleset: Ruleset, ac
   const cursor: PostCommandPipelineCursor = {
     continuationId: saved.continuationId,
     envelope: clone(saved.envelope),
+    ...(saved.resolutionEnvelopes?.length ? { resolutionEnvelopes: clone(saved.resolutionEnvelopes) } : {}),
     rollbackState: clone(saved.rollbackState),
     facts: clone(saved.facts),
     factIndex: saved.factIndex,
@@ -375,7 +382,7 @@ export function resumePostCommandCounterConsent(state: GameState, ruleset: Rules
   if (validationError) return { status: 'failed', state, events: [], error: validationError, rollback: 'command' };
   const consent = state.effectState.pendingCounterConsent;
   if (!consent || requestId !== consent.requestId) return { status: 'failed', state, events: [], error: 'No matching pending post-command counter consent.', rollback: 'none' };
-  const cursor: PostCommandPipelineCursor = { continuationId: saved.continuationId, envelope: clone(saved.envelope), rollbackState: clone(saved.rollbackState), facts: clone(saved.facts), factIndex: saved.factIndex, boundary: saved.boundary, events: clone([...saved.events]) };
+  const cursor: PostCommandPipelineCursor = { continuationId: saved.continuationId, envelope: clone(saved.envelope), ...(saved.resolutionEnvelopes?.length ? { resolutionEnvelopes: clone(saved.resolutionEnvelopes) } : {}), rollbackState: clone(saved.rollbackState), facts: clone(saved.facts), factIndex: saved.factIndex, boundary: saved.boundary, events: clone([...saved.events]) };
   const resumed = resumeLifecycleCounterConsent(state, ruleset, actorId, requestId, action);
   appendLifecycleEvents(cursor, resumed.events);
   if (resumed.status === 'suspended') return suspend(state, cursor);

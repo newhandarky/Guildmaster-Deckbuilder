@@ -6,6 +6,7 @@ export type EffectPlayerRef = { kind: 'controller' } | { kind: 'context-player';
 export type EffectCardRef = { kind: 'context-card'; key: string } | { kind: 'card-instance'; cardInstanceId: string };
 export type PlayerZoneName = 'drawPile' | 'hand' | 'discardPile' | 'playArea';
 export type EffectCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: PlayerZoneName } | { kind: 'party'; player: EffectPlayerRef; position: number } | { kind: 'equipment'; player: EffectPlayerRef; partyPosition: number } | { kind: 'shared-zone'; zoneId: string } | { kind: 'removed' };
+export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> };
 export type EffectCondition = { kind: 'always'; value: boolean } | { kind: 'has-card-at'; card: EffectCardRef; location: EffectCardLocation };
 export type EffectValueTarget = { kind: 'turn-purchase-bonus'; player: EffectPlayerRef } | { kind: 'turn-combat-bonus'; player: EffectPlayerRef } | { kind: 'player-counter'; player: EffectPlayerRef; resourceId: string };
 export type CombatReward = { kind: 'draw'; count: number } | { kind: 'purchase-bonus'; amount: number } | { kind: 'combat-bonus'; amount: number } | { kind: 'counter'; resourceId: string; amount: number };
@@ -13,6 +14,7 @@ export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
   | { kind: 'choice'; choiceId: string; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
+  | { kind: 'choose-card'; choiceId: string; actor: EffectPlayerRef; from: EffectSelectableCardLocation; selectedCardKey: string; effect: EffectNode }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
@@ -32,7 +34,7 @@ export type EffectNode =
   | { kind: 'finish-enemy-encounter'; encounterId: string; policy: { moduleId: string; policyId: string } };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>>; playerRefs?: Readonly<Record<string, string>> };
-export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode }[]; remaining: readonly EffectNode[]; context: EffectContext };
+export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode; context?: EffectContext }[]; remaining: readonly EffectNode[]; context: EffectContext; source?: EffectSelectableCardLocation };
 export type PendingCounterConsent = {
   schemaVersion: 1;
   executionId: string;
@@ -66,14 +68,16 @@ export type PendingLifecycleDispatch = {
 };
 /** Original command and uncommitted lifecycle events held while command-before is unresolved. */
 export type PendingCommandContinuation =
-  | { schemaVersion: 1; kind?: 'command-before-lifecycle'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[] }
+  | { schemaVersion: 1; kind?: 'command-before-lifecycle'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; resolutionEnvelopes?: readonly import('./commands.js').CommandEnvelope[] }
   | { schemaVersion: 1; kind: 'team-overflow'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; policy: { moduleId: string; policyId: string }; candidateIds: readonly string[]; requiredSelectionCount: number; optionCandidates: Readonly<Record<string, readonly string[]>>; registry: LifecycleRegistrySnapshot }
+  | { schemaVersion: 1; kind: 'card-use-effect'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; context: EffectContext; registry: LifecycleRegistrySnapshot }
   | { schemaVersion: 1; kind: 'combat-reward'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; evaluation: import('./combat-reward.js').CombatRewardEvaluation; policyIndex: number; step: 'resume-policy-effect' | 'dispatch-next-policy'; context: EffectContext; registry: LifecycleRegistrySnapshot };
 /** Serializable cursor for a command whose reducer has completed but post-command lifecycle work is pending. */
 export type PendingPostCommandContinuation = {
   schemaVersion: 1;
   continuationId: string;
   envelope: import('./commands.js').CommandEnvelope;
+  resolutionEnvelopes?: readonly import('./commands.js').CommandEnvelope[];
   rollbackState: import('./state.js').GameState;
   facts: readonly import('./commands.js').DomainEvent[];
   factIndex: number;
@@ -108,6 +112,7 @@ const locationSchema: z.ZodType<EffectCardLocation> = z.discriminatedUnion('kind
   z.object({ kind: z.literal('shared-zone'), zoneId: nonEmpty }).strict(),
   z.object({ kind: z.literal('removed') }).strict()
 ]);
+const selectableCardLocationSchema = z.object({ kind: z.literal('player-zone'), player: playerRefSchema, zone: z.enum(['hand', 'discardPile', 'playArea']) }).strict();
 const conditionSchema: z.ZodType<EffectCondition> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
   z.object({ kind: z.literal('has-card-at'), card: cardRefSchema, location: locationSchema }).strict()
@@ -130,6 +135,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
   z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
   z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
+  z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, actor: playerRefSchema, from: selectableCardLocationSchema, selectedCardKey: nonEmpty, effect: EffectNodeSchema }).strict(),
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),
   z.object({ kind: z.literal('request-counter-consent'), requestId: nonEmpty, policy: policyRefSchema, counterOwner: playerRefSchema, outcomes: z.object({ accepted: EffectNodeSchema, declined: EffectNodeSchema, cancelled: EffectNodeSchema, expired: EffectNodeSchema }).strict() }).strict(),
@@ -154,4 +160,9 @@ export function validateEffectDefinition(effect: EffectDefinition): string[] {
   if (!isFiniteJsonValue(effect)) return ['Effect definition must contain finite, acyclic, plain JSON data only.'];
   const parsed = EffectDefinitionSchema.safeParse(effect);
   return parsed.success ? [] : parsed.error.issues.map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`);
+}
+
+/** Semantic entry point for effects owned by a versioned card-use continuation. */
+export function validateCardUseEffectDefinition(effect: EffectDefinition): string[] {
+  return validateEffectDefinition(effect);
 }

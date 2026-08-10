@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentEligibilityRule, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { validateSupplyContinuityPolicy, validateSupplyContinuityRegistry, type SupplyContinuityPolicy } from './supply-continuity-evaluator.js';
@@ -46,6 +46,12 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   const definitions: Record<string, ContentRegistry['definitions'][string]> = {};
   for (const pack of packs) for (const definition of pack.definitions) {
     if (!definition.id.trim() || !definition.name.trim() || !definition.type.trim() || !definition.source.trim() || !Number.isFinite(definition.copies) || !Number.isInteger(definition.copies) || definition.copies < 0 || ['cost', 'combat', 'purchasePower', 'honor'].some((field) => { const value = definition[field as keyof typeof definition]; return value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0); })) throw new Error(`Invalid card definition: ${definition.id || '<empty>'}`);
+    if (definition.useEffect) {
+      const effectErrors = validateCardUseEffectDefinition(definition.useEffect);
+      if (definition.type !== 'item') effectErrors.push('Only item definitions may declare useEffect.');
+      if (definition.itemEffect) effectErrors.push('A card cannot declare both legacy itemEffect and useEffect.');
+      if (effectErrors.length) throw new Error(`Invalid card use effect ${definition.id}: ${effectErrors.join(' ')}`);
+    }
     if (definitions[definition.id]) throw new Error(`Duplicate card definition: ${definition.id}`);
     definitions[definition.id] = definition;
   }

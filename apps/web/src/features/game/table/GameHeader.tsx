@@ -10,12 +10,13 @@ type Props = {
   revision: number;
   isViewerActive: boolean;
   persistence: SessionPersistenceStatus;
+  contentLabel: string;
 };
 
-export function GameHeader({ round, phase, revision, isViewerActive, persistence }: Props) {
+export function GameHeader({ round, phase, revision, isViewerActive, persistence, contentLabel }: Props) {
   return <header className="hero game-header">
     <div>
-      <p className="eyebrow">原創文字示範牌組 · 單機人機對戰</p>
+      <p className="eyebrow">{contentLabel} · 單機人機對戰</p>
       <h1>晨星公會</h1>
       <p>第 {round} 輪 · {phaseDisplayName(phase)}階段</p>
       <PhaseProgress phase={phase} />

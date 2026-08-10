@@ -40,11 +40,19 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 .expedition-entry-hero { margin-bottom: 0; }
 .expedition-entry-card { display: grid; gap: 1.25rem; padding: 1.5rem; border: 1px solid #526987; border-radius: 1.25rem; background: var(--surface); }
 .expedition-entry-card h2, .expedition-entry-card h3, .expedition-entry-card p { margin-bottom: 0; }
-.expedition-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin: 0; }
+.expedition-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .75rem; margin: 0; }
 .expedition-summary div { display: grid; gap: .35rem; min-width: 0; padding: .9rem; border: 1px solid #405878; border-radius: .75rem; background: rgb(10 20 35 / .42); }
 .expedition-summary dt { color: #b6c7e3; font-size: .78rem; }
 .expedition-summary dd { margin: 0; font-weight: 700; }
 .expedition-entry-actions { justify-content: flex-end; }
+.content-mode-picker { display: grid; gap: .75rem; min-width: 0; margin: 0; padding: 1rem; border: 1px solid #405878; border-radius: .85rem; }
+.content-mode-picker legend { padding: 0 .4rem; color: #f4d9a5; font-weight: 800; }
+.content-mode-option { display: grid; grid-template-columns: auto 1fr; gap: .75rem; align-items: start; min-width: 0; padding: .85rem; border: 1px solid #405878; border-radius: .75rem; background: rgb(10 20 35 / .42); cursor: pointer; }
+.content-mode-option-selected { border-color: #ffd27d; box-shadow: inset 0 0 0 1px rgb(255 210 125 / .3); }
+.content-mode-option input { width: 1.2rem; height: 1.2rem; margin: .1rem 0 0; accent-color: #ffd27d; }
+.content-mode-option span { display: grid; gap: .25rem; min-width: 0; }
+.content-mode-option small { display: block; line-height: 1.45; }
+.content-mode-warning { color: #ffd0d8; }
 .expedition-new-confirmation { display: grid; gap: .8rem; padding: 1rem; border: 1px solid #c86b7b; border-radius: .75rem; background: #4d2330; }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: clamp(2rem, 6vw, 3.6rem); margin-bottom: .25rem; }

@@ -45,6 +45,10 @@ export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameSta
     ...(node.whenFalse ? [inspectEffectPreviewUncertainty(node.whenFalse, state, context, viewerId)] : []),
   ]);
   if (node.kind === 'choice') return mergePreviewUncertainty(node.options.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
+  if (node.kind === 'choose-card') return mergePreviewUncertainty([
+    { usesRandomness: false, observesHiddenInformation: !locationIsVisibleToViewer(node.from, state, context, viewerId) },
+    inspectEffectPreviewUncertainty(node.effect, state, context, viewerId),
+  ]);
   if (node.kind === 'random' || node.kind === 'roll-die') return mergePreviewUncertainty([
     { usesRandomness: true, observesHiddenInformation: false },
     ...node.outcomes.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)),
@@ -62,7 +66,7 @@ export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameSta
   return noPreviewUncertainty();
 }
 type SuspensionMatch =
-  | { kind: 'choice'; node: Extract<EffectNode, { kind: 'choice' }> }
+  | { kind: 'choice'; node: Extract<EffectNode, { kind: 'choice' | 'choose-card' }> }
   | { kind: 'counter-consent'; node: Extract<EffectNode, { kind: 'request-counter-consent' }> };
 type SuspensionContinuation = { match: SuspensionMatch; remaining: readonly EffectNode[] };
 function uniqueContinuations(candidates: readonly SuspensionContinuation[]): SuspensionContinuation[] {
@@ -91,6 +95,12 @@ function suspensionContinuations(nodes: readonly EffectNode[], target: { kind: S
       : [];
     return [...current, ...node.options.flatMap(({ effect }) => suspensionContinuations([effect, ...remaining], target))];
   }
+  if (node.kind === 'choose-card') {
+    const current = target.kind === 'choice' && node.choiceId === target.id
+      ? [{ match: { kind: 'choice' as const, node }, remaining }]
+      : [];
+    return [...current, ...suspensionContinuations([node.effect, ...remaining], target)];
+  }
   if (node.kind === 'random' || node.kind === 'roll-die') {
     return node.outcomes.flatMap(({ effect }) => suspensionContinuations([effect, ...remaining], target));
   }
@@ -103,10 +113,29 @@ function suspensionContinuations(nodes: readonly EffectNode[], target: { kind: S
   return suspensionContinuations(remaining, target);
 }
 
-export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster/game-protocol').PendingEffectChoice, effect: EffectDefinition): string | undefined {
+export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster/game-protocol').PendingEffectChoice, effect: EffectDefinition, state?: GameState): string | undefined {
   const candidates = uniqueContinuations(suspensionContinuations([effect.body], { kind: 'choice', id: pending.choiceId }))
     .filter((candidate): candidate is SuspensionContinuation & { match: Extract<SuspensionMatch, { kind: 'choice' }> } => candidate.match.kind === 'choice');
-  if (candidates.length !== 1 || JSON.stringify(candidates[0]!.match.node.options) !== JSON.stringify(pending.options)) return 'Pending choice does not match its registered effect program.';
+  const node = candidates[0]?.match.node;
+  if (candidates.length !== 1 || !node) return 'Pending choice does not match its registered effect program.';
+  if (node.kind === 'choice' && JSON.stringify(node.options) !== JSON.stringify(pending.options)) return 'Pending choice does not match its registered effect program.';
+  if (node.kind === 'choose-card') {
+    if (!pending.options.length || new Set(pending.options.map(({ id }) => id)).size !== pending.options.length) return 'Dynamic card choice options must be non-empty and unique.';
+    const valid = pending.options.every((option) => {
+      const expectedContext: EffectContext = {
+        ...pending.context,
+        cardRefs: { ...(pending.context.cardRefs ?? {}), [node.selectedCardKey]: option.id },
+      };
+      return JSON.stringify(option.effect) === JSON.stringify(node.effect) && JSON.stringify(option.context) === JSON.stringify(expectedContext);
+    });
+    const expectedActorId = playerId(node.actor, pending.context);
+    const expectedSource = resolveLocation(node.from, pending.context);
+    if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || expectedSource.kind !== 'player-zone' || expectedSource.player.kind !== 'player-id' || expectedSource.player.playerId !== expectedActorId || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
+    if (state) {
+      const player = state.players.find(({ id }) => id === expectedActorId);
+      if (!player || JSON.stringify(player[expectedSource.zone]) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone.';
+    }
+  }
   return JSON.stringify(candidates[0]!.remaining) === JSON.stringify(pending.remaining)
     ? undefined
     : 'Pending choice continuation cursor does not match its registered effect program.';
@@ -129,6 +158,22 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'sequence') return runNodes(state, ruleset, [...node.effects, ...nodes.slice(index + 1)], context, executionId, events);
     if (node.kind === 'conditional') { const valid = node.condition.kind === 'always' ? node.condition.value : (() => { const id = resolveCardId(node.condition.card, context); const location = resolveLocation(node.condition.location, context); try { return Boolean(id && location && state.cards[id] && isCardAtLocation(state, location, id)); } catch { return false; } })(); const next = valid ? node.whenTrue : node.whenFalse; return runNodes(state, ruleset, [...(next ? [next] : []), ...nodes.slice(index + 1)], context, executionId, events); }
     if (node.kind === 'choice') { const actorId = playerId(node.actor, context); if (!actorId) return { status: 'failed', events, error: 'Choice actor could not be resolved.' }; state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options: node.options, remaining: nodes.slice(index + 1), context }; domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit player choice.'); return { status: 'suspended', events }; }
+    if (node.kind === 'choose-card') {
+      const actorId = playerId(node.actor, context); const source = resolveLocation(node.from, context);
+      if (!actorId || !source || source.kind !== 'player-zone' || source.player.kind !== 'player-id' || source.player.playerId !== actorId) return { status: 'failed', events, error: 'Dynamic card choice must resolve to the choosing actor\'s visible player zone.' };
+      if (source.zone === 'drawPile') return { status: 'failed', events, error: 'Dynamic card choice cannot expose a hidden draw pile.' };
+      const visibleSource = { ...source, zone: source.zone };
+      const candidates = [...getPlayer(state, actorId)[visibleSource.zone]];
+      if (!candidates.length) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
+      const options = candidates.map((cardId) => ({
+        id: cardId,
+        effect: structuredClone(node.effect),
+        context: { ...structuredClone(context), cardRefs: { ...(context.cardRefs ?? {}), [node.selectedCardKey]: cardId } },
+      }));
+      state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options, remaining: nodes.slice(index + 1), context: structuredClone(context), source: visibleSource };
+      domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit card choice.');
+      return { status: 'suspended', events };
+    }
     if (node.kind === 'random') { if (!node.outcomes.length) return { status: 'failed', events, error: 'Random effect has no outcomes.' }; const outcome = node.outcomes[Math.floor(nextRandom(state) * node.outcomes.length)]!; domainEvent(state, events, 'EFFECT_RANDOM_RESOLVED', `Deterministic random outcome: ${outcome.id}.`); return runNodes(state, ruleset, [outcome.effect, ...nodes.slice(index + 1)], context, executionId, events); }
     if (node.kind === 'roll-die') { const registry = { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) }; const roll = evaluateDiceRoll(state, ruleset, { schemaVersion: 1, moduleId: node.moduleId, diceId: node.diceId, randomValue: nextRandom(state), registry }); if (roll.status !== 'ready') return { status: 'failed', events, error: roll.error }; const outcome = node.outcomes.find(({ face }) => face === roll.evaluation.face); const die = ruleset.modules.find(({ id }) => id === node.moduleId)?.diceDefinitions?.find(({ diceId }) => diceId === node.diceId); if (!die || node.outcomes.length !== die.sides || !Array.from({ length: die.sides }, (_, index) => index + 1).every((face) => node.outcomes.some((outcome) => outcome.face === face))) return { status: 'failed', events, error: 'Dice outcomes must cover each registered face exactly once.' }; events.push({ eventId: `effect-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type: 'DIE_ROLLED', message: `Rolled ${roll.evaluation.face} on ${node.diceId}.`, moduleId: node.moduleId, payload: { schemaVersion: 1, kind: 'dice-roll', evaluation: roll.evaluation } }); return runNodes(state, ruleset, [outcome!.effect, ...nodes.slice(index + 1)], context, executionId, events); }
     if (node.kind === 'request-counter-consent') { const ownerId = playerId(node.counterOwner, context); if (!ownerId) return { status: 'failed', events, error: 'Counter consent owner could not be resolved.' }; const registry = { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) }; const result = evaluateCounterConsent(state, ruleset, { schemaVersion: 1, action: 'request', actorId: context.controllerId, requestId: node.requestId, executionId, counterOwnerId: ownerId, policy: node.policy, registry }); if (result.status !== 'ready') return { status: 'failed', events, error: `${result.reason}: ${result.error}` }; counterConsentEvent(state, events, result.evaluation); if (result.evaluation.status === 'accepted') { const policy = ruleset.modules.find(({ id }) => id === node.policy.moduleId)?.counterConsentPolicies?.find(({ policyId }) => policyId === node.policy.policyId); const counter = state.players.find(({ id }) => id === ownerId)?.counters.find(({ resourceId }) => resourceId === policy?.resourceId); if (!counter) return { status: 'failed', events, error: 'Counter consent target disappeared.' }; counter.visibility = 'public'; return runNodes(state, ruleset, [node.outcomes.accepted, ...nodes.slice(index + 1)], context, executionId, events); } state.effectState.pendingCounterConsent = { schemaVersion: 1, executionId, requestId: node.requestId, policy: structuredClone(node.policy), counterOwnerId: ownerId, requesterId: context.controllerId, requiredActorIds: [...result.evaluation.requiredActorIds], acceptedActorIds: [], status: 'pending', outcomes: structuredClone(node.outcomes), remaining: nodes.slice(index + 1), context: structuredClone(context), registry }; return { status: 'suspended', events }; }
@@ -149,7 +194,7 @@ export function resumeEffectChoice(state: GameState, ruleset: Ruleset, actorId: 
   const next = structuredClone(state); const events: DomainEvent[] = []; const pending = next.effectState.pendingChoice;
   if (!pending || pending.executionId !== executionId || pending.choiceId !== choiceId || pending.actorId !== actorId) return { status: 'failed', events, error: 'No matching pending effect choice.' };
   const option = pending.options.find((entry) => entry.id === optionId); if (!option) return { status: 'failed', events, error: 'Invalid pending effect choice option.' };
-  delete next.effectState.pendingChoice; const result = runNodes(next, ruleset, [option.effect, ...pending.remaining], pending.context, executionId, events); if (result.status === 'completed') domainEvent(next, events, 'EFFECT_COMPLETED', `Effect choice ${choiceId} completed.`); if (result.status === 'completed' || result.status === 'suspended') commitState(state, next); return result;
+  delete next.effectState.pendingChoice; const result = runNodes(next, ruleset, [option.effect, ...pending.remaining], option.context ?? pending.context, executionId, events); if (result.status === 'completed') domainEvent(next, events, 'EFFECT_COMPLETED', `Effect choice ${choiceId} completed.`); if (result.status === 'completed' || result.status === 'suspended') commitState(state, next); return result;
 }
 export function resumeEffectCounterConsent(state: GameState, ruleset: Ruleset, actorId: string, requestId: string, action: Exclude<CounterConsentAction, 'request'>): EffectExecutionResult {
   const next = structuredClone(state); const events: DomainEvent[] = []; const pending = next.effectState.pendingCounterConsent;

@@ -39,6 +39,37 @@ async function installPendingConsent(page: import('@playwright/test').Page, requ
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
+function pendingFoundationCardChoiceSave(): string {
+  const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+  const state = createGame({
+    gameId: 'e2e-foundation-card-choice',
+    seed: 20260807,
+    players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }],
+    startingPlayerId: 'human-1',
+  }, ruleset);
+  const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-10')!.id;
+  for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId);
+  state.players[0]!.drawPile.push(...state.players[0]!.party.splice(-2).map(({ adventurerId }) => adventurerId));
+  state.players[0]!.hand.push(itemId);
+  const suspended = dispatch(state, ruleset, {
+    protocolVersion: 1,
+    gameId: state.gameId,
+    commandId: 'e2e-foundation-card-choice-root',
+    actorId: 'human-1',
+    expectedRevision: 0,
+    command: { type: 'USE_ITEM', cardId: itemId },
+  });
+  if (suspended.error || suspended.state.effectState.pendingCommand?.kind !== 'card-use-effect') throw new Error('Failed to create pending foundation card choice.');
+  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] });
+}
+
+async function installPendingFoundationCardChoice(page: import('@playwright/test').Page): Promise<void> {
+  const save = pendingFoundationCardChoiceSave();
+  await page.addInitScript(({ key, value }) => {
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+  }, { key: localSaveKey, value: save });
+}
+
 test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
@@ -54,6 +85,26 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
   await expect(page.getByTestId('end-phase')).toBeEnabled();
   await expect(page.getByTestId('interaction-hint')).toContainText('可操作');
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
+});
+
+test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
+  await page.goto('/');
+  const entry = page.getByTestId('expedition-entry');
+  const provisional = entry.getByRole('radio', { name: /基礎候選數值測試/ });
+  await expect(provisional).not.toBeChecked();
+  await provisional.check();
+  await expect(entry.getByText(/內部測試模式：卡牌名稱使用中性代號/)).toBeVisible();
+  await entry.getByRole('button', { name: '開始新遠征' }).click();
+
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與三項道具效果');
+  await expect(page.getByText('基礎候選數值測試 · 單機人機對戰')).toBeVisible();
+  const persistedPackId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.contentPacks[0].id);
+  expect(persistedPackId).toBe('base:provisional-foundation');
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
+  await expect(page.getByTestId('expedition-summary')).toContainText('基礎候選數值測試');
+  await expect(page.getByRole('radio', { name: /基礎候選數值測試/ })).toBeChecked();
 });
 
 test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {
@@ -81,10 +132,12 @@ test('restored entry requires confirmation before replacing the saved expedition
   await page.reload();
 
   const entry = page.getByTestId('expedition-entry');
+  await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
   const startNew = entry.getByRole('button', { name: '開啟新遠征' });
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
+  await expect(entry.getByText(/會被「基礎候選數值測試」新對局覆蓋/)).toBeVisible();
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
@@ -102,6 +155,7 @@ test('restored entry requires confirmation before replacing the saved expedition
   await expect(page.getByTestId('interaction-hint')).toBeFocused();
   const restarted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
   expect(restarted.snapshot.state).toMatchObject({ revision: 0, eventLogCursor: 0 });
+  expect(restarted.snapshot.contentPacks[0].id).toBe('base:provisional-foundation');
   expect(restarted.snapshot.state.gameId).not.toBe(priorGameId);
   expect(restarted.events).toEqual([]);
   expect(restarted.replayBundle.commands).toEqual([]);
@@ -168,6 +222,30 @@ test('lifecycle choice uses the dock, keeps cards inspectable, and commits once'
   expect(saved.snapshot.state.revision).toBe(1);
   expect(saved.snapshot.state.eventLogCursor).toBe(saved.events.length);
   expect(new Set(saved.events.map((event: { eventId: string }) => event.eventId)).size).toBe(saved.events.length);
+});
+
+test('provisional card choice survives restore and shows visible card names instead of instance IDs', async ({ page }) => {
+  await installPendingFoundationCardChoice(page);
+  await openGame(page);
+
+  const dock = page.getByTestId('lifecycle-dock');
+  await expect(dock).toContainText('選擇要棄置的手牌');
+  const visibleCard = dock.getByRole('button', { name: '中性卡牌 summoning-stone' }).first();
+  await expect(visibleCard).toBeVisible();
+  await expect(dock).not.toContainText('base:starter');
+  await visibleCard.click();
+
+  await expect(dock).toHaveCount(0);
+  await expect(page.getByText('版本 1')).toBeVisible();
+  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), localSaveKey);
+  expect(saved.snapshot.state.effectState.pendingCommand).toBeUndefined();
+  expect(saved.snapshot.state.effectState.pendingChoice).toBeUndefined();
+  expect(saved.snapshot.state.eventLogCursor).toBe(saved.events.length);
+
+  await page.reload();
+  await enterGame(page);
+  await expect(page.getByText('版本 1')).toBeVisible();
+  await expect(page.getByTestId('lifecycle-dock')).toHaveCount(0);
 });
 
 test('counter consent survives reload, hides the counter value, and accepts through the dock', async ({ page }) => {

@@ -10,6 +10,7 @@ import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
+import { executeEffect } from '../effects/executor.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -153,6 +154,21 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
   return prefix ? { slotCount: prefix.slotCount, power: prefix.power } : undefined;
 }
 
+function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, cardId: string): boolean {
+  const definition = getDefinition(ruleset.registry, state, cardId);
+  if (!definition.useEffect) return true;
+  const preview = structuredClone(state); const player = getPlayer(preview, actorId);
+  const index = player.hand.indexOf(cardId);
+  if (index < 0) return false;
+  player.hand.splice(index, 1); player.playArea.push(cardId);
+  try {
+    const result = executeEffect(preview, ruleset, definition.useEffect, { controllerId: actorId, cardRefs: { source: cardId } }, `item-use-preview:${cardId}`);
+    return result.status === 'completed' || result.status === 'suspended';
+  } catch {
+    return false;
+  }
+}
+
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
   if (validateSupplyContinuityState(state, ruleset).length) return [];
@@ -188,7 +204,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     for (const cardId of player.hand) {
       const definition = getDefinition(ruleset.registry, state, cardId);
       if (definition.type === 'adventurer') commands.push({ type: 'PLAY_ADVENTURER', cardId });
-      if (definition.type === 'item') commands.push({ type: 'USE_ITEM', cardId });
+      if (definition.type === 'item' && itemUseCanBegin(state, ruleset, actorId, cardId)) commands.push({ type: 'USE_ITEM', cardId });
       if (definition.type === 'equipment') for (const slot of player.party) {
         const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: cardId, adventurerId: slot.adventurerId });
         if (eligibility.status === 'ready' && eligibility.evaluation.eligible) commands.push({ type: 'EQUIP_ITEM', cardId, adventurerId: slot.adventurerId });

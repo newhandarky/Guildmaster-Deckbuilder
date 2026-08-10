@@ -34,7 +34,7 @@ export function validateContentAudit(catalog: ContentAuditCatalog, definitions: 
     if (entry.activation === 'enabled' && entry.fieldAudits.some((field) => field.status !== 'verified' || field.sourceIds.length === 0)) errors.push(`Enabled definition ${entry.definitionId} has unverified fields.`);
     if (entry.activation === 'enabled') {
       const definition = definitionById.get(entry.definitionId);
-      const requiredFields = definition ? (['type', 'copies', 'cost', 'combat', 'purchasePower', 'honor', 'itemEffect', 'tags'] as const).filter((field) => field === 'type' || field === 'copies' || definition[field] !== undefined) : [];
+      const requiredFields = definition ? (['type', 'copies', 'cost', 'combat', 'purchasePower', 'honor', 'itemEffect', 'useEffect', 'tags'] as const).filter((field) => field === 'type' || field === 'copies' || definition[field] !== undefined) : [];
       for (const field of requiredFields) if (!auditedFields.has(field)) errors.push(`Enabled definition ${entry.definitionId} is missing audit coverage for ${field}.`);
     }
     if (entry.status !== 'verified' && entry.activation !== 'disabled') errors.push(`Non-verified definition ${entry.definitionId} must be disabled.`);

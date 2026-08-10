@@ -103,6 +103,7 @@ function terminalResult(view: PlayerView, events: readonly DomainEvent[]): Lifec
 function choiceModel(
   commands: readonly ChoiceCommand[],
   resolver: LifecycleCopyResolver,
+  optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
 ): LifecycleInteractionModel | undefined {
   if (commands.length === 0) return undefined;
   const groups = new Map<string, ChoiceCommand[]>();
@@ -132,7 +133,7 @@ function choiceModel(
     actions: options.map((command, index) => ({
       id: `choice:${command.executionId}:${command.choiceId}:${command.optionId}`,
       kind: 'choice',
-      label: copy.optionLabel(command.optionId, index),
+      label: optionLabel?.(command.choiceId, command.optionId, index) ?? copy.optionLabel(command.optionId, index),
       command,
       emphasis: index === 0 ? 'primary' : 'secondary',
       requiresConfirmation: false,
@@ -206,6 +207,7 @@ export function buildLifecycleInteractionModel(
   legalCommands: readonly GameCommand[],
   events: readonly DomainEvent[],
   resolver: LifecycleCopyResolver,
+  optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
 ): LifecycleInteractionModel {
   const choiceCommands = legalCommands.filter((command): command is ChoiceCommand => command.type === 'RESOLVE_EFFECT_CHOICE');
   const consentCommands = legalCommands.filter((command): command is ConsentCommand =>
@@ -232,7 +234,7 @@ export function buildLifecycleInteractionModel(
       description: '合法指令缺少相符的 PlayerView 請求；介面不會猜測 requestId。',
     };
   }
-  return choiceModel(choiceCommands, resolver)
+  return choiceModel(choiceCommands, resolver, optionLabel)
     ?? terminalResult(view, events)
     ?? { kind: 'none', key: 'none' };
 }

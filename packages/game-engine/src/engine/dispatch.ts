@@ -20,6 +20,7 @@ import { validateGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
+import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -182,7 +183,8 @@ function equipItem(state: GameState, ruleset: Ruleset, player: PlayerState, comm
   return undefined;
 }
 
-function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'USE_ITEM' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
+function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, envelope: CommandEnvelope, resolutionEnvelopes: readonly CommandEnvelope[], events: DomainEvent[], rollbackState: GameState, factStart: number): EngineError | undefined {
+  const command = envelope.command as Extract<GameCommand, { type: 'USE_ITEM' }>;
   const phaseError = requirePhase(state, ['action1', 'action2']);
   if (phaseError) return phaseError;
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該物資不在手牌中。' };
@@ -190,7 +192,13 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, comm
   if (definition.type !== 'item') return { code: 'INVALID_COMMAND', message: '只有道具可使用。' };
   player.playArea.push(command.cardId);
   resolveItem(player, definition.itemEffect);
-  event(state, events, 'ITEM_USED', `${player.name} 使用了道具；休息階段才會棄置。`, commandId);
+  if (definition.useEffect) {
+    const result = beginCardUseEffectPipeline(state, ruleset, envelope, resolutionEnvelopes, rollbackState, events, factStart, definition.useEffect, { controllerId: player.id, cardRefs: { source: command.cardId } });
+    if (result.status === 'failed' || result.status === 'unsupported') return { code: 'INVALID_COMMAND', message: result.error ?? '道具效果執行失敗。' };
+    events.splice(0, events.length, ...result.events);
+    if (result.status === 'suspended') return undefined;
+  }
+  event(state, events, 'ITEM_USED', `${player.name} 使用了道具；休息階段才會棄置。`, envelope.commandId);
   return undefined;
 }
 
@@ -286,12 +294,12 @@ function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, comma
   return undefined;
 }
 
-function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
+function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, resolutionEnvelopes: readonly CommandEnvelope[], events: DomainEvent[], rollbackState: GameState, factStart: number): EngineError | undefined {
   const player = getPlayer(state, envelope.actorId);
   switch (envelope.command.type) {
     case 'PLAY_ADVENTURER': return playAdventurer(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'EQUIP_ITEM': return equipItem(state, ruleset, player, envelope.command, events, envelope.commandId);
-    case 'USE_ITEM': return applyItem(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'USE_ITEM': return applyItem(state, ruleset, player, envelope, resolutionEnvelopes, events, rollbackState, factStart);
     case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'END_PHASE': return endPhase(state, ruleset, player, envelope.command, events, envelope.commandId);
@@ -347,6 +355,24 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events }; nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
   }
+  if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand?.kind === 'card-use-effect') {
+    const pending = structuredClone(nextState.effectState.pendingCommand);
+    const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE'
+      ? resumeCardUseEffectChoice(nextState, ruleset, envelope)
+      : resumeCardUseEffectCounterConsent(nextState, ruleset, envelope, counterConsentAction(envelope.command));
+    if (resumed.status === 'failed' || resumed.status === 'unsupported') return resumed.rollback === 'command'
+      ? { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? 'Card-use continuation failed.' } }
+      : fail(state, 'INVALID_COMMAND', resumed.error ?? 'Card-use continuation failed.');
+    if (resumed.status === 'suspended') return { state: nextState, events: resumed.events };
+    const events = [...resumed.events];
+    const player = getPlayer(nextState, pending.envelope.actorId);
+    event(nextState, events, 'ITEM_USED', `${player.name} 使用了道具；休息階段才會棄置。`, pending.envelope.commandId);
+    const committedEvents = transactionEvents(events, pending.envelope.commandId);
+    const pipeline = beginPostCommandPipeline(nextState, ruleset, pending.envelope, structuredClone(pending.rollbackState), committedEvents.slice(pending.factStart), committedEvents, [...pending.resolutionEnvelopes, structuredClone(envelope)]);
+    if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+    if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
+    nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+  }
   if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingPostCommand) {
     const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
     const result = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumePostCommandCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
@@ -373,16 +399,25 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
       nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
     }
+    if (continuation.kind === 'card-use-effect' || continuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Unexpected specialized command continuation branch.');
     if (!pending || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
     if (resolution.type === 'RESOLVE_EFFECT_CHOICE') { const choice = nextState.effectState.pendingChoice; if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.'); }
     else if (nextState.effectState.pendingCounterConsent?.requestId !== resolution.requestId) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before counter consent.');
     const resumed = resolution.type === 'RESOLVE_EFFECT_CHOICE' ? resumeLifecycleChoice(nextState, ruleset, envelope.actorId, resolution.executionId, resolution.choiceId, resolution.optionId) : resumeLifecycleCounterConsent(nextState, ruleset, envelope.actorId, resolution.requestId, counterConsentAction(resolution));
     if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? resumed.reason ?? '無法恢復 command-before lifecycle。' } };
     const events = transactionEvents([...continuation.events, ...resumed.events], continuation.envelope.commandId);
-    if (resumed.status === 'suspended') { nextState.effectState.pendingCommand!.events = structuredClone(events); return { state: nextState, events }; }
+    const resolutionEnvelopes = [...(continuation.resolutionEnvelopes ?? []), structuredClone(envelope)];
+    if (resumed.status === 'suspended') {
+      const nextContinuation = nextState.effectState.pendingCommand;
+      if (!nextContinuation || nextContinuation.kind === 'team-overflow' || nextContinuation.kind === 'card-use-effect' || nextContinuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Command-before continuation changed kind while suspended.');
+      nextContinuation.events = structuredClone(events);
+      if (continuation.envelope.command.type === 'USE_ITEM') nextContinuation.resolutionEnvelopes = resolutionEnvelopes;
+      return { state: nextState, events };
+    }
     delete nextState.effectState.pendingCommand;
     const factStart = events.length;
-    const error = reduceCommand(nextState, ruleset, continuation.envelope, events);
+    const commandRollback = rollback ? structuredClone(rollback) : structuredClone(state);
+    const error = reduceCommand(nextState, ruleset, continuation.envelope, resolutionEnvelopes, events, commandRollback, factStart);
     if (error) return { state: rollback ? structuredClone(rollback) : state, events: [], error };
     const reducerContinuation = pendingCommandFor(nextState);
     if (reducerContinuation?.kind === 'combat-reward') {
@@ -390,7 +425,8 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       reducerContinuation.factStart = factStart;
       return { state: nextState, events };
     }
-    const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, rollback ? structuredClone(rollback) : structuredClone(state), events.slice(factStart), events);
+    if (reducerContinuation?.kind === 'card-use-effect') return { state: nextState, events: [...reducerContinuation.events] };
+    const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, rollback ? structuredClone(rollback) : structuredClone(state), events.slice(factStart), events, continuation.envelope.command.type === 'USE_ITEM' ? resolutionEnvelopes : []);
     if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
     nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
@@ -413,7 +449,12 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   events.push(...before.events);
   if (before.status === 'suspended') {
     const pendingEvents = transactionEvents(events, envelope.commandId);
-    nextState.effectState.pendingCommand = { schemaVersion: 1, envelope: structuredClone(envelope), events: structuredClone(pendingEvents) };
+    nextState.effectState.pendingCommand = {
+      schemaVersion: 1,
+      envelope: structuredClone(envelope),
+      events: structuredClone(pendingEvents),
+      ...(envelope.command.type === 'USE_ITEM' ? { resolutionEnvelopes: [] } : {}),
+    };
     return { state: nextState, events: pendingEvents };
   }
   if (before.status === 'failed' || before.status === 'unsupported') return { state, events: [], error: { code: 'INVALID_COMMAND', message: before.error ?? before.reason ?? 'command-before lifecycle failed.' } };
@@ -429,9 +470,10 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     }
   }
   const factStart = events.length;
-  const error = reduceCommand(nextState, ruleset, envelope, events);
+  const error = reduceCommand(nextState, ruleset, envelope, [], events, rollback, factStart);
   if (error) return { state, events: [], error };
   if (nextState.effectState.pendingCommand?.kind === 'combat-reward') { nextState.effectState.pendingCommand.rollbackState = structuredClone(rollback); nextState.effectState.pendingCommand.factStart = factStart; return { state: nextState, events }; }
+  if (nextState.effectState.pendingCommand?.kind === 'card-use-effect') return { state: nextState, events: [...nextState.effectState.pendingCommand.events] };
   const pipeline = beginPostCommandPipeline(nextState, ruleset, envelope, rollback, events.slice(factStart), events);
   if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
   if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };

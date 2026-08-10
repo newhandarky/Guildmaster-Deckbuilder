@@ -23,8 +23,8 @@ export class LocalGameSession {
     if (loaded.status === 'loaded') {
       try {
         const saved = loaded.game;
+        if (typeof saved.snapshot?.state?.gameId === 'string') this.restoreGameSequence(saved.snapshot.state.gameId);
         this.state = restoreSnapshot(saved.snapshot, this.ruleset);
-        this.restoreGameSequence(this.state.gameId);
         this.events = saved.events;
         this.replayHistoryComplete = saved.replayHistoryComplete;
         this.persistenceState = 'restored';
@@ -168,6 +168,8 @@ export class LocalGameSession {
 
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
+    const basePack = this.ruleset.registry.packs.find(({ role }) => role === 'base');
+    if (!basePack) throw new Error('LocalGameSession requires one base Content Pack.');
     const update: SessionUpdate = {
       view: projectPlayerView(this.state, this.ruleset, this.humanId),
       definitions: this.ruleset.registry.definitions,
@@ -175,7 +177,9 @@ export class LocalGameSession {
       legalCommands,
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
       entrySummary: {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        contentMode: basePack.contentStatus === 'provisional-playtest' ? 'provisional-playtest' : 'demo',
+        contentPackId: basePack.id,
         canContinue: this.persistenceState === 'restored',
         gameId: this.state.gameId,
         revision: this.state.revision,

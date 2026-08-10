@@ -23,10 +23,10 @@ import {
   type CardAction,
   type CardVisualViewModel,
 } from '../ui/cards/card-visual-model.js';
-import { defaultLifecycleCopyResolver } from '../ui/lifecycle/lifecycle-copy.js';
 import { buildLifecycleInteractionModel } from '../ui/lifecycle/lifecycle-interaction-model.js';
 import { useGameStore } from '../store/game-store.js';
-import { presentationResolver } from './presentation.js';
+import { lifecycleCopyResolver, presentationResolver } from './presentation.js';
+import { webContentModeOptions, type WebContentMode } from './ruleset.js';
 
 type CardInspection = {
   gameId: string;
@@ -51,7 +51,10 @@ export function App() {
     [view.cards],
   );
   const lifecycleInteraction = useMemo(
-    () => buildLifecycleInteractionModel(view, legalCommands, events, defaultLifecycleCopyResolver),
+    () => buildLifecycleInteractionModel(view, legalCommands, events, lifecycleCopyResolver, (_choiceId, optionId) => {
+      const definitionId = view.cards[optionId]?.definitionId;
+      return definitionId ? presentationResolver.resolve(definitionId).displayName : undefined;
+    }),
     [events, legalCommands, view],
   );
   const lifecyclePending = lifecycleInteraction.kind === 'choice'
@@ -105,9 +108,9 @@ export function App() {
     setHasEnteredGame(true);
     focusGame();
   };
-  const startNewExpedition = () => {
+  const startNewExpedition = (mode: WebContentMode) => {
     clearTransientUi();
-    restart();
+    restart(mode);
     setHasEnteredGame(true);
     focusGame();
   };
@@ -145,7 +148,7 @@ export function App() {
       conditionId={view.endState?.conditionId ?? '遊戲結束'}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
-      notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
+      notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} error={error} />}
       persistence={persistence}
       onRestart={restartAndClear}
     />;
@@ -159,8 +162,9 @@ export function App() {
       revision={view.revision}
       isViewerActive={view.activePlayerId === view.viewerId}
       persistence={persistence}
+      contentLabel={webContentModeOptions[entrySummary.contentMode].label}
     />}
-    notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
+    notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} error={error} />}
     playerStatus={<PlayerStatusStrip
       self={{
         handCount: view.self.hand.length,

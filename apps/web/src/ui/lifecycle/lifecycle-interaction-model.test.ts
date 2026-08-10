@@ -71,6 +71,23 @@ describe('lifecycle interaction model', () => {
     expect(choiceCommands).toEqual(source);
   });
 
+  it('uses a visible-card label without changing the authoritative option ID', () => {
+    const model = buildLifecycleInteractionModel(
+      view(),
+      choiceCommands,
+      [],
+      defaultLifecycleCopyResolver,
+      (_choiceId, optionId) => optionId === 'continue' ? '起始牌 A' : undefined,
+    );
+    expect(model).toMatchObject({
+      kind: 'choice',
+      actions: [
+        { label: '起始牌 A', command: choiceCommands[0] },
+        { label: '選項 2（unknown-route）', command: choiceCommands[1] },
+      ],
+    });
+  });
+
   it('refuses to guess between multiple choice groups', () => {
     const model = buildLifecycleInteractionModel(view(), [
       choiceCommands[0]!,
