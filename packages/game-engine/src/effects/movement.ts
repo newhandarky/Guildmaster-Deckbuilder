@@ -67,7 +67,14 @@ export function moveCard(state: GameState, request: MoveRequest): MoveResult {
   if (cardLocationCount(state, request.cardInstanceId, to.kind === 'enemy-target-card' ? to.targetId : undefined) !== 1) return { ok: false, code: 'SOURCE_MISMATCH', message: 'Card must have exactly one canonical source location.' };
   if (!isCardAtLocation(state, from, request.cardInstanceId)) return { ok: false, code: 'SOURCE_MISMATCH', message: 'Card is not in the declared source location.' };
   const sourceOwner = ownerOf(from); if (request.permission !== 'system' && sourceOwner && sourceOwner !== request.actorId) return { ok: false, code: 'OWNERSHIP_VIOLATION', message: 'Controller-only effect cannot move another player card.' };
-  if (from.kind === 'shared-zone') { const zone = getZone(state, from.zoneId); if (zone.visibility === 'ownerOnly' && zone.ownerId !== request.actorId && request.permission !== 'system') return { ok: false, code: 'HIDDEN_INFORMATION', message: 'Actor cannot select a hidden shared-zone card.' }; }
+  if (from.kind === 'shared-zone') {
+    const zone = getZone(state, from.zoneId);
+    const inaccessible = zone.visibility === 'hidden'
+      || (zone.visibility === 'ownerOnly' && zone.ownerId !== request.actorId);
+    if (inaccessible && request.permission !== 'system') {
+      return { ok: false, code: 'HIDDEN_INFORMATION', message: 'Actor cannot select a hidden shared-zone card.' };
+    }
+  }
   const definition = request.registry.definitions[card.definitionId]; if (!definition) return { ok: false, code: 'CARD_NOT_FOUND', message: 'Card definition is unavailable.' };
   const attachedEquipmentId = from.kind === 'party' ? getPlayer(state, sourceOwner!).party[from.position]?.equipmentId : undefined;
   if (attachedEquipmentId && request.attachedEquipmentDisposition !== 'discard') return { ok: false, code: 'EQUIPMENT_RELATIONSHIP', message: 'Move attached equipment first to avoid a dangling relationship.' };

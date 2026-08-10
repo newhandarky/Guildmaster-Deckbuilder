@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createGame, dispatch, serializeSnapshot } from '@guildmaster/game-engine';
+import { createGame, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
 import { enterGame, openGame } from './game-entry.js';
@@ -150,22 +150,54 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
 });
 
-test('explicit optional helper composition reaches PlayerView and persisted Snapshot identity', async ({ page }) => {
+test('explicit helper composition reaches PlayerView and persisted Snapshot identity', async ({ page }) => {
   await openGame(page, '/?e2eScenario=optional-helper');
-  await expect(page.getByRole('heading', { name: '隊伍（5/6）' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '隊伍（6/6）' })).toBeVisible();
+  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 08');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
   expect(persisted.snapshot.rulesModules).toEqual([
     expect.objectContaining({ id: 'base:rules' }),
     expect.objectContaining({
-      id: 'e2e:helper/expanded-party',
+      id: 'base:helpers',
       version: '1.0.0',
       compositionFingerprint: expect.any(String),
     }),
   ]);
-  expect(persisted.snapshot.state.moduleState['e2e:helper/expanded-party']).toEqual({
-    active: true,
-    helperDefinitionId: 'e2e:helper/expanded-party',
-  });
+  expect(persisted.snapshot.state.moduleState['base:helpers']).toEqual({ schemaVersion: 1 });
+  expect(persisted.snapshot.state.zones['base:helper-deck'].visibility).toBe('hidden');
+});
+
+test('helper 08 rotates after a boss and discards the rightmost overflow member atomically across reload', async ({ page }) => {
+  await openGame(page, '/?e2eScenario=optional-helper');
+  await expect(page.getByRole('heading', { name: '隊伍（6/6）' })).toBeVisible();
+  const initial = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  const expectedAdventurerId = initial.snapshot.state.players[0].party.at(-1).adventurerId as string;
+  const equipment = page.getByTestId('hand').locator('[data-card-type="equipment"]');
+  await expect(equipment).toHaveCount(1);
+  const expectedEquipmentId = await equipment.getAttribute('data-card-instance-id');
+  expect(expectedEquipmentId).toBeTruthy();
+  await equipment.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
+  const rightmostMember = page.locator('[data-card-state="target"]').last();
+  await expect(rightmostMember).toHaveAttribute('data-card-instance-id', expectedAdventurerId);
+  await rightmostMember.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '配戴至此隊員', exact: true }).click();
+  await page.getByTestId('end-phase').click();
+  const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
+  await runCardAction(page, boss, '討伐');
+  await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
+  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 01');
+  await expect(page.getByTestId('helper-panel')).toContainText('已離場 1 張');
+  await expect(page.locator('.log')).toContainText('隊伍上限降低');
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  expect(persisted.snapshot.state.players[0].discardPile.slice(-2)).toEqual([expectedAdventurerId, expectedEquipmentId]);
+  expect(persisted.replayBundle).toBeDefined();
+  const replay = replayGame(persisted.replayBundle, createWebRuleset('optional-helper'));
+  expect(replay).toMatchObject({ status: 'completed', finalSnapshot: persisted.snapshot });
+  await page.reload();
+  await enterGame(page);
+  await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
+  await expect(page.getByTestId('helper-panel')).toContainText('已離場 1 張');
 });
 
 test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
@@ -186,6 +218,21 @@ test('provisional foundation mode is explicit, visibly limited, and restored by 
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
   await expect(page.getByTestId('expedition-summary')).toContainText('基礎候選數值測試');
   await expect(page.getByRole('radio', { name: /基礎候選數值測試/ })).toBeChecked();
+});
+
+test('helper advanced rules are provisional-only and restore from pack/module identity', async ({ page }) => {
+  await page.goto('/');
+  const entry = page.getByTestId('expedition-entry');
+  await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toHaveCount(0);
+  await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
+  const helpers = entry.getByRole('checkbox', { name: /協助者進階規則/ });
+  await helpers.check();
+  await entry.getByRole('button', { name: '開始新遠征' }).click();
+  await expect(page.getByTestId('helper-panel')).toBeVisible();
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 08 效果已啟用');
+  await page.reload();
+  await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
+  await expect(page.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
 });
 
 test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {
@@ -218,7 +265,7 @@ test('restored entry requires confirmation before replacing the saved expedition
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
-  await expect(entry.getByText(/會被「基礎候選數值測試」新對局覆蓋/)).toBeVisible();
+  await expect(entry.getByText(/會被「基礎候選數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
   await expect(confirm).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);

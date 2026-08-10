@@ -6,6 +6,8 @@ export * from './combat-reward.js';
 export * from './encounter.js';
 export * from './equipment.js';
 export * from './team-overflow.js';
+export * from './team-capacity-enforcement.js';
+export * from './setup.js';
 export * from './supply.js';
 export * from './continuous.js';
 export * from './dice.js';

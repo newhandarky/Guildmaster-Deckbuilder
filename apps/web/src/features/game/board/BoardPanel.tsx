@@ -27,6 +27,15 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
       .filter((target) => target.status === 'available')
       .map((target) => [target.cardInstanceId, target]),
   );
+  const helperZone = zones['base:helper-active'];
+  const helperCardId = helperZone?.cardIds[0];
+  const helperDefinition = helperCardId ? definitionFor(cards, definitions, helperCardId) : undefined;
+  const helperCard = helperCardId ? buildCardVisualModel({
+    instance: cards[helperCardId],
+    definition: helperDefinition,
+    presentation: presentation.resolve(helperDefinition?.id ?? cards[helperCardId]?.definitionId ?? ''),
+    interactionState: 'unavailable',
+  }) : undefined;
   const renderRow = (zoneId: string, title: string, ids: readonly string[], action: 'attack' | 'buy') => {
     const emptyMessage = emptySupplyMessage(zoneId, ids.length);
     return <section className="board-row" data-zone-id={zoneId}>
@@ -61,6 +70,15 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
   return <div className="public-table-grid" data-testid="public-table">
     <div className="table-area encounter-area" data-testid="encounter-area" role="region" aria-labelledby="encounter-area-title">
       <h2 id="encounter-area-title" className="area-title">公共遭遇區</h2>
+      {helperZone
+        ? <section className="board-row helper-panel" data-testid="helper-panel" data-zone-id="base:helper-active" aria-labelledby="helper-panel-title">
+            <h3 id="helper-panel-title">目前協助者</h3>
+            {helperCard
+              ? <div className="card-row" aria-label="目前協助者卡片"><Card card={helperCard} onInspect={onInspect} /></div>
+              : <p>目前沒有協助者在場。</p>}
+            <p className="helper-retired-count">已離場 {cardsIn('base:helper-retired').length} 張</p>
+          </section>
+        : null}
       {renderRow('base:boss-row', `魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack')}
       {renderRow('base:monster-row', `魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack')}
     </div>

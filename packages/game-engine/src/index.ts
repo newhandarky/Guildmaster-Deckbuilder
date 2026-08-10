@@ -21,6 +21,7 @@ export * from './engine/encounter-resolution.js';
 export * from './rules/equipment-eligibility-evaluator.js';
 export * from './rules/equipment-combat-modifier-evaluator.js';
 export * from './rules/team-overflow-evaluator.js';
+export * from './rules/team-capacity-enforcement-evaluator.js';
 export * from './rules/supply-row-evaluator.js';
 export * from './rules/supply-row-refresh-evaluator.js';
 export * from './rules/supply-continuity-evaluator.js';

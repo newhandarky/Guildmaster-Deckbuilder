@@ -26,7 +26,7 @@ import {
 import { buildLifecycleInteractionModel } from '../ui/lifecycle/lifecycle-interaction-model.js';
 import { useGameStore } from '../store/game-store.js';
 import { lifecycleCopyResolver, presentationResolver } from './presentation.js';
-import { webContentModeOptions, type WebContentMode } from './ruleset.js';
+import { webContentModeOptions, type WebGameSetup } from './ruleset.js';
 
 type CardInspection = {
   gameId: string;
@@ -108,9 +108,9 @@ export function App() {
     setHasEnteredGame(true);
     focusGame();
   };
-  const startNewExpedition = (mode: WebContentMode) => {
+  const startNewExpedition = (setup: WebGameSetup) => {
     clearTransientUi();
-    restart(mode);
+    restart(setup);
     setHasEnteredGame(true);
     focusGame();
   };
@@ -148,7 +148,7 @@ export function App() {
       conditionId={view.endState?.conditionId ?? '遊戲結束'}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
-      notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} error={error} />}
+      notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
       persistence={persistence}
       onRestart={restartAndClear}
     />;
@@ -164,7 +164,7 @@ export function App() {
       persistence={persistence}
       contentLabel={webContentModeOptions[entrySummary.contentMode].label}
     />}
-    notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} error={error} />}
+    notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
     playerStatus={<PlayerStatusStrip
       self={{
         handCount: view.self.hand.length,

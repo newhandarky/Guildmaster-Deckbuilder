@@ -16,7 +16,7 @@ import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { applyEnemyTargetDamageEvaluation, defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
-import { validateGameStateInvariants } from './state-invariants.js';
+import { validateGameStateInvariants, validateRulesetGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
@@ -100,12 +100,15 @@ function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: Player
       else player.discardPile.push(target.cardInstanceId);
     }
   }
-  if (target.kind === 'monster') {
-    try { refillSupply(state, ruleset, 'monster', events); attachTargets(state); }
-    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : 'Monster supply refill failed.' }; }
-    const continuityErrors = validateSupplyContinuityState(state, ruleset);
-    if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') };
+  return undefined;
+}
+
+function refillAttackTargetSupply(state: GameState, ruleset: Ruleset, targetKind: string, events: DomainEvent[]): EngineError | undefined {
+  if (targetKind === 'monster' || targetKind === 'boss') {
+    try { refillSupply(state, ruleset, targetKind, events); attachTargets(state); }
+    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : `${targetKind} supply refill failed.` }; }
   }
+  if (targetKind === 'monster') { const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') }; }
   return undefined;
 }
 
@@ -116,14 +119,19 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   const outcome = fixedCombatOutcome(events);
   if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
   const attackResolution = fixedAttackResolution(events);
+  let terminalStatus: 'defeated' | 'removed';
   if (attackResolution) {
     const expectedStatus = attackResolution.damage.input.lethalOutcome ?? 'defeated';
     if (!attackResolution.damage.lethal || target.status !== expectedStatus || target.health?.current !== 0) return { code: 'INVALID_COMMAND', message: 'Committed health-target attack resolution is incomplete or inconsistent.' };
+    terminalStatus = expectedStatus;
   } else {
     const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
     if (dispositionError) return dispositionError;
+    terminalStatus = outcome === 'remove-target' ? 'removed' : 'defeated';
   }
-  if (outcome === 'remove-target') return undefined;
+  const refillError = refillAttackTargetSupply(state, ruleset, target.kind, events);
+  if (refillError) return refillError;
+  if (terminalStatus === 'removed') return undefined;
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
@@ -231,10 +239,9 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     const applied = applyEnemyTargetDamageEvaluation(state, ruleset, attackResolution.evaluation.damage, events);
     if (!applied.ok) return { code: 'INVALID_COMMAND', message: applied.error };
     if (!attackResolution.evaluation.damage.lethal) return undefined;
-    if (combat.evaluation.outcome.kind === 'remove-target') return undefined;
   }
   if (combat.evaluation.outcome.kind === 'remove-target') {
-    return finalizeAttackTarget(state, ruleset, player, target.targetId, 'remove-target', events, commandId);
+    return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
   }
   const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
   if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
@@ -325,7 +332,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   const parsedEnvelope = CommandEnvelopeSchema.safeParse(envelope);
   if (!parsedEnvelope.success) return fail(state, 'INVALID_COMMAND', `Malformed command envelope: ${parsedEnvelope.error.issues[0]?.message ?? 'invalid input'}.`);
   envelope = parsedEnvelope.data;
-  const stateErrors = validateGameStateInvariants(state); if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
+  const stateErrors = [...validateGameStateInvariants(state), ...validateRulesetGameStateInvariants(state, ruleset)]; if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
   const registryError = validateRulesetStateCompatibility(state, ruleset); if (registryError) return fail(state, 'INVALID_COMMAND', registryError);
   const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return fail(state, 'INVALID_COMMAND', continuityErrors.join(' '));
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
@@ -485,7 +492,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   const result = dispatchInternal(state, ruleset, envelope);
   if (result.error) return result;
-  const errors = [...validateGameStateInvariants(result.state), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
+  const errors = [...validateGameStateInvariants(result.state), ...validateRulesetGameStateInvariants(result.state, ruleset), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
   if (errors.length || registryError) return fail(state, 'INVALID_COMMAND', `Command produced invalid state: ${[...errors, ...(registryError ? [registryError] : [])].join(' ')}`);
   return result;
 }

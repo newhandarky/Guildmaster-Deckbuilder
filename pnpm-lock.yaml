@@ -38,6 +38,9 @@ importers:
       '@guildmaster/content-base':
         specifier: workspace:*
         version: link:../../packages/content-base
+      '@guildmaster/content-base-helpers':
+        specifier: workspace:*
+        version: link:../../packages/content-base-helpers
       '@guildmaster/game-ai':
         specifier: workspace:*
         version: link:../../packages/game-ai
@@ -97,6 +100,22 @@ importers:
         specifier: workspace:*
         version: link:../game-protocol
     devDependencies:
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(lightningcss@1.32.0)
+
+  packages/content-base-helpers:
+    dependencies:
+      '@guildmaster/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
+      '@guildmaster/game-protocol':
+        specifier: workspace:*
+        version: link:../game-protocol
+    devDependencies:
+      '@guildmaster/content-base':
+        specifier: workspace:*
+        version: link:../content-base
       vitest:
         specifier: ^2.1.9
         version: 2.1.9(lightningcss@1.32.0)

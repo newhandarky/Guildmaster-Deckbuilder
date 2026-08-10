@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SessionEntrySummary, SessionPersistenceStatus } from '../../../adapters/game-session.js';
-import { webContentModeOptions, type WebContentMode } from '../../../app/ruleset.js';
+import { webContentModeOptions, type WebContentMode, type WebGameSetup } from '../../../app/ruleset.js';
 import { phaseDisplayName } from '../table/phase-copy.js';
 
 type Props = {
   summary: SessionEntrySummary;
   persistence: SessionPersistenceStatus;
   onContinue: () => void;
-  onStartNew: (mode: WebContentMode) => void;
+  onStartNew: (setup: WebGameSetup) => void;
 };
 
 const statusCopy: Record<SessionEntrySummary['status'], string> = {
@@ -20,6 +20,7 @@ const statusCopy: Record<SessionEntrySummary['status'], string> = {
 export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStartNew }: Props) {
   const [confirmingNew, setConfirmingNew] = useState(false);
   const [selectedMode, setSelectedMode] = useState<WebContentMode>(summary.contentMode);
+  const [helpersEnabled, setHelpersEnabled] = useState(summary.advancedRules.helpers);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const startNewRef = useRef<HTMLButtonElement>(null);
@@ -72,6 +73,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
         <div><dt>修訂</dt><dd>{summary.revision}</dd></div>
         <div><dt>Replay</dt><dd>{summary.replayHistoryComplete ? '完整紀錄' : '舊版存檔 · 紀錄不完整'}</dd></div>
         <div><dt>內容</dt><dd>{webContentModeOptions[summary.contentMode].label}</dd></div>
+        <div><dt>進階規則</dt><dd>{summary.advancedRules.helpers ? '協助者' : '未啟用'}</dd></div>
       </dl>
 
       <fieldset className="content-mode-picker">
@@ -82,18 +84,34 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
             name="content-mode"
             value={mode}
             checked={selectedMode === mode}
-            onChange={() => setSelectedMode(mode)}
+            onChange={() => {
+              setSelectedMode(mode);
+              if (mode === 'demo') setHelpersEnabled(false);
+            }}
           />
           <span><strong>{option.label}</strong><small>{option.description}</small>{option.warning ? <small className="content-mode-warning">{option.warning}</small> : null}</span>
         </label>)}
       </fieldset>
 
+      {selectedMode === 'provisional-playtest'
+        ? <fieldset className="advanced-rules-picker">
+            <legend>進階規則</legend>
+            <label className={helpersEnabled ? 'content-mode-option content-mode-option-selected' : 'content-mode-option'}>
+              <input type="checkbox" checked={helpersEnabled} onChange={(event) => setHelpersEnabled(event.currentTarget.checked)} />
+              <span>
+                <strong>協助者進階規則</strong>
+                <small>依本局種子抽選協助者；目前只有候選協助者 08 的隊伍上限效果已啟用。</small>
+              </span>
+            </label>
+          </fieldset>
+        : null}
+
       {confirmingNew
         ? <div className="expedition-new-confirmation" role="alertdialog" aria-labelledby="new-expedition-confirmation-heading" aria-describedby="new-expedition-confirmation-copy">
             <h3 id="new-expedition-confirmation-heading">確定開啟新遠征？</h3>
-            <p id="new-expedition-confirmation-copy">目前的本機進度會被「{webContentModeOptions[selectedMode].label}」新對局覆蓋，這個動作無法復原。</p>
+            <p id="new-expedition-confirmation-copy">目前的本機進度會被「{webContentModeOptions[selectedMode].label} · 協助者{helpersEnabled ? '啟用' : '關閉'}」新對局覆蓋，這個動作無法復原。</p>
             <div className="controls">
-              <button ref={confirmRef} className="danger" type="button" onClick={() => onStartNew(selectedMode)}>確認開啟新遠征</button>
+              <button ref={confirmRef} className="danger" type="button" onClick={() => onStartNew({ contentMode: selectedMode, advancedRules: { helpers: helpersEnabled } })}>確認開啟新遠征</button>
               <button type="button" onClick={cancelNewExpedition}>保留目前進度</button>
             </div>
           </div>
@@ -103,7 +121,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                   <button className="primary" type="button" onClick={onContinue}>繼續最近進度</button>
                   <button ref={startNewRef} type="button" onClick={() => setConfirmingNew(true)}>開啟新遠征</button>
                 </>
-              : <button className="primary" type="button" onClick={() => onStartNew(selectedMode)}>開始新遠征</button>}
+              : <button className="primary" type="button" onClick={() => onStartNew({ contentMode: selectedMode, advancedRules: { helpers: helpersEnabled } })}>開始新遠征</button>}
           </div>}
     </section>
   </main>;

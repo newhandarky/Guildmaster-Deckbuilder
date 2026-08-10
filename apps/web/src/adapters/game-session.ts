@@ -19,8 +19,9 @@ export type SessionPersistenceStatus = {
 };
 
 export type SessionEntrySummary = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   contentMode: 'demo' | 'provisional-playtest';
+  advancedRules: { helpers: boolean };
   contentPackId: string;
   canContinue: boolean;
   gameId: string;

@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type OptionalRulesModuleComposition, type PlayerState, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validateSetupCardPoolContribution, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamCapacityEnforcementPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type OptionalRulesModuleComposition, type PlayerState, type SetupCardPoolContribution, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamCapacityEnforcementPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { composeRulesModules } from './rules-module-composition.js';
@@ -7,13 +7,14 @@ import { validateSupplyContinuityPolicy, validateSupplyContinuityRegistry, type 
 
 export { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
-export type SupplyKind = 'adventurer' | 'item' | 'monster' | 'boss';
+export type SupplyKind = string;
 export type EndCondition = { id: string; priority?: number; evaluate: (state: GameState) => boolean };
 export type ScoreContribution = { playerId: string; ruleId: string; amount: number; label: string };
 export type RulesModule = {
   id: string; version: string; config?: Record<string, unknown>;
   composition?: OptionalRulesModuleComposition;
   createInitialState?: () => unknown; zoneDefinitions?: readonly ZoneDefinition[];
+  validateState?: (state: unknown) => readonly string[];
   getPartyLimit: (state: GameState, player: PlayerState, currentLimit: number) => number;
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
   lifecycleHooks?: readonly LifecycleHook[];
@@ -24,6 +25,8 @@ export type RulesModule = {
   equipmentEligibilityRules?: readonly EquipmentEligibilityRule[];
   equipmentCombatModifierRules?: readonly EquipmentCombatModifierRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
+  teamCapacityEnforcementPolicies?: readonly TeamCapacityEnforcementPolicy[];
+  setupContributions?: readonly SetupCardPoolContribution[];
   supplyRowConfigurations?: readonly SupplyRowConfiguration[];
   supplyRowRefreshPolicies?: readonly SupplyRowRefreshPolicy[];
   supplyContinuityPolicies?: readonly SupplyContinuityPolicy[];
@@ -96,7 +99,8 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     if (!module.id.trim() || module.id !== module.id.trim() || !module.version.trim() || module.version !== module.version.trim() || !isFiniteJsonValue(module.config ?? {})) throw new Error(`Rules Module ${module.id || '<empty>'} has invalid identity or config.`);
   }
   const composedModules = composeRulesModules(modules);
-  const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
+  const registry = createContentRegistry(packs, options);
+  const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const capacityRefs = new Set<string>(); const capacityPriorities = new Set<number>(); const setupRefs = new Set<string>(); const setupPriorities = new Set<number>(); const setupSelectors = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
   for (const module of composedModules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
@@ -114,6 +118,8 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const rule of module.equipmentEligibilityRules ?? []) { const errors = validateEquipmentEligibilityRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentRefs.has(ref)) errors.push(`Duplicate equipment eligibility rule: ${module.id}/${rule.ruleId}.`); equipmentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.equipmentCombatModifierRules ?? []) { const errors = validateEquipmentCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentCombatRefs.has(ref)) errors.push(`Duplicate equipment combat modifier rule: ${module.id}/${rule.ruleId}.`); equipmentCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamOverflowPolicies ?? []) { const errors = validateTeamOverflowPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (overflowRefs.has(ref)) errors.push(`Duplicate team overflow policy: ${module.id}/${policy.policyId}.`); overflowRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.teamCapacityEnforcementPolicies ?? []) { const errors = validateTeamCapacityEnforcementPolicy(policy, module.id); if (capacityRefs.has(policy.policyId)) errors.push(`Duplicate team capacity enforcement policy: ${policy.policyId}.`); if (capacityPriorities.has(policy.priority)) errors.push(`Team capacity enforcement policy priority ${policy.priority} is ambiguous.`); capacityRefs.add(policy.policyId); capacityPriorities.add(policy.priority); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const contribution of module.setupContributions ?? []) { const errors = validateSetupCardPoolContribution(contribution, module.id); if (setupRefs.has(contribution.contributionId)) errors.push(`Duplicate setup contribution: ${contribution.contributionId}.`); if (setupPriorities.has(contribution.priority)) errors.push(`Setup contribution priority ${contribution.priority} is ambiguous.`); const selector = `${contribution.selector.kind}\u0000${contribution.selector.value}`; if (setupSelectors.has(selector)) errors.push(`Conflicting setup contribution selector: ${contribution.selector.value}.`); setupRefs.add(contribution.contributionId); setupPriorities.add(contribution.priority); setupSelectors.add(selector); if (errors.length) throw new Error(errors.join(' ')); }
     for (const config of module.supplyRowConfigurations ?? []) { const errors = validateSupplyRowConfiguration(config, module.id); const ref = `${module.id}\u0000${config.configurationId}`; const pair = `${config.sourceDeckZoneId}\u0000${config.targetRowZoneId}`; if (supplyRefs.has(ref)) errors.push(`Duplicate supply configuration: ${module.id}/${config.configurationId}.`); if (supplyPairs.has(pair)) errors.push(`Duplicate supply deck/row configuration: ${pair}.`); supplyRefs.add(ref); supplyPairs.add(pair); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.supplyRowRefreshPolicies ?? []) { const errors = validateSupplyRowRefreshPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.refreshPolicyId}`; if (refreshRefs.has(ref)) errors.push(`Duplicate supply refresh policy: ${module.id}/${policy.refreshPolicyId}.`); if (!composedModules.flatMap((candidate) => candidate.supplyRowConfigurations ?? []).some((config) => config.configurationId === policy.supplyRowConfigurationId)) errors.push(`Unknown supply configuration: ${policy.supplyRowConfigurationId}.`); refreshRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.supplyContinuityPolicies ?? []) { const errors = validateSupplyContinuityPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (continuityRefs.has(ref)) errors.push(`Duplicate supply continuity policy: ${module.id}/${policy.policyId}.`); continuityRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
@@ -122,7 +128,15 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const die of module.diceDefinitions ?? []) { const errors = validateDiceDefinition(die, module.id); const ref = `${module.id}\u0000${die.diceId}`; if (diceRefs.has(ref)) errors.push(`Duplicate dice definition: ${module.id}/${die.diceId}.`); diceRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.counterConsentPolicies ?? []) { const errors = validateCounterConsentPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (consentRefs.has(ref)) errors.push(`Duplicate counter consent policy: ${module.id}/${policy.policyId}.`); consentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
   }
-  const ruleset = { registry: createContentRegistry(packs, options), modules: composedModules };
+  const zoneDefinitions = new Map(composedModules.flatMap((module) => module.zoneDefinitions ?? []).map((zone) => [zone.zoneId, zone]));
+  for (const module of composedModules) for (const contribution of module.setupContributions ?? []) {
+    const destination = zoneDefinitions.get(contribution.destinationZoneId);
+    if (!destination) throw new Error(`Setup contribution ${contribution.contributionId} has unknown destination zone ${contribution.destinationZoneId}.`);
+    if (destination.rulesModuleId !== module.id || destination.kind !== 'orderedDeck') throw new Error(`Setup contribution ${contribution.contributionId} destination must be an ordered deck owned by ${module.id}.`);
+    for (const zoneId of contribution.count.zoneIds) if (!zoneDefinitions.has(zoneId)) throw new Error(`Setup contribution ${contribution.contributionId} has unknown count zone ${zoneId}.`);
+    if (!Object.values(registry.definitions).some(({ type }) => type === contribution.selector.value)) throw new Error(`Setup contribution ${contribution.contributionId} selector has no matching definitions.`);
+  }
+  const ruleset = { registry, modules: composedModules };
   for (const module of composedModules) for (const policy of module.attackResolutionPolicies ?? []) {
     const owner = composedModules.find(({ id }) => id === policy.encounterPolicy.moduleId);
     if (!owner?.encounterResolutionPolicies?.some(({ policyId }) => policyId === policy.encounterPolicy.policyId)) throw new Error(`Attack resolution policy ${module.id}/${policy.policyId} references unknown encounter policy ${policy.encounterPolicy.moduleId}/${policy.encounterPolicy.policyId}.`);

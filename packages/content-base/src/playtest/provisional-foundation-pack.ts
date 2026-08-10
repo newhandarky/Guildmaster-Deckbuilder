@@ -1,6 +1,4 @@
 import type { CardDefinition, ContentPack } from '@guildmaster/game-protocol';
-import { baseProvisionalContentCatalog } from '../provisional/base-provisional-catalog.js';
-import type { ProvisionalCardCandidate, ProvisionalFieldName } from '../provisional/schema.js';
 
 /**
  * First internal-only base-content slice.
@@ -9,119 +7,47 @@ import type { ProvisionalCardCandidate, ProvisionalFieldName } from '../provisio
  * enabled item effects are data-driven; all other card text stays explicitly
  * disabled and the pack can only be loaded through allowProvisionalPlaytest.
  */
-const foundationComposition = [
-  ['base:starter/adventurer-01', 1],
-  ['base:starter/adventurer-02', 1],
-  ['base:starter/adventurer-03', 1],
-  ['base:starter/adventurer-04', 1],
-  ['base:starter/adventurer-05', 1],
-  ['base:starter/summoning-stone', 1],
-  ['base:starter/spirit-crystal', 1],
-  ['base:adventurer/adventurer-01', 2],
-  ['base:adventurer/adventurer-02', 2],
-  ['base:adventurer/adventurer-03', 2],
-  ['base:adventurer/adventurer-04', 2],
-  ['base:adventurer/adventurer-05', 2],
-  ['base:adventurer/adventurer-06', 2],
-  ['base:adventurer/adventurer-07', 2],
-  ['base:adventurer/adventurer-08', 2],
-  // Internal digital playtest composition; source evidence does not establish per-card multiplicities.
-  ['base:resource/resource-01', 2],
-  ['base:resource/resource-02', 2],
-  ['base:resource/resource-04', 2],
-  ['base:resource/resource-05', 2],
-  ['base:resource/resource-08', 2],
-  ['base:resource/resource-10', 2],
-  ['base:resource/resource-13', 2],
-  ['base:resource/resource-15', 2],
-  ['base:resource/resource-17', 2],
-  ['base:resource/resource-18', 2],
-  ['base:resource/resource-27', 2],
-  ['base:monster/monster-01', 3],
-  ['base:monster/monster-02', 1],
-  ['base:monster/monster-03', 1],
-  ['base:monster/monster-04', 1],
-  ['base:boss/boss-01', 1],
-  ['base:boss/boss-02', 1],
-  ['base:boss/boss-03', 1],
-  ['base:boss/boss-04', 1],
-] as const;
+const source = 'provisional-foundation-playtest';
+const foundationRuntimeDefinitions: readonly CardDefinition[] = [
+  { id: 'base:starter/adventurer-01', name: '候選起始冒險者 01', type: 'starter', copies: 1, source, tags: ['profession:support'], combat: 1 },
+  { id: 'base:starter/adventurer-02', name: '候選起始冒險者 02', type: 'starter', copies: 1, source, tags: ['profession:melee'], combat: 2 },
+  { id: 'base:starter/adventurer-03', name: '候選起始冒險者 03', type: 'starter', copies: 1, source, tags: ['profession:mage'], combat: 1 },
+  { id: 'base:starter/adventurer-04', name: '候選起始冒險者 04', type: 'starter', copies: 1, source, tags: ['profession:tank'], combat: 1 },
+  { id: 'base:starter/adventurer-05', name: '候選起始冒險者 05', type: 'starter', copies: 1, source, tags: ['profession:ranged'], combat: 1 },
+  { id: 'base:starter/summoning-stone', name: '候選起始資源 A', type: 'starter', copies: 1, source, tags: [], purchasePower: 1 },
+  { id: 'base:starter/spirit-crystal', name: '候選起始資源 B', type: 'starter', copies: 1, source, tags: [], honor: 1 },
+  { id: 'base:adventurer/adventurer-01', name: '候選冒險者 01', type: 'adventurer', copies: 2, source, tags: ['profession:support', 'playtest:effects-disabled'], cost: 4, combat: 2, honor: 2 },
+  { id: 'base:adventurer/adventurer-02', name: '候選冒險者 02', type: 'adventurer', copies: 2, source, tags: ['profession:melee', 'playtest:effects-disabled'], cost: 3, combat: 3, honor: 2 },
+  { id: 'base:adventurer/adventurer-03', name: '候選冒險者 03', type: 'adventurer', copies: 2, source, tags: ['profession:mage', 'playtest:effects-disabled'], cost: 4, combat: 3, honor: 1 },
+  { id: 'base:adventurer/adventurer-04', name: '候選冒險者 04', type: 'adventurer', copies: 2, source, tags: ['profession:tank', 'playtest:effects-disabled'], cost: 4, combat: 2, honor: 2 },
+  { id: 'base:adventurer/adventurer-05', name: '候選冒險者 05', type: 'adventurer', copies: 2, source, tags: ['profession:support', 'playtest:effects-disabled'], cost: 3, combat: 1, honor: 1 },
+  { id: 'base:adventurer/adventurer-06', name: '候選冒險者 06', type: 'adventurer', copies: 2, source, tags: ['profession:melee', 'playtest:effects-disabled'], cost: 4, combat: 2, honor: 2 },
+  { id: 'base:adventurer/adventurer-07', name: '候選冒險者 07', type: 'adventurer', copies: 2, source, tags: ['profession:ranged', 'playtest:effects-disabled'], cost: 3, combat: 2, honor: 1 },
+  { id: 'base:adventurer/adventurer-08', name: '候選冒險者 08', type: 'adventurer', copies: 2, source, tags: ['profession:melee', 'playtest:effects-disabled'], cost: 3, combat: 2, honor: 1 },
+  { id: 'base:resource/resource-01', name: '候選物資 01', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 3 },
+  { id: 'base:resource/resource-02', name: '候選物資 02', type: 'equipment', copies: 2, source, tags: ['playtest:effects-disabled'], cost: 3 },
+  { id: 'base:resource/resource-04', name: '候選物資 04', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 2 },
+  { id: 'base:resource/resource-05', name: '候選物資 05', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 3 },
+  { id: 'base:resource/resource-08', name: '候選物資 08', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 4 },
+  { id: 'base:resource/resource-10', name: '候選物資 10', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 3 },
+  { id: 'base:resource/resource-13', name: '候選物資 13', type: 'item', copies: 2, source, tags: ['affinity:mage', 'playtest:effect-enabled'], cost: 3 },
+  { id: 'base:resource/resource-15', name: '候選物資 15', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 4 },
+  { id: 'base:resource/resource-17', name: '候選物資 17', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 4 },
+  { id: 'base:resource/resource-18', name: '候選物資 18', type: 'equipment', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 4 },
+  { id: 'base:resource/resource-27', name: '候選物資 27', type: 'item', copies: 2, source, tags: ['playtest:effect-enabled'], cost: 5 },
+  { id: 'base:monster/monster-01', name: '候選魔物 01', type: 'monster', copies: 3, source, tags: ['base:supply-cycle-anchor', 'playtest:effects-disabled'], combat: 5, purchasePower: 2, honor: 1 },
+  { id: 'base:monster/monster-02', name: '候選魔物 02', type: 'monster', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 5, purchasePower: 2, honor: 5 },
+  { id: 'base:monster/monster-03', name: '候選魔物 03', type: 'monster', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 6, purchasePower: 2, honor: 5 },
+  { id: 'base:monster/monster-04', name: '候選魔物 04', type: 'monster', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 5, purchasePower: 2, honor: 4 },
+  { id: 'base:boss/boss-01', name: '候選魔王 01', type: 'boss', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 9, purchasePower: 3, honor: 10 },
+  { id: 'base:boss/boss-02', name: '候選魔王 02', type: 'boss', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 9, purchasePower: 3, honor: 10 },
+  { id: 'base:boss/boss-03', name: '候選魔王 03', type: 'boss', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 10, purchasePower: 3, honor: 10 },
+  { id: 'base:boss/boss-04', name: '候選魔王 04', type: 'boss', copies: 1, source, tags: ['playtest:effects-disabled'], combat: 5, purchasePower: 3, honor: 10 },
+];
 
-const candidates = new Map(baseProvisionalContentCatalog.candidates.map((candidate) => [candidate.definitionId, candidate]));
-const numericFields = ['cost', 'combat', 'purchasePower', 'honor'] as const;
-const enabledEffectIds = new Set([
-  'base:resource/resource-01',
-  'base:resource/resource-04',
-  'base:resource/resource-05',
-  'base:resource/resource-08',
-  'base:resource/resource-10',
-  'base:resource/resource-13',
-  'base:resource/resource-15',
-  'base:resource/resource-17',
-  'base:resource/resource-18',
-  'base:resource/resource-27',
-]);
-
-function candidateFor(definitionId: string): ProvisionalCardCandidate {
-  const candidate = candidates.get(definitionId);
-  if (!candidate) throw new Error(`Missing provisional foundation candidate: ${definitionId}`);
-  return candidate;
-}
-
-function numericValue(candidate: ProvisionalCardCandidate, fieldName: ProvisionalFieldName): number | undefined {
-  const value = candidate.fields.find(({ field }) => field === fieldName)?.candidateValue;
-  if (value === undefined) return undefined;
-  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid numeric provisional foundation field: ${candidate.definitionId}.${fieldName}`);
-  }
-  return value;
-}
-
-function stringValue(candidate: ProvisionalCardCandidate, fieldName: ProvisionalFieldName): string | undefined {
-  const value = candidate.fields.find(({ field }) => field === fieldName)?.candidateValue;
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`Invalid string provisional foundation field: ${candidate.definitionId}.${fieldName}`);
-  return value;
-}
-
-function neutralName(candidate: ProvisionalCardCandidate): string {
-  const sequence = candidate.definitionId.split('-').at(-1) ?? '00';
-  if (candidate.category === 'starter') return candidate.definitionId.includes('summoning-stone')
-    ? '候選起始資源 A'
-    : candidate.definitionId.includes('spirit-crystal')
-      ? '候選起始資源 B'
-      : `候選起始冒險者 ${sequence}`;
-  const label = candidate.category === 'adventurer' ? '冒險者' : candidate.category === 'resource' ? '物資' : candidate.category === 'monster' ? '魔物' : '魔王';
-  return `候選${label} ${sequence}`;
-}
-
-function definitionFor(definitionId: string, copies: number): CardDefinition {
-  const candidate = candidateFor(definitionId);
-  if (!['starter', 'adventurer', 'resource', 'monster', 'boss'].includes(candidate.category)) {
-    throw new Error(`Unsupported provisional foundation category: ${candidate.category}`);
-  }
-  const cardType = candidate.category === 'resource' ? stringValue(candidate, 'cardType') : undefined;
-  const profession = candidate.category === 'adventurer' || (candidate.category === 'starter' && cardType === undefined)
-    ? stringValue(candidate, 'profession')
-    : undefined;
-  if (candidate.category === 'resource' && cardType !== 'item' && cardType !== 'equipment') throw new Error(`Unsupported provisional resource type: ${candidate.definitionId}.${cardType ?? '<missing>'}`);
-  const effectEnabled = enabledEffectIds.has(candidate.definitionId);
-  const definition: CardDefinition = {
-    id: candidate.definitionId,
-    name: neutralName(candidate),
-    type: candidate.category === 'starter' ? 'starter' : candidate.category === 'resource' ? cardType! : candidate.category,
-    copies,
-    source: 'provisional-foundation-playtest',
-    tags: [
-      ...(candidate.mechanicsTags ?? []),
-      ...(profession ? [`profession:${profession}`] : []),
-      ...(candidate.category === 'starter' ? [] : [effectEnabled ? 'playtest:effect-enabled' : 'playtest:effects-disabled']),
-    ],
-  };
-  for (const fieldName of numericFields) {
-    const value = numericValue(candidate, fieldName);
-    if (value !== undefined) definition[fieldName] = value;
-  }
+function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
+  const definition = structuredClone(runtimeDefinition);
+  const candidate = { definitionId: definition.id };
   if (candidate.definitionId === 'base:resource/resource-01') {
     definition.useEffect = {
       schemaVersion: 1,
@@ -332,9 +258,9 @@ export const baseProvisionalFoundationContentPack: ContentPack = {
     role: 'base',
     contentStatus: 'provisional-playtest',
   },
-  definitions: foundationComposition.map(([definitionId, copies]) => definitionFor(definitionId, copies)),
+  definitions: foundationRuntimeDefinitions.map(definitionFor),
   starter: {
-    partyDefinitionIds: foundationComposition.slice(0, 5).map(([definitionId]) => definitionId),
+    partyDefinitionIds: foundationRuntimeDefinitions.slice(0, 5).map(({ id }) => id),
     summonStoneDefinitionId: 'base:starter/summoning-stone',
     crystalDefinitionId: 'base:starter/spirit-crystal',
   },

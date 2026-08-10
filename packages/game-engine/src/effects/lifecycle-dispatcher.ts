@@ -30,10 +30,14 @@ const registrySnapshot = (state: GameState, ruleset: Ruleset): LifecycleRegistry
   rulesetVersion: state.rulesetVersion,
   modules: ruleset.modules.map(({ id, version }) => ({ id, version }))
 });
-const active = (hook: LifecycleHook, state: GameState): boolean => !hook.activation || hook.activation.kind === 'always' || (state.moduleState[hook.moduleId] as Record<string, unknown> | undefined)?.[hook.activation.key] === hook.activation.value;
+const active = (hook: LifecycleHook, state: GameState, payload: LifecyclePayload): boolean => !hook.activation
+  || hook.activation.kind === 'always'
+  || (hook.activation.kind === 'module-state-equals'
+    ? (state.moduleState[hook.moduleId] as Record<string, unknown> | undefined)?.[hook.activation.key] === hook.activation.value
+    : payload.metadata?.[hook.activation.key] === hook.activation.value);
 const findHook = (ruleset: Ruleset, ref: LifecycleHookRef): LifecycleHook | undefined => ruleset.modules.find((module) => module.id === ref.moduleId)?.lifecycleHooks?.find((hook) => hook.hookId === ref.hookId);
 const candidateHooks = (ruleset: Ruleset, payload: LifecyclePayload): LifecycleHook[] => ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType));
-const matchingHooks = (state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHook[] => candidateHooks(ruleset, payload).filter((hook) => active(hook, state));
+const matchingHooks = (state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHook[] => candidateHooks(ruleset, payload).filter((hook) => active(hook, state, payload));
 const fail = (reason: LifecycleFailureReason, hookIds: readonly string[], evaluatedContinuousHookIds: readonly string[], error: string): LifecycleDispatchResult => ({ status: reason === 'ORDER_POLICY_REQUIRED' ? 'unsupported' : 'failed', hookIds, evaluatedContinuousHookIds, events: [], reason, error });
 const normalizedEffectEvents = (pending: PendingLifecycleDispatch, ref: LifecycleHookRef, events: readonly DomainEvent[], offset: number): DomainEvent[] => events.map((event, index) => ({ ...event, eventId: `${pending.dispatchId}:${ref.moduleId}:${ref.hookId}:${offset + index + 1}` }));
 type ResolvedEquipmentTrigger = { cardInstanceId: string; partyPosition: number; trigger: EquipmentEventTrigger; context: EffectContext };
@@ -92,7 +96,7 @@ function validateHookRefs(ruleset: Ruleset, refs: readonly LifecycleHookRef[]): 
   }
   return undefined;
 }
-function canonicalRefs(state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHookRef[] | undefined { const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.kind !== 'continuous' && hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType) && active(hook, state)); const order = resolveEffectOrder(hooks.map((hook) => ({ id: refKey(hookRef(hook)), ...(hook.priority === undefined ? {} : { priority: hook.priority }) })), 'explicit-priority'); if (order.status !== 'ready') return undefined; return order.orderedIds.map((key) => hookRef(hooks.find((hook) => refKey(hookRef(hook)) === key)!)); }
+function canonicalRefs(state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHookRef[] | undefined { const hooks = ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.kind !== 'continuous' && hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType) && active(hook, state, payload)); const order = resolveEffectOrder(hooks.map((hook) => ({ id: refKey(hookRef(hook)), ...(hook.priority === undefined ? {} : { priority: hook.priority }) })), 'explicit-priority'); if (order.status !== 'ready') return undefined; return order.orderedIds.map((key) => hookRef(hooks.find((hook) => refKey(hookRef(hook)) === key)!)); }
 
 function hookPreviewUncertainty(state: GameState, ruleset: Ruleset, hooks: readonly (LifecycleHook | undefined)[], context: EffectContext, viewerId: string): EffectPreviewUncertainty {
   if (hooks.some((hook) => !hook)) return { usesRandomness: true, observesHiddenInformation: true };

@@ -5,6 +5,7 @@ import {
   demoPresentationAssetManifest,
   demoPresentationPack,
   provisionalFoundationPresentationPack,
+  provisionalHelpersPresentationPack,
 } from '@guildmaster/presentation-demo';
 
 /** Client-only composition. Nothing in this module is authoritative game state. */
@@ -31,7 +32,7 @@ const resolveAsset = (assetKey: string) => {
 };
 
 export const presentationResolver = createPresentationResolver(
-  [demoPresentationPack, provisionalFoundationPresentationPack],
+  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalHelpersPresentationPack],
   { resolveAsset },
 );
 

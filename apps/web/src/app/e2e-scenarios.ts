@@ -1,4 +1,4 @@
-import { baseDemoContentPack } from '@guildmaster/content-base';
+import { baseDemoContentPack } from '@guildmaster/content-base/runtime';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
 const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent', 'optional-helper'] as const;
@@ -27,6 +27,8 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
  * all play continues through PlayerView, legal commands, and authoritative dispatch.
  */
 function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): ContentPack {
+  const helperFixture = id === 'optional-helper';
+  const starter = baseDemoContentPack.starter!;
   return {
     ...baseDemoContentPack,
     manifest: { ...baseDemoContentPack.manifest, id: `base:e2e-${id}`, hash: `base-e2e-${id}-v1` },
@@ -35,11 +37,19 @@ function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): Conte
         return { ...definition, tags: ['e2e-layout-tag'] };
       }
       if (setup.emptyPartialSupplies && ['adventurer', 'equipment', 'item'].includes(definition.type)) return { ...definition, copies: 0 };
+      if (helperFixture && definition.id === starter.crystalDefinitionId) return { ...definition, type: 'equipment' };
       if (definition.type !== 'boss') return definition;
       return definition.id === 'base:boss/ruin-warden'
-        ? { ...definition, copies: setup.bossCopies, combat: 5 }
+        ? { ...definition, copies: setup.bossCopies, combat: helperFixture ? 0 : 5 }
         : { ...definition, copies: 0 };
     }),
+    ...(helperFixture && 'adventurerDefinitionId' in starter
+      ? { starter: {
+          partyDefinitionIds: Array.from({ length: 6 }, () => starter.adventurerDefinitionId),
+          summonStoneDefinitionId: starter.summonStoneDefinitionId,
+          crystalDefinitionId: starter.crystalDefinitionId,
+        } }
+      : {}),
     bonds: setup.bonds
   };
 }

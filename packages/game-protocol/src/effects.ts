@@ -43,6 +43,7 @@ export type EffectNode =
   | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
   | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] }
   | { kind: 'refresh-supply-row'; refreshPolicyId: string }
+  | { kind: 'enforce-team-capacity'; policyId: string }
   | { kind: 'create-enemy-encounter'; encounterId: string; encounterKind: string; rulesModuleId: string; policy: { moduleId: string; policyId: string }; moduleState?: Record<string, unknown> }
   | { kind: 'create-enemy-target'; targetId: string; encounterId: string; card: EffectCardRef; from: EffectCardLocation; targetKind: string; partKey?: string; health?: { current: number; max: number }; moduleState?: Record<string, unknown> }
   | { kind: 'attach-card-to-enemy-target'; targetId: string; card: EffectCardRef; from: EffectCardLocation; position?: 'top' | 'bottom' }
@@ -200,6 +201,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('modify-value'), target: valueTargetSchema, amount: z.number().finite() }).strict(),
   z.object({ kind: z.literal('grant-combat-reward'), recipient: playerRefSchema, rewards: z.array(rewardSchema).min(1) }).strict(),
   z.object({ kind: z.literal('refresh-supply-row'), refreshPolicyId: nonEmpty }).strict(),
+  z.object({ kind: z.literal('enforce-team-capacity'), policyId: nonEmpty }).strict(),
   z.object({ kind: z.literal('create-enemy-encounter'), encounterId: nonEmpty, encounterKind: nonEmpty, rulesModuleId: nonEmpty, policy: policyRefSchema, moduleState: z.record(z.unknown()).optional() }).strict(),
   z.object({ kind: z.literal('create-enemy-target'), targetId: nonEmpty, encounterId: nonEmpty, card: cardRefSchema, from: locationSchema, targetKind: nonEmpty, partKey: nonEmpty.optional(), health: z.object({ current: z.number().finite().int().nonnegative(), max: z.number().finite().int().nonnegative() }).refine(({ current, max }) => current <= max).optional(), moduleState: z.record(z.unknown()).optional() }).strict(),
   z.object({ kind: z.literal('attach-card-to-enemy-target'), targetId: nonEmpty, card: cardRefSchema, from: locationSchema, position: z.enum(['top', 'bottom']).optional() }).strict(),
