@@ -114,23 +114,31 @@ function normalizeSetup(setup: WebGameSetup | WebContentMode): WebGameSetup {
   return typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
 }
 
-function e2eHelperPack(basePack: ContentPack): ContentPack {
-  const fixtureIds = new Set(['base:helper/helper-01', 'base:helper/helper-08']);
+function e2eHelperDefinitionIds(scenario: E2EScenario): Set<string> {
+  return new Set(scenario === 'helper-batch-a'
+    ? ['base:helper/helper-01', 'base:helper/helper-07']
+    : ['base:helper/helper-01', 'base:helper/helper-08']);
+}
+
+function e2eHelperPack(basePack: ContentPack, scenario: E2EScenario): ContentPack {
+  const fixtureIds = e2eHelperDefinitionIds(scenario);
   return {
     ...baseProvisionalHelpersContentPack,
     manifest: {
       ...baseProvisionalHelpersContentPack.manifest,
       id: 'e2e:helper-content',
-      hash: 'e2e-helper-content-v1',
+      hash: `e2e-helper-content-${scenario}-v2`,
       contentStatus: 'demo',
       dependencies: [basePack.manifest.id],
     },
-    definitions: baseProvisionalHelpersContentPack.definitions.filter(({ id }) => fixtureIds.has(id)),
+    definitions: baseProvisionalHelpersContentPack.definitions
+      .filter(({ id }) => fixtureIds.has(id))
+      .sort((left, right) => scenario === 'helper-batch-a' ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id)),
   };
 }
 
-function e2eHelperModule(): RulesModule {
-  const fixtureIds = new Set(['base:helper/helper-01', 'base:helper/helper-08']);
+function e2eHelperModule(scenario: E2EScenario): RulesModule {
+  const fixtureIds = e2eHelperDefinitionIds(scenario);
   return {
     ...baseHelpersRulesModule,
     config: { fixtureDefinitionIds: [...fixtureIds] },
@@ -148,15 +156,15 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
       ? consentModule
       : undefined;
   const scenarioPack = scenario ? getE2EScenarioPack(scenario) : undefined;
-  const helperScenario = scenario === 'optional-helper';
+  const helperScenario = scenario === 'optional-helper' || scenario === 'helper-batch-a';
   const packs = scenarioPack
-    ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack)] : [])]
+    ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack, scenario)] : [])]
     : setup.contentMode === 'provisional-playtest'
       ? [baseProvisionalFoundationContentPack, ...(setup.advancedRules.helpers ? [baseProvisionalHelpersContentPack] : [])]
       : [baseDemoContentPack];
   return createRuleset(
     packs,
-    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario ? [e2eHelperModule()] : !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
+    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
     { allowProvisionalPlaytest: !scenario && setup.contentMode === 'provisional-playtest' },
   );
 }

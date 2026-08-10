@@ -12,10 +12,15 @@ import type {
 } from '@guildmaster/game-protocol';
 
 export type SessionPersistenceStatus = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   state: 'fresh' | 'restored' | 'saved' | 'memory-only';
   revision: number;
   replayHistoryComplete: boolean;
+  recovery?: {
+    reasonCode: 'helper-rules-upgraded';
+    previousPackVersion: '0.1.0';
+    previousModuleVersion: '1.0.0';
+  } | undefined;
 };
 
 export type SessionEntrySummary = {

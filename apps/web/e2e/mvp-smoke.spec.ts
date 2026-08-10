@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { createGame, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
+import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
+import { baseRulesModule, createGame, createRuleset, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
 import { enterGame, openGame } from './game-entry.js';
@@ -133,6 +135,17 @@ async function installPendingFoundationMultiSourceChoice(page: import('@playwrig
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
+function oldHelperSave(): string {
+  const oldPack = { ...baseProvisionalHelpersContentPack, manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' } };
+  const oldRuleset = createRuleset(
+    [baseProvisionalFoundationContentPack, oldPack],
+    [baseRulesModule, { ...baseHelpersRulesModule, version: '1.0.0' }],
+    { allowProvisionalPlaytest: true },
+  );
+  const state = createGame({ gameId: 'local-4', seed: 20260726, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, oldRuleset);
+  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(state), events: [] });
+}
+
 test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
@@ -159,7 +172,7 @@ test('explicit helper composition reaches PlayerView and persisted Snapshot iden
     expect.objectContaining({ id: 'base:rules' }),
     expect.objectContaining({
       id: 'base:helpers',
-      version: '1.0.0',
+      version: '1.1.0',
       compositionFingerprint: expect.any(String),
     }),
   ]);
@@ -229,10 +242,20 @@ test('helper advanced rules are provisional-only and restore from pack/module id
   await helpers.check();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('helper-panel')).toBeVisible();
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 08 效果已啟用');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 01／06／07／08／09 效果已啟用');
   await page.reload();
   await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
   await expect(page.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
+});
+
+test('old helper 0.1 save is cleared with an explicit one-time recovery notice', async ({ page }) => {
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: oldHelperSave() });
+  await page.goto('/');
+  const entry = page.getByTestId('expedition-entry');
+  await expect(entry.getByRole('heading', { name: '準備新的遠征' })).toBeVisible();
+  await expect(entry.getByTestId('helper-upgrade-recovery-notice')).toHaveText('協助者規則已更新，舊進度無法安全續玩，已建立新遠征。');
+  await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
 });
 
 test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {

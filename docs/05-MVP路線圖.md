@@ -149,7 +149,7 @@
 - 協助者
 - 羈絆輪抽
 - optional Rules Module composition schema v1 已完成：core／optional 兩層 canonical 排序、distinct priority、精確版本相依、衝突驗證、不可變 registry identity、全域 zone ID／owner 驗證、所有公開 ruleset API 的完整 registry gate，以及 Snapshot／Replay composition fingerprint。
-- 協助者垂直切片已完成：獨立 provisional expansion pack、seed-deterministic setup contribution、hidden deck／public active／retired zones、Boss-only lifecycle 輪替、Snapshot／Replay identity、Web opt-in 與中性 Presentation。第一階段只啟用候選協助者 08 的隊伍上限效果，其餘效果仍停用。
+- 協助者垂直切片與 Batch A 已完成：獨立 provisional expansion pack、seed-deterministic setup contribution、hidden deck／public active／retired zones、Boss-only lifecycle 輪替、Snapshot／Replay identity、Web opt-in 與中性 Presentation；目前啟用候選協助者 01／06／07／08／09，其餘七張效果仍停用。
 
 ### M8 — 第一擴充 Vol.1
 

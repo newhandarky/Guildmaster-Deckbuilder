@@ -1,5 +1,5 @@
 import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
-import { baseHelperZoneIds } from '@guildmaster/content-base-helpers';
+import { baseHelperZoneIds, baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createGame, createRuleset, dispatch, envelope, getLegalCommands, getPartyLimit, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
 import { createWebRuleset, webContentModeFromPackIds, webGameSetupFromSnapshot } from './ruleset.js';
@@ -86,6 +86,14 @@ describe('web content modes', () => {
     if (replay.status === 'completed') expect(replay.finalSnapshot).toEqual(serializeSnapshot(state));
   });
 
+  it('fixes the Batch A E2E fixture to helper 01 followed by helper 07', () => {
+    const ruleset = createWebRuleset('helper-batch-a');
+    const state = createGame({ gameId: 'helper-batch-a', seed: 20260726, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, ruleset);
+    expect(state.zones[baseHelperZoneIds.active]!.cardIds.map((cardId) => state.cards[cardId]!.definitionId)).toEqual(['base:helper/helper-01']);
+    expect(state.zones[baseHelperZoneIds.deck]!.cardIds.map((cardId) => state.cards[cardId]!.definitionId)).toEqual(['base:helper/helper-07']);
+    expect(state.zones['base:item-row']!.cardIds.every((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.cost === 6)).toBe(true);
+  });
+
   it('loads helper rules only for an explicit provisional setup and derives that setup from Snapshot identity', () => {
     expect(() => createWebRuleset(undefined, { contentMode: 'demo', advancedRules: { helpers: true } })).toThrow(/require provisional/);
     const ruleset = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: true } });
@@ -98,11 +106,31 @@ describe('web content modes', () => {
     expect(() => webGameSetupFromSnapshot(['base:provisional-foundation'], ['base:rules', 'base:helpers'])).toThrow(/inconsistent/);
   });
 
+  it('rejects an old helper Replay by registry identity instead of rewriting its history', () => {
+    const oldPack = { ...baseProvisionalHelpersContentPack, manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' } };
+    const oldRuleset = createRuleset([baseProvisionalFoundationContentPack, oldPack], [baseRulesModule, { ...baseHelpersRulesModule, version: '1.0.0' }], { allowProvisionalPlaytest: true });
+    const initialConfig = { gameId: 'old-helper-replay', seed: 11, players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }], startingPlayerId: 'human-1' };
+    const currentRuleset = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: true } });
+    const replay = replayGame({ schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(oldRuleset), initialConfig, commands: [] }, currentRuleset);
+    expect(replay).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'REGISTRY_MISMATCH' } });
+  });
+
   it('requires explicit provisional permission at the engine boundary', () => {
     expect(() => createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule])).toThrow(/explicit allowProvisionalPlaytest/);
     expect(createWebRuleset(undefined, 'provisional-playtest').registry.packs).toEqual([
       expect.objectContaining({ id: 'base:provisional-foundation', contentStatus: 'provisional-playtest' }),
     ]);
+  });
+
+  it('keeps helper-off provisional registry identity and definition count unchanged', () => {
+    const direct = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
+    const web = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: false } });
+    const config = { gameId: 'helper-off-identity', seed: 73, players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }], startingPlayerId: 'human-1' };
+    const directState = createGame(config, direct);
+    const webState = createGame(config, web);
+    expect(Object.keys(web.registry.definitions)).toHaveLength(Object.keys(direct.registry.definitions).length);
+    expect(web.registry.packs).toEqual(direct.registry.packs);
+    expect(webState).toEqual(directState);
   });
 
   it('creates and restores a deterministic foundation playtest snapshot', () => {

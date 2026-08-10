@@ -15,12 +15,14 @@ export class LocalGameSession {
   private initialConfig!: ReplayInitialConfig;
   private replayHistoryComplete = true;
   private persistenceState: SessionPersistenceStatus['state'] = 'fresh';
+  private recovery: SessionPersistenceStatus['recovery'];
   private commandSequence = 0;
   private gameSequence = 0;
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const loaded = loadLocalGame();
     if (loaded.status === 'loaded') {
+      const helperUpgrade = this.requiresHelperUpgradeRecovery(loaded.game.snapshot);
       try {
         const saved = loaded.game;
         if (typeof saved.snapshot?.state?.gameId === 'string') this.restoreGameSequence(saved.snapshot.state.gameId);
@@ -39,6 +41,7 @@ export class LocalGameSession {
         this.state = this.createFreshGame();
         this.events = [];
         this.persistenceState = cleared ? 'fresh' : 'memory-only';
+        if (helperUpgrade) this.recovery = { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' };
       }
     } else {
       this.state = this.createFreshGame();
@@ -49,7 +52,8 @@ export class LocalGameSession {
 
   private createFreshGame(): GameState {
     this.gameSequence += 1;
-    this.initialConfig = { gameId: `local-${this.gameSequence}`, seed: 20260726, players: [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId };
+    const seed = this.ruleset.registry.packs.some(({ id }) => id === 'base:e2e-helper-batch-a') ? 1 : 20260726;
+    this.initialConfig = { gameId: `local-${this.gameSequence}`, seed, players: [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId };
     this.commands = [];
     this.auditEvents = [];
     this.replayHistoryComplete = true;
@@ -63,9 +67,25 @@ export class LocalGameSession {
     if (Number.isSafeInteger(sequence)) this.gameSequence = Math.max(this.gameSequence, sequence);
   }
 
-  current(): SessionUpdate { return this.makeUpdate([]); }
+  private requiresHelperUpgradeRecovery(snapshot: { state?: unknown }): boolean {
+    const value = snapshot.state;
+    if (!value || typeof value !== 'object') return false;
+    const state = value as Partial<GameState>;
+    const oldPack = state.contentPacks?.some(({ id, version }) => id === 'base:provisional-helpers' && version === '0.1.0') ?? false;
+    const oldModule = state.rulesModules?.some(({ id, version }) => id === 'base:helpers' && version === '1.0.0') ?? false;
+    const currentPack = this.ruleset.registry.packs.some(({ id, version }) => id === 'base:provisional-helpers' && version !== '0.1.0');
+    const currentModule = this.ruleset.modules.some(({ id, version }) => id === 'base:helpers' && version !== '1.0.0');
+    return oldPack && oldModule && currentPack && currentModule;
+  }
+
+  current(): SessionUpdate {
+    const update = this.makeUpdate([]);
+    this.recovery = undefined;
+    return update;
+  }
 
   restart(): SessionUpdate {
+    this.recovery = undefined;
     this.state = this.createFreshGame();
     this.events = [];
     this.processed.clear();
@@ -190,10 +210,11 @@ export class LocalGameSession {
         replayHistoryComplete: this.replayHistoryComplete,
       },
       persistence: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         state: this.persistenceState,
         revision: this.state.revision,
         replayHistoryComplete: this.replayHistoryComplete,
+        ...(this.recovery ? { recovery: structuredClone(this.recovery) } : {}),
       },
       replayHistoryComplete: this.replayHistoryComplete,
       error,

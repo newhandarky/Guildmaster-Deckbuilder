@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { replayGame } from '@guildmaster/game-engine';
+import { createWebRuleset } from '../src/app/ruleset.js';
 import { openGame } from './game-entry.js';
 
 test('desktop card details show an authoritative combat preview before dispatch', async ({ page }) => {
@@ -35,6 +37,52 @@ test('desktop card details show current, cost, and remaining purchase power', as
   await expect(preview).toContainText('卡牌費用');
   await expect(preview).toContainText('購買後剩餘');
   await expect(preview).toContainText('authoritative rules 重新驗證');
+});
+
+test('Batch A helper discount, rotation, rest hand size, save, and replay stay authoritative', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openGame(page, '/?e2eScenario=helper-batch-a');
+  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 01');
+  await expect(page.locator('body')).not.toContainText('base:helper/helper-07');
+  const endPhase = page.getByTestId('end-phase');
+  await endPhase.click();
+  await endPhase.click();
+  await endPhase.click();
+
+  const supply = page.locator('[data-zone-id="base:item-row"] [data-card-type="item"][data-legal-action="true"]').first();
+  await expect(supply).toBeVisible();
+  await supply.click();
+  const preview = page.getByTestId('action-preview');
+  await expect(preview).toContainText('原費用6');
+  await expect(preview).toContainText('協助者折扣後費用5');
+  await page.getByTestId('card-details').getByRole('button', { name: '購買', exact: true }).click();
+  const purchased = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  expect(purchased.snapshot.state.players[0].turnPurchaseSpent).toBe(5);
+
+  await endPhase.click();
+  await endPhase.click();
+  const combatItem = page.getByTestId('hand').getByRole('button', { name: /道具 A/ });
+  await expect(combatItem).toBeVisible();
+  await combatItem.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '使用道具', exact: true }).click();
+  await endPhase.click();
+  const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
+  await boss.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true }).click();
+  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 07');
+  await endPhase.click();
+  await endPhase.click();
+  await endPhase.click();
+  await endPhase.click();
+  await expect(page.getByTestId('human-card-count')).toContainText('手牌 6');
+
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  expect(persisted.snapshot.state.zones['base:helper-deck']).toMatchObject({ visibility: 'hidden', cardIds: [] });
+  expect(replayGame(persisted.replayBundle, createWebRuleset('helper-batch-a'))).toMatchObject({ status: 'completed', finalSnapshot: persisted.snapshot });
+  await page.reload();
+  await page.getByRole('button', { name: '繼續最近進度' }).click();
+  await expect(page.getByTestId('human-card-count')).toContainText('手牌 6');
+  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 07');
 });
 
 test('lifecycle-dependent preview withholds unresolved combat values', async ({ page }) => {

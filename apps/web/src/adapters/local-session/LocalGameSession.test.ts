@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createGame, createRuleset, dispatch, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
@@ -116,7 +117,7 @@ describe('LocalGameSession transactional boundary', () => {
       replayHistoryComplete: true,
     });
     expect(session.current().persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'fresh',
       revision: 0,
       replayHistoryComplete: true,
@@ -124,7 +125,7 @@ describe('LocalGameSession transactional boundary', () => {
 
     const saved = session.submit({ type: 'END_PHASE', phase: 'action1' });
     expect(saved.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'saved',
       revision: saved.view.revision,
       replayHistoryComplete: true,
@@ -133,7 +134,7 @@ describe('LocalGameSession transactional boundary', () => {
 
     const restored = new LocalGameSession(ruleset).current();
     expect(restored.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'restored',
       revision: saved.view.revision,
       replayHistoryComplete: true,
@@ -165,7 +166,7 @@ describe('LocalGameSession transactional boundary', () => {
     seedConsentSave(ruleset);
     const restored = new LocalGameSession(ruleset).current();
     expect(restored.persistence).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'restored',
       revision: 0,
       replayHistoryComplete: false,
@@ -180,7 +181,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.error).toBeUndefined();
     expect(update.view).toMatchObject({ revision: 1, phase: 'combat' });
     expect(update.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'memory-only',
       revision: 1,
       replayHistoryComplete: true,
@@ -194,7 +195,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(current.error).toBeUndefined();
     expect(current.view).toMatchObject({ revision: 0, phase: 'action1' });
     expect(current.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'memory-only',
       revision: 0,
       replayHistoryComplete: true,
@@ -227,6 +228,39 @@ describe('LocalGameSession transactional boundary', () => {
     const replaced = new LocalGameSession(provisional).restart();
     expect(replaced.view.gameId).toBe('local-4');
     expect(replaced.entrySummary).toMatchObject({ contentMode: 'provisional-playtest', canContinue: false });
+  });
+
+  it('clears helper 0.1 progress with a structured one-time recovery reason', () => {
+    const oldPack = {
+      ...baseProvisionalHelpersContentPack,
+      manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' },
+    };
+    const oldModule = { ...baseHelpersRulesModule, version: '1.0.0' };
+    const oldRuleset = createRuleset(
+      [baseProvisionalFoundationContentPack, oldPack],
+      [baseRulesModule, oldModule],
+      { allowProvisionalPlaytest: true },
+    );
+    const oldState = createGame({ gameId: 'local-7', seed: 19, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, oldRuleset);
+    localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(oldState), events: [] }));
+    const currentRuleset = createRuleset(
+      [baseProvisionalFoundationContentPack, baseProvisionalHelpersContentPack],
+      [baseRulesModule, baseHelpersRulesModule],
+      { allowProvisionalPlaytest: true },
+    );
+    const session = new LocalGameSession(currentRuleset);
+    const recovered = session.current();
+    expect(recovered.view).toMatchObject({ gameId: 'local-8', revision: 0 });
+    expect(recovered.persistence).toEqual({
+      schemaVersion: 2,
+      state: 'fresh',
+      revision: 0,
+      replayHistoryComplete: true,
+      recovery: { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' },
+    });
+    expect(recovered.entrySummary).toMatchObject({ advancedRules: { helpers: true }, canContinue: false });
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(session.current().persistence.recovery).toBeUndefined();
   });
 
   it('returns action previews tied to the current game, actor, revision, and legal commands', () => {

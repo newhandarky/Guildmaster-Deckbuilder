@@ -286,5 +286,6 @@ describe('provisional helper content extension', () => {
     }
     expect(state.players[0]!.history.defeatedBosses).toBe(selectedCount);
     expect(state.zones['base:boss-deck']!.cardIds).toEqual([]);
+    expect(evaluateRestHandSize(state, ruleset, { schemaVersion: 1, playerId: state.activePlayerId })).toMatchObject({ status: 'ready', evaluation: { effectiveHandSize: 5 } });
   });
 });
