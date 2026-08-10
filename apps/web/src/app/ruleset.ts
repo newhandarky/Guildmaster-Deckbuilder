@@ -90,8 +90,8 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   },
   'provisional-playtest': {
     label: '基礎候選數值測試',
-    description: '載入候選起始卡、冒險者、首批七種物資、魔物與魔王數值。',
-    warning: '內部測試模式：卡牌名稱使用中性代號；已接入首批物資與六項道具效果，其餘個別效果尚未啟用。',
+    description: '載入候選起始卡、冒險者、首批八種物資、魔物與魔王數值。',
+    warning: '內部測試模式：卡牌名稱使用中性代號；已接入首批物資與七項道具效果，其餘個別效果尚未啟用。',
   },
 };
 

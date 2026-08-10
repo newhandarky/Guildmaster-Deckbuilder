@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EFFECT_CARD_PREDICATE_LIMITS, type CommandEnvelope, type ContentPack, type DomainEvent, type EffectCardPredicate, type EffectDefinition, type GameCommand, type LifecycleHook } from '@guildmaster/game-protocol';
+import { EFFECT_CARD_PREDICATE_LIMITS, type CommandEnvelope, type ContentPack, type DomainEvent, type EffectCardPredicate, type EffectConcreteCardLocation, type EffectDefinition, type GameCommand, type LifecycleHook } from '@guildmaster/game-protocol';
 import { createContentRegistry, createGame, createRuleset, dispatch, envelope, getLegalCommands, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseZoneIds } from '../src/model/zones.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
@@ -97,6 +97,43 @@ const filteredRecoveryPack: ContentPack = {
 
 const filteredRecoveryRuleset = createRuleset([filteredRecoveryPack], [baseRulesModule]);
 
+const multiSourceRemovalPack: ContentPack = {
+  ...drawItemPack,
+  manifest: { ...drawItemPack.manifest, id: 'test:card-use-multi-source-choice', version: '5', hash: 'card-use-multi-source-choice-v5' },
+  definitions: drawItemPack.definitions.map((definition) => definition.id === 'test:item/ration'
+    ? {
+        ...definition,
+        useEffect: {
+          schemaVersion: 1,
+          effectId: 'test:item/remove-from-visible-areas',
+          body: {
+            kind: 'choose-card',
+            choiceId: 'test:item/remove-visible-card',
+            actor: { kind: 'controller' },
+            from: {
+              kind: 'one-of',
+              locations: [
+                { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+                { kind: 'party', player: { kind: 'controller' } },
+                { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+              ],
+            },
+            selectedCardKey: 'removed',
+            selectedLocationKey: 'removedFrom',
+            effect: {
+              kind: 'remove-from-game',
+              card: { kind: 'context-card', key: 'removed' },
+              from: { kind: 'context-location', key: 'removedFrom' },
+              attachedEquipmentDisposition: 'discard',
+            },
+          },
+        },
+      }
+    : definition),
+};
+
+const multiSourceRemovalRuleset = createRuleset([multiSourceRemovalPack], [baseRulesModule]);
+
 const commandBeforeChoiceHook: LifecycleHook = {
   schemaVersion: 1,
   moduleId: 'test:card-use-command-before',
@@ -168,6 +205,68 @@ describe('data-driven card use effects', () => {
     const filteredChoice = filteredItem.useEffect!.body as Extract<EffectDefinition['body'], { kind: 'choose-card' }>;
     filteredChoice.predicate = { kind: 'definition-type-in', values: ['equipment', 'equipment'] };
     expect(() => createContentRegistry([duplicatePredicateValues])).toThrow(/Predicate values must be unique/);
+
+    const missingLocationKey = structuredClone(multiSourceRemovalPack);
+    delete (missingLocationKey.definitions.find(({ id }) => id === 'test:item/ration')!.useEffect!.body as Extract<EffectDefinition['body'], { kind: 'choose-card' }>).selectedLocationKey;
+    expect(() => createContentRegistry([missingLocationKey])).toThrow(/Party card choices require selectedLocationKey/);
+  });
+
+  it('selects canonically across hand, party, and discard pile and removes an equipped party member safely', () => {
+    const state = createGame({ gameId: 'card-use-multi-source', seed: 43, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, multiSourceRemovalRuleset);
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/ration')!.id;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== equipmentId);
+    const player = state.players[0]!;
+    const discardId = player.hand.pop()!;
+    player.hand.push(itemId);
+    player.discardPile.push(discardId);
+    const partyId = player.party[0]!.adventurerId;
+    player.party[0]!.equipmentId = equipmentId;
+    const expectedIds = [...player.hand.filter((id) => id !== itemId), ...player.party.map(({ adventurerId }) => adventurerId), ...player.discardPile];
+
+    const suspended = dispatch(state, multiSourceRemovalRuleset, envelope(state, 'p1', { type: 'USE_ITEM', cardId: itemId }, 'multi-source-root'));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.source).toEqual({
+      kind: 'one-of',
+      locations: [
+        { kind: 'player-zone', player: { kind: 'player-id', playerId: 'p1' }, zone: 'hand' },
+        { kind: 'party', player: { kind: 'player-id', playerId: 'p1' } },
+        { kind: 'player-zone', player: { kind: 'player-id', playerId: 'p1' }, zone: 'discardPile' },
+      ],
+    });
+    const pending = suspended.state.effectState.pendingChoice;
+    expect(pending?.options.map(({ id }) => id)).toEqual(expectedIds);
+    if (!pending) throw new Error('expected pending multi-source choice');
+    const partyOption = pending.options.find(({ id }) => id === partyId)!;
+    expect(partyOption.context?.locationRefs?.removedFrom).toEqual({ kind: 'party', player: { kind: 'player-id', playerId: 'p1' }, position: 0 });
+
+    const restored = restoreSnapshot(serializeSnapshot(suspended.state), multiSourceRemovalRuleset);
+    const choice = getLegalCommands(restored, multiSourceRemovalRuleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === partyId)!;
+    const completed = dispatch(restored, multiSourceRemovalRuleset, envelope(restored, 'p1', choice, 'multi-source-resolution'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.removedCards).toContain(partyId);
+    expect(completed.state.players[0]!.discardPile).toContain(equipmentId);
+    expect(completed.state.players[0]!.party.some(({ adventurerId }) => adventurerId === partyId)).toBe(false);
+    expect(completed.state.revision).toBe(1);
+  });
+
+  it('fails closed when a multi-source choice or selected source location is tampered with', () => {
+    const state = createGame({ gameId: 'card-use-multi-source-tamper', seed: 47, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, multiSourceRemovalRuleset);
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/ration')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId);
+    state.players[0]!.hand.push(itemId);
+    const suspended = dispatch(state, multiSourceRemovalRuleset, envelope(state, 'p1', { type: 'USE_ITEM', cardId: itemId }, 'multi-source-tamper-root'));
+    const snapshot = serializeSnapshot(suspended.state);
+    const sourceTampered = structuredClone(snapshot);
+    const source = sourceTampered.state.effectState.pendingChoice!.source!;
+    if (source.kind !== 'one-of') throw new Error('expected multi-source choice');
+    (source.locations as Array<(typeof source.locations)[number]>).reverse();
+    expect(() => restoreSnapshot(sourceTampered, multiSourceRemovalRuleset)).toThrow(/source|canonical/i);
+
+    const contextTampered = structuredClone(snapshot);
+    const option = contextTampered.state.effectState.pendingChoice!.options.find(({ context }) => context?.locationRefs?.removedFrom?.kind === 'party')!;
+    (option.context!.locationRefs as Record<string, EffectConcreteCardLocation>).removedFrom = { kind: 'player-zone', player: { kind: 'player-id', playerId: 'p1' }, zone: 'hand' };
+    expect(() => restoreSnapshot(contextTampered, multiSourceRemovalRuleset)).toThrow(/source|options|canonical/i);
   });
 
   it('rejects non-canonical and over-budget card predicates before registration', () => {
@@ -321,7 +420,7 @@ describe('data-driven card use effects', () => {
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.rollbackState.players[0]!.turnCombatBonus += 100; },
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.events[0]!.message = 'tampered effect event'; },
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.factStart += 1; },
-      (tampered) => { const source = tampered.state.effectState.pendingChoice?.source; if (source?.player.kind === 'player-id') source.player.playerId = 'p2'; },
+      (tampered) => { const source = tampered.state.effectState.pendingChoice?.source; if (source?.kind !== 'one-of' && source?.player.kind === 'player-id') source.player.playerId = 'p2'; },
     ];
     for (const mutate of cases) {
       const tampered = structuredClone(snapshot);

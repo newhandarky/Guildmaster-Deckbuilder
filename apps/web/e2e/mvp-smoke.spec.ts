@@ -101,6 +101,38 @@ async function installPendingFoundationFilteredChoice(page: import('@playwright/
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
+function pendingFoundationMultiSourceChoiceSave(): string {
+  const ruleset = createWebRuleset(undefined, 'provisional-playtest');
+  const state = createGame({
+    gameId: 'e2e-foundation-multi-source-card-choice',
+    seed: 20260814,
+    players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }],
+    startingPlayerId: 'human-1',
+  }, ruleset);
+  const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-15')!.id;
+  const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-02')!.id;
+  for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== itemId && id !== equipmentId);
+  const player = state.players[0]!;
+  player.drawPile.push(...player.hand);
+  player.hand = [itemId];
+  player.party[0]!.equipmentId = equipmentId;
+  const suspended = dispatch(state, ruleset, {
+    protocolVersion: 1,
+    gameId: state.gameId,
+    commandId: 'e2e-foundation-multi-source-choice-root',
+    actorId: 'human-1',
+    expectedRevision: 0,
+    command: { type: 'USE_ITEM', cardId: itemId },
+  });
+  if (suspended.error || suspended.state.effectState.pendingChoice?.options.length !== player.party.length) throw new Error('Failed to create pending multi-source foundation card choice.');
+  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] });
+}
+
+async function installPendingFoundationMultiSourceChoice(page: import('@playwright/test').Page): Promise<void> {
+  const save = pendingFoundationMultiSourceChoiceSave();
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
+}
+
 test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
@@ -127,7 +159,7 @@ test('provisional foundation mode is explicit, visibly limited, and restored by 
   await expect(entry.getByText(/內部測試模式：卡牌名稱使用中性代號/)).toBeVisible();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
 
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與六項道具效果');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與七項道具效果');
   await expect(page.getByText('基礎候選數值測試 · 單機人機對戰')).toBeVisible();
   const persistedPackId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.contentPacks[0].id);
   expect(persistedPackId).toBe('base:provisional-foundation');
@@ -297,6 +329,26 @@ test('filtered provisional card choice exposes only matching visible cards', asy
   const adventurerId = saved.snapshot.state.players[0].discardPile.find((cardId: string) => cards[cardId]?.definitionId.startsWith('base:adventurer/'));
   expect(saved.snapshot.state.players[0].hand).toContain(equipmentId);
   expect(saved.snapshot.state.players[0].discardPile).toContain(adventurerId);
+  expect(saved.snapshot.state.revision).toBe(1);
+});
+
+test('multi-source provisional choice removes a party member and discards attached equipment', async ({ page }) => {
+  await installPendingFoundationMultiSourceChoice(page);
+  await openGame(page);
+
+  const dock = page.getByTestId('lifecycle-dock');
+  await expect(dock).toContainText('選擇要移除的卡牌');
+  const firstPartyOption = dock.getByRole('button').first();
+  await expect(firstPartyOption).toBeVisible();
+  await firstPartyOption.click();
+
+  await expect(dock).toHaveCount(0);
+  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), localSaveKey);
+  const cards = saved.snapshot.state.cards as Record<string, { definitionId: string }>;
+  const equipmentId = Object.entries(cards).find(([, { definitionId }]) => definitionId === 'base:resource/resource-02')![0];
+  expect(saved.snapshot.state.removedCards.length).toBeGreaterThan(0);
+  expect(saved.snapshot.state.players[0].discardPile).toContain(equipmentId);
+  expect(saved.snapshot.state.players[0].party).toHaveLength(4);
   expect(saved.snapshot.state.revision).toBe(1);
 });
 

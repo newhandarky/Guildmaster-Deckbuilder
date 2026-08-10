@@ -32,6 +32,7 @@ const foundationComposition = [
   ['base:resource/resource-05', 2],
   ['base:resource/resource-08', 2],
   ['base:resource/resource-10', 2],
+  ['base:resource/resource-15', 2],
   ['base:resource/resource-17', 2],
   ['base:monster/monster-01', 3],
   ['base:monster/monster-02', 1],
@@ -51,6 +52,7 @@ const enabledEffectIds = new Set([
   'base:resource/resource-05',
   'base:resource/resource-08',
   'base:resource/resource-10',
+  'base:resource/resource-15',
   'base:resource/resource-17',
 ]);
 
@@ -200,6 +202,33 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
       },
     };
   }
+  if (candidate.definitionId === 'base:resource/resource-15') {
+    definition.useEffect = {
+      schemaVersion: 1,
+      effectId: 'base:provisional-foundation/resource-15-use',
+      body: {
+        kind: 'choose-card',
+        choiceId: 'base:resource/resource-15-remove',
+        actor: { kind: 'controller' },
+        from: {
+          kind: 'one-of',
+          locations: [
+            { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+            { kind: 'party', player: { kind: 'controller' } },
+            { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+          ],
+        },
+        selectedCardKey: 'removed',
+        selectedLocationKey: 'removedFrom',
+        effect: {
+          kind: 'remove-from-game',
+          card: { kind: 'context-card', key: 'removed' },
+          from: { kind: 'context-location', key: 'removedFrom' },
+          attachedEquipmentDisposition: 'discard',
+        },
+      },
+    };
+  }
   if (candidate.definitionId === 'base:resource/resource-17') {
     definition.useEffect = {
       schemaVersion: 1,
@@ -226,8 +255,8 @@ function definitionFor(definitionId: string, copies: number): CardDefinition {
 export const baseProvisionalFoundationContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-foundation',
-    version: '0.4.0',
-    hash: 'base-provisional-foundation-v4-filtered-card-selection',
+    version: '0.5.0',
+    hash: 'base-provisional-foundation-v5-multi-source-removal',
     role: 'base',
     contentStatus: 'provisional-playtest',
   },

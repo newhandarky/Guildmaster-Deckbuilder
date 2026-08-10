@@ -47,7 +47,7 @@ export const demoPresentationPack: PresentationPack = {
 export const provisionalFoundationPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-foundation-neutral',
-    version: '3.0.0',
+    version: '4.0.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
@@ -99,6 +99,14 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAltText: '候選道具的中性圖像 placeholder',
       shortDisplayText: '使用：棄 1 張手牌，然後抽 2 張牌。',
       detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌；此為 provisional 候選效果。',
+    },
+    {
+      definitionId: 'base:resource/resource-15',
+      displayName: '候選物資 15',
+      portraitAssetKey: 'placeholder:provisional-item',
+      portraitAltText: '候選道具的中性圖像 placeholder',
+      shortDisplayText: '使用：從手牌、隊伍或棄牌堆移除 1 張牌。',
+      detailDisplayText: '行動階段使用後，從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；若移除配戴裝備的隊員，其裝備置入棄牌堆。此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-17',

@@ -98,7 +98,7 @@
 - 個別例外 handler 與測試
 - 核對官方說明書、卡表、勘誤與 FAQ
 
-目前進度：已交付 opt-in 的 provisional foundation 垂直切片，包含 7 個起始定義、8 種冒險者、7 種物資、4 種魔物與 4 張魔王，共 30 個中性名稱候選；使用獨立 Content Pack 指紋與 `allowProvisionalPlaytest` 閘門。候選物資 01／05 已接入依卡種從棄牌堆取回卡片，04 已接入棄魔王後抽牌，08 已接入「抽 2 張牌」，10／17 已接入含動態手牌選擇的棄牌與抽牌效果；六者均通過購買、使用、Snapshot 與 Replay 基礎回歸，選牌期間以版本化 card-use continuation 保存完整 root transaction。`choose-card` predicate 由 legal Commands、authoritative executor 與 Snapshot canonical restore 共用，沒有合法候選時不會暴露可使用指令。候選物資 02 可測試購買／配戴，但卡面效果仍停用。其餘未實作卡面繼續明示 `playtest:effects-disabled`，因此 M3 尚未完成。
+目前進度：已交付 opt-in 的 provisional foundation 垂直切片，包含 7 個起始定義、8 種冒險者、8 種物資、4 種魔物與 4 張魔王，共 31 個中性名稱候選；使用獨立 Content Pack 指紋與 `allowProvisionalPlaytest` 閘門。候選物資 01／05 已接入依卡種從棄牌堆取回卡片，04 已接入棄魔王後抽牌，08 已接入「抽 2 張牌」，10／17 已接入含動態手牌選擇的棄牌與抽牌，15 已接入跨手牌／隊伍／棄牌堆選擇並移除；七者均通過購買、使用、Snapshot 與 Replay 基礎回歸，選牌期間以版本化 card-use continuation 保存完整 root transaction。`choose-card` predicate、多可見來源與選中卡片的 canonical source location 由 legal Commands、authoritative executor 與 Snapshot restore 共用；沒有合法候選時不會暴露可使用指令。候選物資 02 可測試購買／配戴，但卡面效果仍停用。其餘未實作卡面繼續明示 `playtest:effects-disabled`，因此 M3 尚未完成。
 
 驗收：Content Pack 組成通過一致性驗證；未知的官方逐種類張數不標示為官方配比，也不阻擋數位 playtest；所有基礎 effect 類型有測試；未實作效果數為零；engine 不含基礎卡 ID。
 

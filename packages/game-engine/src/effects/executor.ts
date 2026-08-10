@@ -1,4 +1,4 @@
-import { validateEffectCardPredicate, validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectCardLocation, type EffectCardPredicate, type EffectContext, type EffectDefinition, type EffectNode, type GameState } from '@guildmaster/game-protocol';
+import { validateEffectCardPredicate, validateEffectDefinition, type CounterConsentAction, type CounterConsentEvaluation, type DomainEvent, type EffectCardLocation, type EffectCardPredicate, type EffectConcreteCardLocation, type EffectContext, type EffectDefinition, type EffectNode, type EffectSelectableCardLocation, type EffectSelectableCardSource, type GameState } from '@guildmaster/game-protocol';
 import { drawCards } from '../engine/draw.js';
 import { getPlayer } from '../model/factories.js';
 import { nextRandom } from '../ports/random.js';
@@ -26,8 +26,10 @@ const domainEvent = (state: GameState, events: DomainEvent[], type: string, mess
 const playerId = (ref: import('@guildmaster/game-protocol').EffectPlayerRef, context: EffectContext) => ref.kind === 'controller' ? context.controllerId : ref.kind === 'player-id' ? ref.playerId : context.playerRefs?.[ref.key];
 function commitState(target: GameState, source: GameState): void { Object.assign(target, source); }
 type DynamicCardChoiceNode = Extract<EffectNode, { kind: 'choose-card' }>;
-type ResolvedSelectableCardLocation = { kind: 'player-zone'; player: { kind: 'player-id'; playerId: string }; zone: 'hand' | 'discardPile' | 'playArea' };
-type DynamicCardChoiceCandidates = { status: 'ready'; actorId: string; source: ResolvedSelectableCardLocation; cardIds: string[] } | { status: 'failed'; error: string };
+type ResolvedSelectableCardLocation = { kind: 'player-zone'; player: { kind: 'player-id'; playerId: string }; zone: 'hand' | 'discardPile' | 'playArea' } | { kind: 'party'; player: { kind: 'player-id'; playerId: string } };
+type ResolvedSelectableCardSource = ResolvedSelectableCardLocation | { kind: 'one-of'; locations: readonly ResolvedSelectableCardLocation[] };
+type DynamicCardChoiceCandidate = { cardId: string; location: EffectConcreteCardLocation };
+type DynamicCardChoiceCandidates = { status: 'ready'; actorId: string; source: ResolvedSelectableCardSource; candidates: DynamicCardChoiceCandidate[] } | { status: 'failed'; error: string };
 
 function matchesCardPredicate(state: GameState, ruleset: Ruleset, cardId: string, predicate: EffectCardPredicate): boolean {
   const card = state.cards[cardId];
@@ -41,27 +43,59 @@ function matchesCardPredicate(state: GameState, ruleset: Ruleset, cardId: string
   return !matchesCardPredicate(state, ruleset, cardId, predicate.predicate);
 }
 
+function resolveSelectableCardLocation(location: EffectSelectableCardLocation, context: EffectContext): ResolvedSelectableCardLocation | undefined {
+  const ownerId = playerId(location.player, context);
+  if (!ownerId) return undefined;
+  return location.kind === 'party'
+    ? { kind: 'party', player: { kind: 'player-id', playerId: ownerId } }
+    : { kind: 'player-zone', player: { kind: 'player-id', playerId: ownerId }, zone: location.zone };
+}
+
+function resolveSelectableCardSource(source: EffectSelectableCardSource, context: EffectContext): ResolvedSelectableCardSource | undefined {
+  if (source.kind !== 'one-of') return resolveSelectableCardLocation(source, context);
+  const locations = source.locations.map((location) => resolveSelectableCardLocation(location, context));
+  return locations.every((location): location is ResolvedSelectableCardLocation => Boolean(location)) ? { kind: 'one-of', locations } : undefined;
+}
+
+function sourceLocations(source: ResolvedSelectableCardSource): readonly ResolvedSelectableCardLocation[] {
+  return source.kind === 'one-of' ? source.locations : [source];
+}
+
+function candidatesAtLocation(state: GameState, actorId: string, location: ResolvedSelectableCardLocation): DynamicCardChoiceCandidate[] {
+  const player = getPlayer(state, actorId);
+  if (location.kind === 'player-zone') return player[location.zone].map((cardId) => ({ cardId, location }));
+  return player.party.map((slot, position) => ({ cardId: slot.adventurerId, location: { kind: 'party', player: location.player, position } }));
+}
+
 function dynamicCardChoiceCandidates(state: GameState, ruleset: Ruleset, node: DynamicCardChoiceNode, context: EffectContext): DynamicCardChoiceCandidates {
   const predicateErrors = node.predicate ? validateEffectCardPredicate(node.predicate) : [];
   if (predicateErrors.length) return { status: 'failed', error: `Dynamic card choice predicate is invalid: ${predicateErrors.join(' ')}` };
   const actorId = playerId(node.actor, context);
-  const source = resolveLocation(node.from, context);
-  if (!actorId || !source || source.kind !== 'player-zone' || source.player.kind !== 'player-id' || source.player.playerId !== actorId) return { status: 'failed', error: 'Dynamic card choice must resolve to the choosing actor\'s visible player zone.' };
-  if (source.zone === 'drawPile') return { status: 'failed', error: 'Dynamic card choice cannot expose a hidden draw pile.' };
-  const visibleSource: ResolvedSelectableCardLocation = { kind: 'player-zone', player: { kind: 'player-id', playerId: source.player.playerId }, zone: source.zone };
+  const visibleSource = resolveSelectableCardSource(node.from, context);
+  if (!actorId || !visibleSource || sourceLocations(visibleSource).some((location) => location.player.playerId !== actorId)) return { status: 'failed', error: 'Dynamic card choice must resolve to the choosing actor\'s visible zones or party.' };
   const predicate = node.predicate;
-  const cardIds = getPlayer(state, actorId)[visibleSource.zone].filter((cardId) => !predicate || matchesCardPredicate(state, ruleset, cardId, predicate));
-  return { status: 'ready', actorId, source: visibleSource, cardIds };
+  const candidates = sourceLocations(visibleSource).flatMap((location) => candidatesAtLocation(state, actorId, location)).filter(({ cardId }) => !predicate || matchesCardPredicate(state, ruleset, cardId, predicate));
+  if (new Set(candidates.map(({ cardId }) => cardId)).size !== candidates.length) return { status: 'failed', error: 'Dynamic card choice source resolves the same card more than once.' };
+  return { status: 'ready', actorId, source: visibleSource, candidates };
 }
 const noPreviewUncertainty = (): EffectPreviewUncertainty => ({ usesRandomness: false, observesHiddenInformation: false });
 const mergePreviewUncertainty = (values: readonly EffectPreviewUncertainty[]): EffectPreviewUncertainty => values.reduce((merged, value) => ({ usesRandomness: merged.usesRandomness || value.usesRandomness, observesHiddenInformation: merged.observesHiddenInformation || value.observesHiddenInformation }), noPreviewUncertainty());
 
 function locationIsVisibleToViewer(location: EffectCardLocation, state: GameState, context: EffectContext, viewerId: string): boolean {
+  if (location.kind === 'context-location') {
+    const resolved = resolveLocation(location, context);
+    return Boolean(resolved && resolved.kind !== 'enemy-target-card' && resolved.kind !== 'enemy-target-attachment' && locationIsVisibleToViewer(resolved, state, context, viewerId));
+  }
   if (location.kind === 'shared-zone') return state.zones[location.zoneId]?.visibility === 'public';
   if (location.kind === 'removed') return false;
   const ownerId = playerId(location.player, context);
   if (ownerId !== viewerId) return false;
   return location.kind !== 'player-zone' || location.zone !== 'drawPile';
+}
+
+function selectableSourceIsVisibleToViewer(source: EffectSelectableCardSource, context: EffectContext, viewerId: string): boolean {
+  const resolved = resolveSelectableCardSource(source, context);
+  return Boolean(resolved && sourceLocations(resolved).every((location) => location.player.playerId === viewerId));
 }
 
 /** Conservative metadata for deciding whether speculative effect execution is safe to expose in a PlayerView-derived query. */
@@ -74,7 +108,7 @@ export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameSta
   ]);
   if (node.kind === 'choice') return mergePreviewUncertainty(node.options.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
   if (node.kind === 'choose-card') return mergePreviewUncertainty([
-    { usesRandomness: false, observesHiddenInformation: !locationIsVisibleToViewer(node.from, state, context, viewerId) },
+    { usesRandomness: false, observesHiddenInformation: !selectableSourceIsVisibleToViewer(node.from, context, viewerId) },
     inspectEffectPreviewUncertainty(node.effect, state, context, viewerId),
   ]);
   if (node.kind === 'random' || node.kind === 'roll-die') return mergePreviewUncertainty([
@@ -149,21 +183,22 @@ export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster
   if (node.kind === 'choice' && JSON.stringify(node.options) !== JSON.stringify(pending.options)) return 'Pending choice does not match its registered effect program.';
   if (node.kind === 'choose-card') {
     if (!pending.options.length || new Set(pending.options.map(({ id }) => id)).size !== pending.options.length) return 'Dynamic card choice options must be non-empty and unique.';
+    if (!state || !ruleset) return 'Dynamic card choice validation requires the active state and ruleset.';
+    const resolved = dynamicCardChoiceCandidates(state, ruleset, node, pending.context);
+    if (resolved.status !== 'ready' || JSON.stringify(resolved.candidates.map(({ cardId }) => cardId)) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone and predicate.';
+    const candidateLocations = new Map(resolved.candidates.map(({ cardId, location }) => [cardId, location]));
     const valid = pending.options.every((option) => {
+      const selectedLocation = candidateLocations.get(option.id);
       const expectedContext: EffectContext = {
         ...pending.context,
         cardRefs: { ...(pending.context.cardRefs ?? {}), [node.selectedCardKey]: option.id },
+        ...(node.selectedLocationKey && selectedLocation ? { locationRefs: { ...(pending.context.locationRefs ?? {}), [node.selectedLocationKey]: selectedLocation } } : {}),
       };
       return JSON.stringify(option.effect) === JSON.stringify(node.effect) && JSON.stringify(option.context) === JSON.stringify(expectedContext);
     });
     const expectedActorId = playerId(node.actor, pending.context);
-    const expectedSource = resolveLocation(node.from, pending.context);
-    if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || expectedSource.kind !== 'player-zone' || expectedSource.player.kind !== 'player-id' || expectedSource.player.playerId !== expectedActorId || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
-    if (state) {
-      if (!ruleset) return 'Dynamic card choice validation requires the active ruleset.';
-      const resolved = dynamicCardChoiceCandidates(state, ruleset, node, pending.context);
-      if (resolved.status !== 'ready' || JSON.stringify(resolved.cardIds) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone and predicate.';
-    }
+    const expectedSource = resolveSelectableCardSource(node.from, pending.context);
+    if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || sourceLocations(expectedSource).some((location) => location.player.playerId !== expectedActorId) || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
   }
   return JSON.stringify(candidates[0]!.remaining) === JSON.stringify(pending.remaining)
     ? undefined
@@ -190,12 +225,16 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'choose-card') {
       const resolved = dynamicCardChoiceCandidates(state, ruleset, node, context);
       if (resolved.status !== 'ready') return { status: 'failed', events, error: resolved.error };
-      const { actorId, source: visibleSource, cardIds: candidates } = resolved;
+      const { actorId, source: visibleSource, candidates } = resolved;
       if (!candidates.length) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
-      const options = candidates.map((cardId) => ({
+      const options = candidates.map(({ cardId, location }) => ({
         id: cardId,
         effect: structuredClone(node.effect),
-        context: { ...structuredClone(context), cardRefs: { ...(context.cardRefs ?? {}), [node.selectedCardKey]: cardId } },
+        context: {
+          ...structuredClone(context),
+          cardRefs: { ...(context.cardRefs ?? {}), [node.selectedCardKey]: cardId },
+          ...(node.selectedLocationKey ? { locationRefs: { ...(context.locationRefs ?? {}), [node.selectedLocationKey]: structuredClone(location) } } : {}),
+        },
       }));
       state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options, remaining: nodes.slice(index + 1), context: structuredClone(context), source: visibleSource };
       domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit card choice.');
@@ -211,7 +250,7 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'create-enemy-encounter' || node.kind === 'create-enemy-target' || node.kind === 'attach-card-to-enemy-target' || node.kind === 'damage-enemy-target' || node.kind === 'defeat-enemy-target' || node.kind === 'remove-enemy-target' || node.kind === 'finish-enemy-encounter') { const result = node.kind === 'create-enemy-encounter' ? createEnemyEncounter(state, ruleset, node, events) : node.kind === 'create-enemy-target' ? createEnemyTarget(state, ruleset, node, context, events) : node.kind === 'attach-card-to-enemy-target' ? attachCardToEnemyTarget(state, ruleset, node, context, events) : node.kind === 'damage-enemy-target' ? damageEnemyTarget(state, ruleset, node, events) : node.kind === 'defeat-enemy-target' ? defeatEnemyTarget(state, ruleset, node, events) : node.kind === 'remove-enemy-target' ? removeEnemyTarget(state, ruleset, node, events) : finishEnemyEncounter(state, ruleset, node, events); if (!result.ok) return { status: 'failed', events, error: result.error }; continue; }
     const cardId = resolveCardId(node.card, context); if (!cardId) return { status: 'failed', events, error: 'Effect card reference could not be resolved.' };
     const to = node.kind === 'move-card' ? node.to : node.kind === 'discard-card' ? { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' } as const : { kind: 'removed' } as const;
-    const result = moveCard(state, { cardInstanceId: cardId, from: node.from, to, actorId: context.controllerId, context, registry: ruleset.registry, ...(node.kind === 'move-card' && node.position !== undefined ? { position: node.position } : {}), ...(node.permission !== undefined ? { permission: node.permission } : {}), ...(node.kind === 'move-card' && node.transferOwnership !== undefined ? { transferOwnership: node.transferOwnership } : {}) });
+    const result = moveCard(state, { cardInstanceId: cardId, from: node.from, to, actorId: context.controllerId, context, registry: ruleset.registry, ...(node.kind === 'move-card' && node.position !== undefined ? { position: node.position } : {}), ...(node.permission !== undefined ? { permission: node.permission } : {}), ...(node.kind === 'move-card' && node.transferOwnership !== undefined ? { transferOwnership: node.transferOwnership } : {}), ...(node.kind === 'remove-from-game' && node.attachedEquipmentDisposition !== undefined ? { attachedEquipmentDisposition: node.attachedEquipmentDisposition } : {}) });
     if (!result.ok) return { status: 'failed', events, error: `${result.code}: ${result.message}` }; domainEvent(state, events, 'CARD_MOVED', 'Effect moved a card.');
   }
   return { status: 'completed', events };

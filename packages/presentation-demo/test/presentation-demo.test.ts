@@ -28,6 +28,7 @@ describe('demo presentation package', () => {
       expect.objectContaining({ definitionId: 'base:resource/resource-05', shortDisplayText: expect.stringContaining('取回 1 張裝備') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-08', shortDisplayText: '使用：抽 2 張牌。' }),
       expect.objectContaining({ definitionId: 'base:resource/resource-10', shortDisplayText: expect.stringContaining('棄 1 張手牌') }),
+      expect.objectContaining({ definitionId: 'base:resource/resource-15', shortDisplayText: expect.stringContaining('手牌、隊伍或棄牌堆') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-17', shortDisplayText: expect.stringContaining('抽 3 張牌') }),
     ]);
   });
