@@ -20,7 +20,7 @@
 | 卡片／遊戲區移動 | 3 | 0 | 0 | 0 |
 | 供應 | 4 | 0 | 0 | 0 |
 | 討伐 | 4 | 0 | 0 | 0 |
-| 隊伍、裝備與道具 | 4 | 0 | 0 | 0 |
+| 隊伍、裝備與道具 | 5 | 0 | 0 | 0 |
 | 隨機與資訊 | 4 | 0 | 0 | 0 |
 | 時序與效果 | 3 | 0 | 0 | 0 |
 | 羈絆、終局與計分 | 2 | 0 | 0 | 1 |
@@ -40,6 +40,7 @@
 - JSON-only combat conditions、戰力 modifier、target restriction 與 defeat/remove-target replacement 已由 query／dispatch 共用的確定性 evaluator 支援；尚未載入卡牌 policy。
 - generic multi-target encounter resolution 已 supported：JSON-only policy 可宣告 completion、target／attachment disposition 與 explicit registry ref；Effect AST、Snapshot、choice/lifecycle continuation 與 transaction rollback 均可重播。health target 另由 JSON-only attack-resolution policy 將 fixed damage、combat／party-prefix evaluation、`ATTACK_TARGET` query／dispatch 與 lethal reward continuation 接為同一 transaction；沒有 policy 時維持不可攻擊。未載入正式或 provisional 多部位魔王內容，也不推導官方 HP、討伐獎勵、終局或下一階段。
 - JSON-only equipment eligibility conditions、結構化 rejection reason 與 Rules Module priority 已由 legal query／`EQUIP_ITEM` dispatch 共用的確定性 evaluator 支援；尚未載入卡牌或裝備內容。
+- JSON-only equipment combat modifier 可依裝備與配戴者 definition／tag、phase 或 counter 修正實際參戰的隊伍前綴戰力；legal query 與 authoritative attack dispatch 共用 evaluator。候選物資 02 的確切加成數值仍缺欄位證據，因此保持停用。
 - reducer 已發出 command/event lifecycle boundaries；中性 `grant-combat-reward` primitive 可表達獎勵資料，未載入任何卡牌效果。
 - 動態隊伍上限、可插拔終局與計分 hooks、確定性 shuffle、PlayerView 資訊裁切。
 - 可序列化 Effect AST、pending choice、deterministic random、transactional lifecycle registry/dispatch、continuous runtime、supply refresh、multi-target encounter、Snapshot resume 與 versioned Command Replay diagnostic export 均已 supported；不代表任何正式或 provisional 卡牌內容已載入。
@@ -57,7 +58,7 @@
 3. **已完成 P2：responsive game table shell。** 固定單頁 DOM／鍵盤順序、interaction rail、收合式 Replay 診斷與五種 viewport regression；規則仍由 session authority 提供。
 4. **已完成 P3a：incremental presentation asset pipeline。** Demo 顯示資料已與 core contract 分離；完整 pack 可搭配部分素材覆蓋，approved responsive WebP、焦點、權利與 hash 由獨立 manifest 驗證，缺圖維持 CSS placeholder。
 5. **進行中 P3b：原創 demo assets／可用性驗證。** Accessibility／usability baseline 已完成 WCAG A／AA gate、鍵盤焦點、44px target、reflow、reduced-motion 與 forced-colors regression；素材依 starter＋冒險者、道具＋裝備、魔物、魔王分批核准，不載入官方圖像。
-6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 30 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批七種道具／裝備已進供應牌列。候選物資 01／05 的棄牌堆卡種取回、04 的棄魔王後抽牌、08 的即時「抽 2」，以及 10／17 的動態選牌、棄牌與抽牌，均完成 definition → legal Command → dispatch → Snapshot／Replay → UI 垂直接線。`choose-card` 支援 JSON-only 的 definition type／ID／tag 與 all／any／not predicate；legal query、executor 與 canonical restore 共用同一候選語意。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative zone 候選與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。候選物資 02 只啟用通用購買／配戴流程，卡面效果仍停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
+6. **進行中 P4：內容接線與 Vol.1。** 已交付 opt-in 的 30 定義 foundation 切片、模式選擇、manifest 存檔恢復與瀏覽器回歸；首批七種道具／裝備已進供應牌列。候選物資 01／05 的棄牌堆卡種取回、04 的棄魔王後抽牌、08 的即時「抽 2」，以及 10／17 的動態選牌、棄牌與抽牌，均完成 definition → legal Command → dispatch → Snapshot／Replay → UI 垂直接線。`choose-card` 支援 JSON-only 的 definition type／ID／tag 與 all／any／not predicate；legal query、executor 與 canonical restore 共用同一候選語意。card-use continuation 已版本化，Snapshot 會驗證 registry、效果程式、authoritative zone 候選與 transaction events；UI 僅從 PlayerView 與 legal Commands 顯示可見卡名。裝備配戴者條件戰力 evaluator 已完成並接入實際 party prefix；候選物資 02 因來源未建立確切加成數值，仍只啟用通用購買／配戴流程並保持卡面效果停用。只有在卡牌資料與時序確認後才逐批移除 `playtest:effects-disabled`；HP、同分排名、協助者與究極魔神維持獨立 Rules Module。
 
 ## 已解除並完成程式接線的項目
 

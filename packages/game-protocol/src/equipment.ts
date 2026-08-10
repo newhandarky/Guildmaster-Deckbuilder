@@ -6,6 +6,7 @@ export type EquipmentEligibilityCondition =
   | { kind: 'phase-is'; phase: import('./state.js').Phase }
   | { kind: 'equipment-definition-in'; definitionIds: readonly string[] }
   | { kind: 'adventurer-definition-in'; definitionIds: readonly string[] }
+  | { kind: 'adventurer-tag-in'; tags: readonly string[] }
   | { kind: 'player-counter-at-least'; resourceId: string; amount: number }
   | { kind: 'all'; conditions: readonly EquipmentEligibilityCondition[] }
   | { kind: 'any'; conditions: readonly EquipmentEligibilityCondition[] }
@@ -21,6 +22,17 @@ export type EquipmentEligibilityRule = {
   reasonCode: string;
 };
 
+/** Adds power only for an attached equipment/adventurer pair matching `when`. */
+export type EquipmentCombatModifierRule = {
+  schemaVersion: 1;
+  ruleId: string;
+  moduleId: string;
+  priority?: number;
+  when: EquipmentEligibilityCondition;
+  kind: 'combat-power-modifier';
+  amount: number;
+};
+
 export type EquipmentEligibilityRuleRef = { moduleId: string; ruleId: string };
 export type EquipmentEligibilityInput = { schemaVersion: 1; playerId: string; equipmentCardId: string; adventurerId: string };
 export type EquipmentEligibilityEvaluation = {
@@ -30,12 +42,19 @@ export type EquipmentEligibilityEvaluation = {
   appliedRules: readonly EquipmentEligibilityRuleRef[];
   registry: { rulesetVersion: string; modules: readonly { id: string; version: string }[] };
 };
+export type EquipmentCombatModifierEvaluation = {
+  schemaVersion: 1;
+  powerBonus: number;
+  appliedRules: readonly EquipmentEligibilityRuleRef[];
+  registry: { rulesetVersion: string; modules: readonly { id: string; version: string }[] };
+};
 
 export const EquipmentEligibilityConditionSchema: z.ZodType<EquipmentEligibilityCondition> = z.lazy(() => z.union([
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
   z.object({ kind: z.literal('phase-is'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict(),
   z.object({ kind: z.literal('equipment-definition-in'), definitionIds: z.array(z.string().trim().min(1)).min(1) }).strict(),
   z.object({ kind: z.literal('adventurer-definition-in'), definitionIds: z.array(z.string().trim().min(1)).min(1) }).strict(),
+  z.object({ kind: z.literal('adventurer-tag-in'), tags: z.array(z.string().trim().min(1)).min(1) }).strict(),
   z.object({ kind: z.literal('player-counter-at-least'), resourceId: z.string().trim().min(1), amount: z.number().finite() }).strict(),
   z.object({ kind: z.literal('all'), conditions: z.array(EquipmentEligibilityConditionSchema).min(1) }).strict(),
   z.object({ kind: z.literal('any'), conditions: z.array(EquipmentEligibilityConditionSchema).min(1) }).strict(),
@@ -45,6 +64,10 @@ export const EquipmentEligibilityConditionSchema: z.ZodType<EquipmentEligibility
 export const EquipmentEligibilityRuleSchema = z.object({
   schemaVersion: z.literal(1), ruleId: z.string().trim().min(1), moduleId: z.string().trim().min(1), priority: z.number().finite().optional(),
   when: EquipmentEligibilityConditionSchema, kind: z.literal('restriction'), reasonCode: z.string().trim().min(1)
+}).strict();
+export const EquipmentCombatModifierRuleSchema = z.object({
+  schemaVersion: z.literal(1), ruleId: z.string().trim().min(1), moduleId: z.string().trim().min(1), priority: z.number().finite().optional(),
+  when: EquipmentEligibilityConditionSchema, kind: z.literal('combat-power-modifier'), amount: z.number().finite()
 }).strict();
 export const EquipmentEligibilityInputSchema = z.object({ schemaVersion: z.literal(1), playerId: z.string().trim().min(1), equipmentCardId: z.string().trim().min(1), adventurerId: z.string().trim().min(1) }).strict();
 const ruleRef = z.object({ moduleId: z.string(), ruleId: z.string() }).strict();
@@ -66,5 +89,14 @@ export function validateEquipmentEligibilityRule(rule: EquipmentEligibilityRule,
   const parsed = EquipmentEligibilityRuleSchema.safeParse(rule);
   const errors = parsed.success ? [] : parsed.error.issues.map((issue) => `Equipment eligibility rule ${label} has invalid runtime data at ${issue.path.join('.') || '<root>'}: ${issue.message}`);
   if (parsed.success && parsed.data.moduleId !== moduleId) errors.push(`Equipment eligibility rule ${label} must belong to module ${moduleId}.`);
+  return errors;
+}
+
+export function validateEquipmentCombatModifierRule(rule: EquipmentCombatModifierRule, moduleId: string): string[] {
+  const label = typeof (rule as { ruleId?: unknown }).ruleId === 'string' ? (rule as { ruleId: string }).ruleId : '<invalid>';
+  if (!jsonOnly(rule)) return [`Equipment combat modifier rule ${label} must contain finite, acyclic JSON-serializable data only.`];
+  const parsed = EquipmentCombatModifierRuleSchema.safeParse(rule);
+  const errors = parsed.success ? [] : parsed.error.issues.map((issue) => `Equipment combat modifier rule ${label} has invalid runtime data at ${issue.path.join('.') || '<root>'}: ${issue.message}`);
+  if (parsed.success && parsed.data.moduleId !== moduleId) errors.push(`Equipment combat modifier rule ${label} must belong to module ${moduleId}.`);
   return errors;
 }

@@ -44,6 +44,15 @@ describe('base provisional content catalog', () => {
     expect(baseProvisionalContentCatalog.evidence.find(({ sourceId }) => sourceId === 'project-policy:base-supply-continuity-2026-07-31')).toMatchObject({ evidenceKind: 'project-policy' });
   });
 
+  it('keeps resource 02 disabled until its exact combat-power amount has evidence', () => {
+    const resource = baseProvisionalContentCatalog.candidates.find(({ definitionId }) => definitionId === 'base:resource/resource-02')!;
+    expect(resource.fields.find(({ field }) => field === 'effect')).toMatchObject({
+      status: 'exception',
+      confidence: 'medium',
+      exceptionReason: expect.stringContaining('exact additional combat-power amount'),
+    });
+  });
+
   it('rejects non-finite, fractional, negative, and duplicate mechanics fields', () => {
     const invalid = structuredClone(baseProvisionalContentCatalog);
     const candidate = invalid.candidates[0]!; const copies = candidate.fields.find((field) => field.field === 'copies')!;

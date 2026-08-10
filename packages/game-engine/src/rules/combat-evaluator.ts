@@ -2,6 +2,7 @@ import type { CombatCondition, CombatEvaluation, CombatRule, GameState } from '@
 import { getDefinition, getPlayer } from '../model/factories.js';
 import type { Ruleset } from './ruleset.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
+import { evaluateEquipmentCombatModifiers } from './equipment-combat-modifier-evaluator.js';
 
 export type CombatEvaluationResult =
   | { status: 'ready'; evaluation: CombatEvaluation }
@@ -88,7 +89,13 @@ export function evaluateCombatPartyPrefix(state: GameState, ruleset: Ruleset, pl
     const slot = player.party[index]!;
     participantCardIds.push(slot.adventurerId);
     power += getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0;
-    if (slot.equipmentId) { participantCardIds.push(slot.equipmentId); power += getDefinition(ruleset.registry, state, slot.equipmentId).combat ?? 0; }
+    if (slot.equipmentId) {
+      participantCardIds.push(slot.equipmentId);
+      power += getDefinition(ruleset.registry, state, slot.equipmentId).combat ?? 0;
+      const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId, equipmentCardId: slot.equipmentId, adventurerId: slot.adventurerId });
+      if (modifiers.status !== 'ready') return undefined;
+      power += modifiers.evaluation.powerBonus;
+    }
     if (!Number.isFinite(power)) return undefined;
     if (power >= requiredCombat) return { slotCount: index + 1, power, participantCardIds };
   }

@@ -65,8 +65,8 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       displayName: '候選物資 02',
       portraitAssetKey: 'placeholder:provisional-equipment',
       portraitAltText: '候選裝備的中性圖像 placeholder',
-      shortDisplayText: '候選裝備；卡面效果尚未啟用。',
-      detailDisplayText: '可測試購買與配戴流程；此裝備的個別卡面效果尚未啟用。',
+      shortDisplayText: '候選裝備；加成數值待確認，效果尚未啟用。',
+      detailDisplayText: '可測試購買與配戴流程；已具備依配戴者職業修正戰力的通用能力，但來源尚未確認此卡的確切加成數值，因此個別效果維持停用。',
     },
     {
       definitionId: 'base:resource/resource-04',

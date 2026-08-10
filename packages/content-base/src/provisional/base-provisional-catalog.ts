@@ -53,7 +53,13 @@ const resourceRows: readonly [string, string, 'item' | 'equipment', number, stri
   ['resource-21','精緻的耳環','equipment',4,'購買階段，本回合若擊敗目標獲得購買力。'], ['resource-22','調教手銬','item',3,'選擇場上 1 張魔物為目標；目標回合結束前減少戰力。'], ['resource-23','元素卷軸','item',4,'隊伍及手牌全部棄至棄牌堆後抽 5；每回合限一次。'], ['resource-24','聖龍護符','equipment',4,'裝備者因戰鬥棄至棄牌堆時抽 2。'], ['resource-25','騎士之盾','equipment',5,'限坦克配戴；額外增加戰力。'],
   ['resource-26','專用茶杯','item',4,'抽 3；本回合跳過討伐；若已擊敗目標則不可使用。'], ['resource-27','牛皮紙樂譜','item',5,'抽等同目前隊伍職業種類的牌。'], ['resource-28','特製高級紅酒','item',3,'從手牌棄 1 名冒險者後，抽等同該冒險者戰力數量的牌。']
 ];
-const resources = resourceRows.map(([id, name, type, cost, text], i) => card(`base:resource/${id}`, 'resource', name, 'resource', `card-03.jpg；第 ${i + 1} 張`, [field('cardType', type, 'rulebook', 'page-06.jpg；印刷頁 4；物資卡介紹'), field('copies', undefined, 'rulebook', 'page-04.jpg；印刷頁 2；物資卡共 59 張；card-03.jpg 顯示 28 種', 'medium', 'exception', 'Per-card multiplicities cannot be derived safely from the total and one visual sheet.'), ...stats('resource', `card-03.jpg；第 ${i + 1} 張`, cost), effect('resource', `card-03.jpg；第 ${i + 1} 張`, text), field('effectTiming', type === 'item' ? 'action; discard at rest after use' : 'equip during action; remains until equipped adventurer leaves party', 'rulebook', 'page-06.jpg；印刷頁 4；物資卡介紹', 'high') ]));
+const resources = resourceRows.map(([id, name, type, cost, text], i) => {
+  const region = `card-03.jpg；第 ${i + 1} 張`;
+  const effectField = id === 'resource-02'
+    ? field('effect', undefined, 'resource', region, 'medium', 'exception', 'The melee-wearer condition is readable, but the exact additional combat-power amount is not established by the retained field-level evidence.')
+    : effect('resource', region, text);
+  return card(`base:resource/${id}`, 'resource', name, 'resource', region, [field('cardType', type, 'rulebook', 'page-06.jpg；印刷頁 4；物資卡介紹'), field('copies', undefined, 'rulebook', 'page-04.jpg；印刷頁 2；物資卡共 59 張；card-03.jpg 顯示 28 種', 'medium', 'exception', 'Per-card multiplicities cannot be derived safely from the total and one visual sheet.'), ...stats('resource', region, cost), effectField, field('effectTiming', type === 'item' ? 'action; discard at rest after use' : 'equip during action; remains until equipped adventurer leaves party', 'rulebook', 'page-06.jpg；印刷頁 4；物資卡介紹', 'high') ]);
+});
 
 const monsterRows: readonly [string, string, number, number, number][] = [['monster-01','骷髏戰士',5,2,1],['monster-02','寶箱怪',5,2,5],['monster-03','蜥蜴人法師',6,2,5],['monster-04','奧術史萊姆',5,2,4],['monster-05','蛇妖',4,1,2],['monster-06','哥雷姆',7,2,5],['monster-07','哥布林盜賊',5,2,4],['monster-08','食人魔',6,2,4],['monster-09','兔妖',2,1,2],['monster-10','自動機械弓兵',4,2,5],['monster-11','自動機械戰士',4,2,5],['monster-12','石像鬼',6,2,4],['monster-13','火元素',4,1,2],['monster-14','史萊姆',5,1,2]];
 const monsterRewards: Record<string, string> = {
