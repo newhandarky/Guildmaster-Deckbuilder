@@ -80,7 +80,13 @@ export function replayGame(bundle: unknown, ruleset: Ruleset): ReplayResult {
   }
   // Match the strict JSON schema normalization performed on imported expected snapshots.
   const finalSnapshot = serializeSnapshot(restoreSnapshot(serializeSnapshot(state), ruleset));
-  if (replay.expectedEvents && JSON.stringify(replay.expectedEvents) !== JSON.stringify(events)) { const divergence = firstReplayDivergence(replay.expectedEvents, events, '$.expectedEvents'); return { status: 'failed', diagnostic: diagnostic('EXPECTED_EVENTS_MISMATCH', 'Replay events differ from the audit assertion.', { expected: replay.expectedEvents, actual: events, ...(divergence ? { divergence } : {}) }) }; }
-  if (replay.expectedFinalSnapshot && JSON.stringify(replay.expectedFinalSnapshot) !== JSON.stringify(finalSnapshot)) { const divergence = firstReplayDivergence(replay.expectedFinalSnapshot, finalSnapshot, '$.expectedFinalSnapshot'); return { status: 'failed', diagnostic: diagnostic('EXPECTED_FINAL_SNAPSHOT_MISMATCH', 'Replay final snapshot differs from the audit assertion.', { expected: replay.expectedFinalSnapshot, actual: finalSnapshot, ...(divergence ? { divergence } : {}) }) }; }
+  if (replay.expectedEvents) {
+    const divergence = firstReplayDivergence(replay.expectedEvents, events, '$.expectedEvents');
+    if (divergence) return { status: 'failed', diagnostic: diagnostic('EXPECTED_EVENTS_MISMATCH', 'Replay events differ from the audit assertion.', { expected: replay.expectedEvents, actual: events, divergence }) };
+  }
+  if (replay.expectedFinalSnapshot) {
+    const divergence = firstReplayDivergence(replay.expectedFinalSnapshot, finalSnapshot, '$.expectedFinalSnapshot');
+    if (divergence) return { status: 'failed', diagnostic: diagnostic('EXPECTED_FINAL_SNAPSHOT_MISMATCH', 'Replay final snapshot differs from the audit assertion.', { expected: replay.expectedFinalSnapshot, actual: finalSnapshot, divergence }) };
+  }
   return { status: 'completed', finalSnapshot, events };
 }

@@ -10,9 +10,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@guildmaster/content-base": "workspace:*",
     "@guildmaster/game-engine": "workspace:*",
     "@guildmaster/game-protocol": "workspace:*"
   },
-  "devDependencies": { "vitest": "^2.1.9" }
+  "devDependencies": {
+    "@guildmaster/content-base": "workspace:*",
+    "vitest": "^2.1.9"
+  }
 }

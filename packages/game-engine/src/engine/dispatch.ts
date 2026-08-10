@@ -100,12 +100,15 @@ function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: Player
       else player.discardPile.push(target.cardInstanceId);
     }
   }
-  if (target.kind === 'monster') {
-    try { refillSupply(state, ruleset, 'monster', events); attachTargets(state); }
-    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : 'Monster supply refill failed.' }; }
-    const continuityErrors = validateSupplyContinuityState(state, ruleset);
-    if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') };
+  return undefined;
+}
+
+function refillAttackTargetSupply(state: GameState, ruleset: Ruleset, targetKind: string, events: DomainEvent[]): EngineError | undefined {
+  if (targetKind === 'monster' || targetKind === 'boss') {
+    try { refillSupply(state, ruleset, targetKind, events); attachTargets(state); }
+    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : `${targetKind} supply refill failed.` }; }
   }
+  if (targetKind === 'monster') { const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') }; }
   return undefined;
 }
 
@@ -116,14 +119,19 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   const outcome = fixedCombatOutcome(events);
   if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
   const attackResolution = fixedAttackResolution(events);
+  let terminalStatus: 'defeated' | 'removed';
   if (attackResolution) {
     const expectedStatus = attackResolution.damage.input.lethalOutcome ?? 'defeated';
     if (!attackResolution.damage.lethal || target.status !== expectedStatus || target.health?.current !== 0) return { code: 'INVALID_COMMAND', message: 'Committed health-target attack resolution is incomplete or inconsistent.' };
+    terminalStatus = expectedStatus;
   } else {
     const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
     if (dispositionError) return dispositionError;
+    terminalStatus = outcome === 'remove-target' ? 'removed' : 'defeated';
   }
-  if (outcome === 'remove-target') return undefined;
+  const refillError = refillAttackTargetSupply(state, ruleset, target.kind, events);
+  if (refillError) return refillError;
+  if (terminalStatus === 'removed') return undefined;
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
@@ -231,10 +239,9 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     const applied = applyEnemyTargetDamageEvaluation(state, ruleset, attackResolution.evaluation.damage, events);
     if (!applied.ok) return { code: 'INVALID_COMMAND', message: applied.error };
     if (!attackResolution.evaluation.damage.lethal) return undefined;
-    if (combat.evaluation.outcome.kind === 'remove-target') return undefined;
   }
   if (combat.evaluation.outcome.kind === 'remove-target') {
-    return finalizeAttackTarget(state, ruleset, player, target.targetId, 'remove-target', events, commandId);
+    return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
   }
   const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
   if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };

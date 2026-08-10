@@ -17,7 +17,8 @@ function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState
   const zones = Object.fromEntries(ruleset.modules.flatMap((module) => module.zoneDefinitions ?? []).map((definition) => [definition.zoneId, { ...definition, cardIds: [] }]));
   const moduleState = Object.fromEntries(ruleset.modules.map((module) => [module.id, module.createInitialState?.() ?? {}]));
   if (!isFiniteJsonValue(moduleState)) throw new Error('Rules Module initial state must contain finite, acyclic, plain JSON data only.');
-  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map(rulesModuleRegistryIdentity), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
+  const hasSetupContributions = ruleset.modules.some((module) => (module.setupContributions?.length ?? 0) > 0);
+  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map(rulesModuleRegistryIdentity), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, ...(hasSetupContributions ? { setupSelections: {} } : {}), enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
 }
 
 function executeSetupContributions(state: GameState, ruleset: Ruleset): void {
@@ -40,9 +41,17 @@ function executeSetupContributions(state: GameState, ruleset: Ruleset): void {
     if (candidates.length < count) {
       throw new Error(`Setup contribution ${contribution.contributionId} requires ${count} cards but only ${candidates.length} candidates exist.`);
     }
-    destination.cardIds = shuffle(state, candidates)
-      .slice(0, count)
-      .map((definitionId) => createCard(state, definitionId).id);
+    const definitionIds = shuffle(state, candidates).slice(0, count);
+    destination.cardIds = definitionIds.map((definitionId) => createCard(state, definitionId).id);
+    if (!state.setupSelections) throw new Error(`Setup contribution ${contribution.contributionId} has no selection registry.`);
+    state.setupSelections[contribution.contributionId] = {
+      schemaVersion: 1,
+      contributionId: contribution.contributionId,
+      moduleId: contribution.moduleId,
+      destinationZoneId: contribution.destinationZoneId,
+      cardIds: [...destination.cardIds],
+      definitionIds: [...definitionIds],
+    };
   }
 }
 

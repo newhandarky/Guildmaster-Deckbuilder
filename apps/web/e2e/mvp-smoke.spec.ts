@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createGame, dispatch, serializeSnapshot } from '@guildmaster/game-engine';
+import { createGame, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
 import { enterGame, openGame } from './game-entry.js';
@@ -133,32 +133,6 @@ async function installPendingFoundationMultiSourceChoice(page: import('@playwrig
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
-function helperOverflowSave(): string {
-  const ruleset = createWebRuleset('optional-helper');
-  const state = createGame({
-    gameId: 'e2e-helper-overflow',
-    seed: 20260726,
-    players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }],
-    startingPlayerId: 'human-1',
-  }, ruleset);
-  const player = state.players[0]!;
-  const extraAdventurer = state.zones['base:adventurer-deck']!.cardIds.pop()!;
-  const equipmentIndex = state.zones['base:item-deck']!.cardIds.findIndex((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === 'equipment');
-  const [equipmentId] = state.zones['base:item-deck']!.cardIds.splice(equipmentIndex, 1);
-  if (!equipmentId || state.cards[state.zones['base:helper-active']!.cardIds[0]!]!.definitionId !== 'base:helper/helper-08') throw new Error('E2E helper fixture must start with helper 08 and an equipment card.');
-  player.party.push({ adventurerId: extraAdventurer, equipmentId });
-  player.turnCombatBonus = 99;
-  state.phase = 'combat';
-  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(state), events: [] });
-}
-
-async function installHelperOverflow(page: import('@playwright/test').Page): Promise<void> {
-  const save = helperOverflowSave();
-  await page.addInitScript(({ key, value }) => {
-    if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
-  }, { key: localSaveKey, value: save });
-}
-
 test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
@@ -178,7 +152,7 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
 
 test('explicit helper composition reaches PlayerView and persisted Snapshot identity', async ({ page }) => {
   await openGame(page, '/?e2eScenario=optional-helper');
-  await expect(page.getByRole('heading', { name: '隊伍（5/6）' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '隊伍（6/6）' })).toBeVisible();
   await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 08');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
   expect(persisted.snapshot.rulesModules).toEqual([
@@ -194,10 +168,21 @@ test('explicit helper composition reaches PlayerView and persisted Snapshot iden
 });
 
 test('helper 08 rotates after a boss and discards the rightmost overflow member atomically across reload', async ({ page }) => {
-  await installHelperOverflow(page);
-  await page.goto('/?e2eScenario=optional-helper');
-  await enterGame(page);
+  await openGame(page, '/?e2eScenario=optional-helper');
   await expect(page.getByRole('heading', { name: '隊伍（6/6）' })).toBeVisible();
+  const initial = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
+  const expectedAdventurerId = initial.snapshot.state.players[0].party.at(-1).adventurerId as string;
+  const equipment = page.getByTestId('hand').locator('[data-card-type="equipment"]');
+  await expect(equipment).toHaveCount(1);
+  const expectedEquipmentId = await equipment.getAttribute('data-card-instance-id');
+  expect(expectedEquipmentId).toBeTruthy();
+  await equipment.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '選擇配戴對象', exact: true }).click();
+  const rightmostMember = page.locator('[data-card-state="target"]').last();
+  await expect(rightmostMember).toHaveAttribute('data-card-instance-id', expectedAdventurerId);
+  await rightmostMember.click();
+  await page.getByTestId('card-details').getByRole('button', { name: '配戴至此隊員', exact: true }).click();
+  await page.getByTestId('end-phase').click();
   const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
   await runCardAction(page, boss, '討伐');
   await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
@@ -205,7 +190,10 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
   await expect(page.getByTestId('helper-panel')).toContainText('已離場 1 張');
   await expect(page.locator('.log')).toContainText('隊伍上限降低');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
-  expect(persisted.snapshot.state.players[0].discardPile.slice(-2)).toHaveLength(2);
+  expect(persisted.snapshot.state.players[0].discardPile.slice(-2)).toEqual([expectedAdventurerId, expectedEquipmentId]);
+  expect(persisted.replayBundle).toBeDefined();
+  const replay = replayGame(persisted.replayBundle, createWebRuleset('optional-helper'));
+  expect(replay).toMatchObject({ status: 'completed', finalSnapshot: persisted.snapshot });
   await page.reload();
   await enterGame(page);
   await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();

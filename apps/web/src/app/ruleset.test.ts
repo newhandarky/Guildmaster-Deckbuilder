@@ -24,15 +24,66 @@ describe('web content modes', () => {
     expect(state.rulesModules[1]?.compositionFingerprint).toBeTruthy();
     expect(state.moduleState['base:helpers']).toEqual({ schemaVersion: 1 });
     expect(state.zones[baseHelperZoneIds.active]!.cardIds).toHaveLength(1);
+    expect(state.players[0]!.party).toHaveLength(6);
     expect(getPartyLimit(ruleset, state, state.players[0]!)).toBe(6);
     expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
-    expect(replayGame({
+    const replay = replayGame({
       schemaVersion: 1,
       protocolVersion: 1,
       registry: replayRegistryFingerprint(ruleset),
       initialConfig,
       commands: [],
-    }, ruleset)).toMatchObject({ status: 'completed', finalSnapshot: serializeSnapshot(state) });
+    }, ruleset);
+    if (replay.status === 'failed') throw new Error(JSON.stringify(replay.diagnostic));
+    expect(replay.status).toBe('completed');
+    if (replay.status === 'completed') expect(replay.finalSnapshot).toEqual(serializeSnapshot(state));
+  });
+
+  it('replays every E2E boss refill and helper rotation through the final helper', () => {
+    const ruleset = createWebRuleset('optional-helper');
+    const initialConfig = {
+      gameId: 'optional-helper-all-bosses',
+      seed: 20260726,
+      players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }],
+      startingPlayerId: 'human-1',
+    };
+    let state = createGame(initialConfig, ruleset);
+    const initialRightmostIds = state.players.map((player) => player.party.at(-1)!.adventurerId);
+    const commands: ReturnType<typeof envelope>[] = [];
+    const expectedEvents: ReturnType<typeof dispatch>['events'][number][] = [];
+    const apply = (command: Parameters<typeof envelope>[2], commandId: string) => {
+      const commandEnvelope = envelope(state, 'human-1', command, commandId);
+      const result = dispatch(state, ruleset, commandEnvelope);
+      expect(result.error).toBeUndefined();
+      commands.push(commandEnvelope);
+      expectedEvents.push(...result.events);
+      state = result.state;
+    };
+    apply({ type: 'END_PHASE', phase: 'action1' }, 'helper-enter-combat');
+    for (let index = 0; index < 2; index += 1) {
+      const boss = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'boss' && status === 'available');
+      if (!boss) throw new Error(`Expected boss ${index + 1} after refill.`);
+      apply({ type: 'ATTACK_TARGET', targetId: boss.targetId }, `helper-defeat-boss-${index + 1}`);
+    }
+    expect(state.zones[baseHelperZoneIds.active]!.cardIds).toEqual([]);
+    expect(state.zones[baseHelperZoneIds.retired]!.cardIds).toHaveLength(2);
+    expect(state.zones['base:boss-row']!.cardIds).toEqual([]);
+    expect(expectedEvents
+      .filter(({ type }) => type === 'PARTY_MEMBER_DISCARDED')
+      .map(({ payload }) => payload?.kind === 'team-overflow' ? payload.candidateIds[0] : undefined))
+      .toEqual(initialRightmostIds);
+    const replay = replayGame({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      registry: replayRegistryFingerprint(ruleset),
+      initialConfig,
+      commands,
+      expectedEvents,
+      expectedFinalSnapshot: serializeSnapshot(state),
+    }, ruleset);
+    if (replay.status === 'failed') throw new Error(JSON.stringify(replay.diagnostic));
+    expect(replay.status).toBe('completed');
+    if (replay.status === 'completed') expect(replay.finalSnapshot).toEqual(serializeSnapshot(state));
   });
 
   it('loads helper rules only for an explicit provisional setup and derives that setup from Snapshot identity', () => {

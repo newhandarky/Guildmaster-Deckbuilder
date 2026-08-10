@@ -22,6 +22,14 @@ export type ZoneState = { zoneId: ZoneId; kind: ZoneKind; cardIds: string[]; vis
 export type EnemyTargetState = { targetId: string; cardInstanceId: string; kind: string; status: 'available' | 'engaged' | 'defeated' | 'removed'; parentEncounterId?: string; partKey?: string; zoneId?: ZoneId; health?: { current: number; max: number }; attachments: string[]; moduleState: Record<string, unknown> };
 export type EnemyEncounterState = { encounterId: string; targetIds: string[]; kind: string; status: 'active' | 'finished'; rulesModuleId?: string; resolutionPolicy?: { moduleId: string; policyId: string }; state: Record<string, unknown> };
 export type EndState = { conditionId: string; finalRoundEndPlayerId: string; triggeredAtRevision: number };
+export type SetupSelectionState = {
+  schemaVersion: 1;
+  contributionId: string;
+  moduleId: string;
+  destinationZoneId: ZoneId;
+  cardIds: string[];
+  definitionIds: string[];
+};
 
 export type GameState = {
   schemaVersion: 2; engineVersion: string; rulesetVersion: string;
@@ -29,6 +37,7 @@ export type GameState = {
   gameId: string; seed: number; rngState: number; revision: number; status: GameStatus;
   players: PlayerState[]; activePlayerId: string; startingPlayerId: string; round: number; phase: Phase;
   cards: Record<string, CardInstance>; zones: Record<ZoneId, ZoneState>;
+  setupSelections?: Record<string, SetupSelectionState>;
   enemyTargets: Record<string, EnemyTargetState>; enemyEncounters: EnemyEncounterState[];
   removedCards: string[]; moduleState: Record<string, unknown>; effectState: EffectExecutionState; endState?: EndState; eventLogCursor: number;
 };

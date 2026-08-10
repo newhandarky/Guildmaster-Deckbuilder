@@ -106,9 +106,6 @@ importers:
 
   packages/content-base-helpers:
     dependencies:
-      '@guildmaster/content-base':
-        specifier: workspace:*
-        version: link:../content-base
       '@guildmaster/game-engine':
         specifier: workspace:*
         version: link:../game-engine
@@ -116,6 +113,9 @@ importers:
         specifier: workspace:*
         version: link:../game-protocol
     devDependencies:
+      '@guildmaster/content-base':
+        specifier: workspace:*
+        version: link:../content-base
       vitest:
         specifier: ^2.1.9
         version: 2.1.9(lightningcss@1.32.0)

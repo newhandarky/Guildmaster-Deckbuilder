@@ -46,6 +46,23 @@ const setupTarget = (state: ReturnType<typeof game>, ruleset: Ruleset, health = 
   state.phase = 'combat'; state.players[0]!.turnCombatBonus = 99;
   return 'test:core';
 };
+const setupBossTarget = (state: ReturnType<typeof game>, ruleset: Ruleset): string => {
+  const baseEncounter = state.enemyEncounters.find(({ encounterId }) => encounterId === 'base:enemies')!;
+  const existingTarget = Object.values(state.enemyTargets).find(({ kind }) => kind === 'boss')!;
+  baseEncounter.targetIds = baseEncounter.targetIds.filter((targetId) => targetId !== existingTarget.targetId);
+  delete state.enemyTargets[existingTarget.targetId];
+  state.zones['base:boss-row']!.cardIds = state.zones['base:boss-row']!.cardIds.filter((cardId) => cardId !== existingTarget.cardInstanceId);
+  state.removedCards.push(existingTarget.cardInstanceId);
+  const cardId = state.zones['base:boss-deck']!.cardIds.at(-1)!;
+  const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:create-health-boss', body: { kind: 'sequence', effects: [
+    { kind: 'create-enemy-encounter', encounterId: 'test:health-boss-e', encounterKind: 'test:health', rulesModuleId: 'test:health-encounter', policy: { moduleId: 'test:health-encounter', policyId: 'all-parts' } },
+    { kind: 'create-enemy-target', targetId: 'test:health-boss', encounterId: 'test:health-boss-e', card: { kind: 'card-instance', cardInstanceId: cardId }, from: { kind: 'shared-zone', zoneId: 'base:boss-deck' }, targetKind: 'boss', health: { current: 1, max: 1 } }
+  ] } };
+  const result = executeEffect(state, ruleset, effect, { controllerId: 'p1' }, 'test:setup-health-boss');
+  if (result.status !== 'completed') throw new Error(result.error);
+  state.phase = 'combat'; state.players[0]!.turnCombatBonus = 99;
+  return 'test:health-boss';
+};
 const request = (state: ReturnType<typeof game>, ruleset: Ruleset, targetId: string) => ({ schemaVersion: 1 as const, playerId: 'p1', targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } });
 const choiceReward = (): CombatRewardPolicy => ({ schemaVersion: 1, moduleId: 'test:health-encounter', rewardPolicyId: 'health-reward', priority: 1, condition: { kind: 'encounter-kind-in', kinds: ['test:health'] }, recipient: 'defeating-player', reward: { schemaVersion: 1, effectId: 'health-reward-choice', body: { kind: 'choice', choiceId: 'health-reward', actor: { kind: 'controller' }, options: [{ id: 'take', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 2 } }] } } });
 
@@ -133,5 +150,17 @@ describe('generic health-target attack resolution', () => {
     const active = rules({ combatRules: [replacement] }); const state = game(active); const targetId = setupTarget(state, active, 1);
     const result = dispatch(state, active, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'remove-health'));
     expect(result.error).toBeUndefined(); expect(result.state.enemyTargets[targetId]!.status).toBe('removed'); expect(result.state.players[0]!.history.defeatedMonsters).toBe(0); expect(result.events.some(({ type }) => type === 'ENEMY_TARGET_REMOVED')).toBe(true); expect(result.events.some(({ type }) => type === 'ENEMY_DEFEATED')).toBe(false);
+  });
+
+  it('refills the Boss row after health-based Boss defeat or removal', () => {
+    const defeatedRules = rules(); const defeatedState = game(defeatedRules); const defeatedTargetId = setupBossTarget(defeatedState, defeatedRules);
+    const defeatedDeckBefore = defeatedState.zones['base:boss-deck']!.cardIds.length;
+    const defeated = dispatch(defeatedState, defeatedRules, envelope(defeatedState, 'p1', { type: 'ATTACK_TARGET', targetId: defeatedTargetId }, 'defeat-health-boss'));
+    expect(defeated.error).toBeUndefined(); expect(defeated.state.enemyTargets[defeatedTargetId]!.status).toBe('defeated'); expect(defeated.state.zones['base:boss-row']!.cardIds).toHaveLength(1); expect(defeated.state.zones['base:boss-deck']!.cardIds).toHaveLength(defeatedDeckBefore - 1); expect(Object.values(defeated.state.enemyTargets).some(({ kind, status, zoneId }) => kind === 'boss' && status === 'available' && zoneId === 'base:boss-row')).toBe(true); expect(defeated.events.some(({ type }) => type === 'ENEMY_DEFEATED')).toBe(true);
+
+    const replacement = { schemaVersion: 1 as const, moduleId: 'test:health-encounter', ruleId: 'banish-boss', kind: 'replacement' as const, priority: 1, when: { kind: 'target-kind-in' as const, kinds: ['boss'] }, outcome: { kind: 'remove-target' as const } };
+    const removedRules = rules({ combatRules: [replacement] }); const removedState = game(removedRules); const removedTargetId = setupBossTarget(removedState, removedRules);
+    const removed = dispatch(removedState, removedRules, envelope(removedState, 'p1', { type: 'ATTACK_TARGET', targetId: removedTargetId }, 'remove-health-boss'));
+    expect(removed.error).toBeUndefined(); expect(removed.state.enemyTargets[removedTargetId]!.status).toBe('removed'); expect(removed.state.zones['base:boss-row']!.cardIds).toHaveLength(1); expect(removed.state.players[0]!.history.defeatedBosses).toBe(0); expect(removed.events.some(({ type }) => type === 'ENEMY_DEFEATED')).toBe(false);
   });
 });

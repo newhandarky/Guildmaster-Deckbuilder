@@ -1,4 +1,3 @@
-import { baseProvisionalContentCatalog, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
 import { baseRulesModule, type RulesModule } from '@guildmaster/game-engine';
 import type { CardDefinition, ContentPack } from '@guildmaster/game-protocol';
 
@@ -14,13 +13,6 @@ export const baseHelperIds = Array.from(
 ) as readonly string[];
 
 export const enabledBaseHelperDefinitionId = 'base:helper/helper-08';
-
-const auditedHelperIds = new Set(baseProvisionalContentCatalog.candidates
-  .filter(({ category }) => category === 'helper')
-  .map(({ definitionId }) => definitionId));
-if (auditedHelperIds.size !== 12 || baseHelperIds.some((id) => !auditedHelperIds.has(id))) {
-  throw new Error('The provisional helper pack requires all twelve audited helper candidates.');
-}
 
 const definitions: readonly CardDefinition[] = baseHelperIds.map((id, index) => {
   const sequence = String(index + 1).padStart(2, '0');
@@ -42,7 +34,7 @@ export const baseProvisionalHelpersContentPack: ContentPack = {
     hash: 'base-provisional-helpers-v1-helper-08-capacity',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
-    dependencies: [baseProvisionalFoundationContentPack.manifest.id],
+    dependencies: ['base:provisional-foundation'],
   },
   definitions,
   rulesModuleIds: ['base:helpers'],
@@ -59,6 +51,13 @@ export const baseHelpersRulesModule: RulesModule = {
     dependencies: [{ moduleId: baseRulesModule.id, version: baseRulesModule.version }],
   },
   createInitialState: () => ({ schemaVersion: 1 }),
+  validateState: (state) => {
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return ['state must be an object.'];
+    const record = state as Record<string, unknown>;
+    return record.schemaVersion === 1 && Object.keys(record).length === 1
+      ? []
+      : ['state must equal { schemaVersion: 1 }.'];
+  },
   zoneDefinitions: [
     { zoneId: baseHelperZoneIds.deck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:helpers' },
     { zoneId: baseHelperZoneIds.active, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'base:helpers' },

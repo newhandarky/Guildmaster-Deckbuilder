@@ -105,6 +105,19 @@ export function assertGameStateInvariants(state: GameState): void {
 /** Validates module-owned zone contracts and setup-selected card pools. */
 export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ruleset): string[] {
   const errors: string[] = [];
+  const moduleIds = new Set(ruleset.modules.map(({ id }) => id));
+  for (const module of ruleset.modules) {
+    if (!(module.id in state.moduleState)) {
+      errors.push(`Rules Module state ${module.id} is missing.`);
+      continue;
+    }
+    for (const error of module.validateState?.(state.moduleState[module.id]) ?? []) {
+      errors.push(`Rules Module state ${module.id} is invalid: ${error}`);
+    }
+  }
+  for (const moduleId of Object.keys(state.moduleState)) {
+    if (!moduleIds.has(moduleId)) errors.push(`Unknown Rules Module state ${moduleId}.`);
+  }
   const zoneDefinitions = ruleset.modules.flatMap((module) => module.zoneDefinitions ?? []);
   for (const definition of zoneDefinitions) {
     const zone = state.zones[definition.zoneId];
@@ -116,7 +129,14 @@ export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ru
       errors.push(`Rules Module zone ${definition.zoneId} does not match its registered definition.`);
     }
   }
-  for (const module of ruleset.modules) for (const contribution of module.setupContributions ?? []) {
+  const setupContributions = ruleset.modules.flatMap((module) => module.setupContributions ?? []);
+  const setupContributionIds = new Set(setupContributions.map(({ contributionId }) => contributionId));
+  if (!setupContributions.length && state.setupSelections !== undefined) errors.push('Setup selection registry must be absent when the ruleset has no setup contributions.');
+  if (setupContributions.length && !state.setupSelections) errors.push('Setup selection registry is missing.');
+  for (const contributionId of Object.keys(state.setupSelections ?? {})) {
+    if (!setupContributionIds.has(contributionId)) errors.push(`Unknown setup selection ${contributionId}.`);
+  }
+  for (const contribution of setupContributions) {
     const configs = ruleset.modules.flatMap((candidate) => candidate.supplyRowConfigurations ?? [])
       .filter(({ sourceDeckZoneId }) => sourceDeckZoneId === contribution.destinationZoneId);
     const configurationIds = new Set(configs.map(({ configurationId }) => configurationId));
@@ -128,6 +148,26 @@ export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ru
         .map(({ destinationZoneId }) => destinationZoneId),
     ]);
     const allowedCardIds = new Set([...allowedZoneIds].flatMap((zoneId) => state.zones[zoneId]?.cardIds ?? []));
+    const selection = state.setupSelections?.[contribution.contributionId];
+    if (!selection) {
+      errors.push(`Setup contribution ${contribution.contributionId} has no recorded selection.`);
+      continue;
+    }
+    if (selection.contributionId !== contribution.contributionId || selection.moduleId !== contribution.moduleId || selection.destinationZoneId !== contribution.destinationZoneId) {
+      errors.push(`Setup contribution ${contribution.contributionId} selection identity is invalid.`);
+    }
+    if (selection.cardIds.length !== selection.definitionIds.length || duplicates(selection.cardIds).length) {
+      errors.push(`Setup contribution ${contribution.contributionId} selection records are malformed.`);
+    }
+    const selectedCardIds = new Set(selection.cardIds);
+    if (allowedCardIds.size !== selectedCardIds.size || [...allowedCardIds].some((cardId) => !selectedCardIds.has(cardId))) {
+      errors.push(`Setup contribution ${contribution.contributionId} must retain exactly its ${selectedCardIds.size} recorded cards; found ${allowedCardIds.size}.`);
+    }
+    selection.cardIds.forEach((cardId, index) => {
+      if (state.cards[cardId]?.definitionId !== selection.definitionIds[index]) {
+        errors.push(`Setup contribution ${contribution.contributionId} card ${cardId} does not match its recorded definition.`);
+      }
+    });
     for (const zoneId of allowedZoneIds) for (const cardId of state.zones[zoneId]?.cardIds ?? []) {
       const definitionId = state.cards[cardId]?.definitionId;
       if (!definitionId || ruleset.registry.definitions[definitionId]?.type !== contribution.selector.value) {
@@ -135,7 +175,7 @@ export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ru
       }
     }
     for (const card of Object.values(state.cards)) {
-      if (ruleset.registry.definitions[card.definitionId]?.type === contribution.selector.value && !allowedCardIds.has(card.id)) {
+      if (ruleset.registry.definitions[card.definitionId]?.type === contribution.selector.value && !selectedCardIds.has(card.id)) {
         errors.push(`Setup contribution ${contribution.contributionId} card ${card.id} left its registered zones.`);
       }
     }

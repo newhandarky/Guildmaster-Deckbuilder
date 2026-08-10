@@ -1,4 +1,4 @@
-import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base/runtime';
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';

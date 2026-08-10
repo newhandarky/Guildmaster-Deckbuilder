@@ -12,6 +12,7 @@ import { validatePendingCombatRewardContinuation } from './combat-reward-pipelin
 import { validatePendingCardUseContinuation } from './card-use-effect-pipeline.js';
 import { validatePendingDynamicCardChoice } from './pending-dynamic-choice-validation.js';
 import { rulesModuleRegistryIdentity } from '../rules/rules-module-composition.js';
+import { createGame } from './create-game.js';
 function firstDifference(left: unknown, right: unknown, path = '$'): string | undefined {
   if (Object.is(left, right)) return undefined;
   if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) return path;
@@ -53,6 +54,16 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   if (!ruleset && Object.values(state.zones).some(({ visibility }) => visibility === 'hidden')) throw new Error('Snapshot with hidden Rules Module zones requires the active ruleset for canonical restore.');
   if (ruleset) {
     assertRulesetGameStateInvariants(state, ruleset);
+    if (ruleset.modules.some((module) => (module.setupContributions?.length ?? 0) > 0)) {
+      const canonical = createGame({
+        gameId: state.gameId,
+        seed: state.seed,
+        players: state.players.map(({ id, name, kind }) => ({ id, name, kind })),
+        startingPlayerId: state.startingPlayerId,
+      }, ruleset);
+      const setupDifference = firstDifference(canonical.setupSelections, state.setupSelections, '$.setupSelections');
+      if (setupDifference) throw new Error(`Snapshot setup selection does not match canonical seed replay at ${setupDifference}.`);
+    }
     const encounterError = validateEncounterStateAgainstRuleset(state, ruleset);
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);
     const consentError = validatePendingCounterConsentState(state, ruleset);

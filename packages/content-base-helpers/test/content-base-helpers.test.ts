@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseProvisionalContentCatalog, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
 import {
   baseRulesModule,
   createGame,
   createRuleset,
   dispatch,
   envelope,
-  executeEffect,
   getPartyLimit,
 } from '@guildmaster/game-engine';
 import {
@@ -19,6 +18,9 @@ import {
 
 describe('provisional helper content extension', () => {
   it('publishes twelve neutral helper definitions with only helper 08 enabled', () => {
+    expect(baseProvisionalContentCatalog.candidates
+      .filter(({ category }) => category === 'helper')
+      .map(({ definitionId }) => definitionId)).toEqual(baseHelperIds);
     expect(baseProvisionalHelpersContentPack.manifest).toMatchObject({
       id: 'base:provisional-helpers',
       role: 'expansion',
@@ -121,16 +123,40 @@ describe('provisional helper content extension', () => {
     expect(eventTypes.indexOf('CARD_DRAWN')).toBeLessThan(eventTypes.indexOf('SUPPLY_ROW_REFRESHED'));
     expect(eventTypes.indexOf('SUPPLY_ROW_REFRESHED')).toBeLessThan(eventTypes.indexOf('PARTY_MEMBER_DISCARDED'));
 
-    const hookEffect = baseHelpersRulesModule.lifecycleHooks![0]!.effect;
-    while (result.state.zones[baseHelperZoneIds.active]!.cardIds.length > 0) {
-      expect(executeEffect(
-        result.state,
-        ruleset,
-        hookEffect,
-        { controllerId: 'p1' },
-        `empty-helper-${result.state.zones[baseHelperZoneIds.retired]!.cardIds.length}`,
-      ).status).toBe('completed');
+  });
+
+  it('refills each defeated boss and rotates helpers through the final boss', () => {
+    const ruleset = createRuleset(
+      [baseProvisionalFoundationContentPack, baseProvisionalHelpersContentPack],
+      [baseRulesModule, baseHelpersRulesModule],
+      { allowProvisionalPlaytest: true },
+    );
+    let state = createGame({
+      gameId: 'base-helper-all-bosses',
+      seed: 131,
+      players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }],
+      startingPlayerId: 'p1',
+    }, ruleset);
+    const selectedCount = state.zones[baseHelperZoneIds.deck]!.cardIds.length
+      + state.zones[baseHelperZoneIds.active]!.cardIds.length;
+    for (let index = 0; index < selectedCount; index += 1) {
+      state.players[0]!.turnCombatBonus = 99;
+      state.phase = 'combat';
+      const boss = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'boss' && status === 'available');
+      if (!boss) throw new Error(`Boss ${index + 1} must be available after refill.`);
+      const result = dispatch(state, ruleset, envelope(
+        state,
+        'p1',
+        { type: 'ATTACK_TARGET', targetId: boss.targetId },
+        `base-helper-boss-${index + 1}`,
+      ));
+      expect(result.error).toBeUndefined();
+      state = result.state;
+      expect(state.zones[baseHelperZoneIds.retired]!.cardIds).toHaveLength(index + 1);
+      expect(state.zones[baseHelperZoneIds.active]!.cardIds).toHaveLength(index + 1 < selectedCount ? 1 : 0);
+      expect(state.zones['base:boss-row']!.cardIds).toHaveLength(index + 1 < selectedCount ? 1 : 0);
     }
-    expect(result.state.zones[baseHelperZoneIds.retired]!.cardIds).toHaveLength(4);
+    expect(state.players[0]!.history.defeatedBosses).toBe(selectedCount);
+    expect(state.zones['base:boss-deck']!.cardIds).toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ export type RulesModule = {
   id: string; version: string; config?: Record<string, unknown>;
   composition?: OptionalRulesModuleComposition;
   createInitialState?: () => unknown; zoneDefinitions?: readonly ZoneDefinition[];
+  validateState?: (state: unknown) => readonly string[];
   getPartyLimit: (state: GameState, player: PlayerState, currentLimit: number) => number;
   onSupplyDepleted: (state: GameState, supply: SupplyKind) => 'pendingOfficialRuling' | 'handled';
   lifecycleHooks?: readonly LifecycleHook[];

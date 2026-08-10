@@ -37,6 +37,10 @@ function helperModule(policyId = 'test:enforce-helper-capacity'): RulesModule {
     config: { enabledHelperDefinitionId: 'test:helper/helper-08' },
     composition: { schemaVersion: 1, kind: 'optional', priority: 10, dependencies: [{ moduleId: baseRulesModule.id, version: baseRulesModule.version }] },
     createInitialState: () => ({ schemaVersion: 1 }),
+    validateState: (state) => state && typeof state === 'object' && !Array.isArray(state)
+      && (state as Record<string, unknown>).schemaVersion === 1 && Object.keys(state).length === 1
+      ? []
+      : ['state must equal { schemaVersion: 1 }.'],
     zoneDefinitions: [
       { zoneId: helperZoneIds.deck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'test:helpers' },
       { zoneId: helperZoneIds.active, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'test:helpers' },
@@ -142,6 +146,8 @@ describe('generic helper Rules Module runtime', () => {
     const second = createGame(config, activeRuleset);
     expect(first.zones[helperZoneIds.deck]!.cardIds).toEqual(second.zones[helperZoneIds.deck]!.cardIds);
     expect(first.zones[helperZoneIds.active]!.cardIds).toEqual(second.zones[helperZoneIds.active]!.cardIds);
+    expect(first.setupSelections).toEqual(second.setupSelections);
+    expect(first.setupSelections?.['test:helper-pool']?.cardIds).toHaveLength(4);
     expect(first.zones[helperZoneIds.deck]!.cardIds).toHaveLength(3);
     expect(first.zones[helperZoneIds.active]!.cardIds).toHaveLength(1);
     expect(new Set([...first.zones[helperZoneIds.deck]!.cardIds, ...first.zones[helperZoneIds.active]!.cardIds])).toHaveLength(4);
@@ -150,6 +156,14 @@ describe('generic helper Rules Module runtime', () => {
     expect(Object.keys(view.cards)).not.toEqual(expect.arrayContaining(first.zones[helperZoneIds.deck]!.cardIds));
     expect(() => restoreSnapshot(serializeSnapshot(first))).toThrow(/hidden Rules Module zones requires the active ruleset/);
     expect(restoreSnapshot(serializeSnapshot(first), activeRuleset)).toEqual(first);
+    const signatures = new Set(Array.from({ length: 8 }, (_, index) => {
+      const candidate = createGame({ ...config, seed: index + 1 }, activeRuleset);
+      return JSON.stringify([
+        candidate.zones[helperZoneIds.active]!.cardIds.map((id) => candidate.cards[id]!.definitionId),
+        candidate.zones[helperZoneIds.deck]!.cardIds.map((id) => candidate.cards[id]!.definitionId),
+      ]);
+    }));
+    expect(signatures.size).toBeGreaterThan(1);
   });
 
   it('rejects controller effects that select a card from the hidden helper deck', () => {
@@ -224,8 +238,20 @@ describe('generic helper Rules Module runtime', () => {
   it('rejects malformed setup ownership, duplicate priorities, and zone card tampering', () => {
     expect(() => createRuleset([testPack, helperPack], [baseRulesModule, {
       ...helperModule(),
+      setupContributions: [{ ...helperModule().setupContributions![0]!, contributionId: ' test:helper-pool' }],
+    }], { allowProvisionalPlaytest: true })).toThrow(/surrounding whitespace/);
+    expect(() => createRuleset([testPack, helperPack], [baseRulesModule, {
+      ...helperModule(),
       setupContributions: [{ ...helperModule().setupContributions![0]!, moduleId: 'wrong' }],
     }], { allowProvisionalPlaytest: true })).toThrow(/must belong to module/);
+    expect(() => createRuleset([testPack, helperPack], [baseRulesModule, {
+      ...helperModule(),
+      setupContributions: [{ ...helperModule().setupContributions![0]!, destinationZoneId: 'test:missing-zone' }],
+    }], { allowProvisionalPlaytest: true })).toThrow(/unknown destination zone/);
+    expect(() => createRuleset([testPack, helperPack], [baseRulesModule, {
+      ...helperModule(),
+      setupContributions: [{ ...helperModule().setupContributions![0]!, selector: { kind: 'definition-type', value: 'missing-type' } }],
+    }], { allowProvisionalPlaytest: true })).toThrow(/selector has no matching definitions/);
     expect(() => createRuleset([testPack, helperPack], [baseRulesModule, helperModule(), {
       ...helperModule(), id: 'test:helpers-2', composition: { schemaVersion: 1, kind: 'optional', priority: 20 },
       zoneDefinitions: [], setupContributions: [], supplyRowConfigurations: [], supplyRowRefreshPolicies: [], lifecycleHooks: [],
@@ -238,5 +264,55 @@ describe('generic helper Rules Module runtime', () => {
     state.zones[baseZoneIds.itemDeck]!.cardIds.push(displaced);
     state.zones[helperZoneIds.deck]!.cardIds.push(foreign);
     expect(() => restoreSnapshot(serializeSnapshot(state), activeRuleset)).toThrow(/non-matching card|left its registered zones/);
+
+    const insufficientPack: ContentPack = {
+      ...helperPack,
+      manifest: { ...helperPack.manifest, id: 'test:few-helpers', hash: 'few-helpers' },
+      definitions: helperPack.definitions.slice(0, 3),
+    };
+    const insufficientRuleset = createRuleset([testPack, insufficientPack], [baseRulesModule, helperModule()], { allowProvisionalPlaytest: true });
+    expect(() => createGame(config, insufficientRuleset)).toThrow(/requires 4 cards but only 3 candidates exist/);
+  });
+
+  it('rejects deleted setup selections and invalid helper module state during restore', () => {
+    const activeRuleset = ruleset();
+    const state = createGame(config, activeRuleset);
+    const deleted = structuredClone(state);
+    const deletedCardId = deleted.zones[helperZoneIds.deck]!.cardIds.pop()!;
+    delete deleted.cards[deletedCardId];
+    expect(() => restoreSnapshot(serializeSnapshot(deleted), activeRuleset)).toThrow(/recorded cards|recorded definition/);
+
+    const substituted = structuredClone(state);
+    const selectedId = substituted.setupSelections!['test:helper-pool']!.cardIds[0]!;
+    const selectedIndex = substituted.setupSelections!['test:helper-pool']!.cardIds.indexOf(selectedId);
+    const replacementDefinitionId = helperPack.definitions.find(({ id }) => id !== substituted.cards[selectedId]!.definitionId)!.id;
+    substituted.cards[selectedId]!.definitionId = replacementDefinitionId;
+    expect(() => restoreSnapshot(serializeSnapshot(substituted), activeRuleset)).toThrow(/recorded definition/);
+
+    const coordinatedSubstitution = structuredClone(substituted);
+    coordinatedSubstitution.setupSelections!['test:helper-pool']!.definitionIds[selectedIndex] = replacementDefinitionId;
+    expect(() => restoreSnapshot(serializeSnapshot(coordinatedSubstitution), activeRuleset)).toThrow(/canonical seed replay/);
+
+    const invalidModuleState = structuredClone(state);
+    invalidModuleState.moduleState['test:helpers'] = { schemaVersion: 1, activeHelperId: 'tampered' };
+    expect(() => restoreSnapshot(serializeSnapshot(invalidModuleState), activeRuleset)).toThrow(/Rules Module state test:helpers is invalid/);
+  });
+
+  it('keeps setup selection validity independent from mutable count zones', () => {
+    const activeRuleset = ruleset();
+    const state = createGame(config, activeRuleset);
+    const bossCardId = state.zones[baseZoneIds.bossDeck]!.cardIds.at(-1)!;
+    const moved = executeEffect(state, activeRuleset, {
+      schemaVersion: 1,
+      effectId: 'test:move-counted-boss',
+      body: {
+        kind: 'move-card',
+        card: { kind: 'card-instance', cardInstanceId: bossCardId },
+        from: { kind: 'shared-zone', zoneId: baseZoneIds.bossDeck },
+        to: { kind: 'removed' },
+      },
+    }, { controllerId: 'p1' }, 'move-counted-boss');
+    expect(moved.status).toBe('completed');
+    expect(restoreSnapshot(serializeSnapshot(state), activeRuleset)).toEqual(state);
   });
 });
