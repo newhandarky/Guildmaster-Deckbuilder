@@ -47,12 +47,16 @@ describe('demo presentation package', () => {
     expect(registry.diagnostics).toEqual([...registry.diagnostics].sort());
   });
 
-  it('provides neutral helper copy and marks only helper 08 as enabled', () => {
+  it('provides neutral copy for the five enabled Batch A helpers', () => {
     expect(validatePresentationPack(provisionalHelpersPresentationPack)).toEqual({ valid: true, errors: [] });
     expect(provisionalHelpersPresentationPack.entries).toHaveLength(12);
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-08')))
       .toMatchObject({ displayName: '候選協助者 08', shortDisplayText: expect.stringContaining('隊伍上限 +1') });
-    expect(provisionalHelpersPresentationPack.entries.filter(({ definitionId }) => !definitionId.endsWith('helper-08'))
+    expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-01'))?.shortDisplayText).toContain('物資費用 −1');
+    expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-06'))?.shortDisplayText).toContain('冒險者費用 −1');
+    expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-07'))?.shortDisplayText).toContain('抽 6 張');
+    expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-09'))?.shortDisplayText).toContain('裝備費用 −1');
+    expect(provisionalHelpersPresentationPack.entries.filter(({ definitionId }) => !['01', '06', '07', '08', '09'].some((suffix) => definitionId.endsWith(`helper-${suffix}`)))
       .every(({ shortDisplayText }) => shortDisplayText.includes('效果尚未啟用'))).toBe(true);
   });
 

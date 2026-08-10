@@ -129,6 +129,16 @@ function e2eHelperPack(basePack: ContentPack): ContentPack {
   };
 }
 
+function e2eHelperModule(): RulesModule {
+  const fixtureIds = new Set(['base:helper/helper-01', 'base:helper/helper-08']);
+  return {
+    ...baseHelpersRulesModule,
+    config: { fixtureDefinitionIds: [...fixtureIds] },
+    purchaseCostModifierRules: baseHelpersRulesModule.purchaseCostModifierRules!.filter(({ activation }) => fixtureIds.has(activation.definitionId)),
+    restHandSizePolicies: baseHelpersRulesModule.restHandSizePolicies!.filter(({ activation }) => fixtureIds.has(activation.definitionId)),
+  };
+}
+
 export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetup | WebContentMode = defaultWebGameSetup) {
   const setup = normalizeSetup(setupInput);
   if (!scenario && setup.contentMode === 'demo' && setup.advancedRules.helpers) throw new Error('Helper advanced rules require provisional playtest content.');
@@ -146,7 +156,7 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
       : [baseDemoContentPack];
   return createRuleset(
     packs,
-    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
+    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario ? [e2eHelperModule()] : !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
     { allowProvisionalPlaytest: !scenario && setup.contentMode === 'provisional-playtest' },
   );
 }
