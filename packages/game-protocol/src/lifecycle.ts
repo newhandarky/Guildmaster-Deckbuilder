@@ -6,7 +6,7 @@ export const lifecyclePoints = ['game-setup', 'game-start', 'turn-start', 'turn-
 export type LifecyclePoint = (typeof lifecyclePoints)[number];
 export type LifecycleHookKind = 'trigger' | 'continuous' | 'replacement';
 /** JSON-only registry record owned by a Rules Module; no executable closures. */
-export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; eventType?: string; effect: EffectDefinition; priority?: number; activation?: { kind: 'always' } | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null } };
+export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; eventType?: string; effect: EffectDefinition; priority?: number; activation?: { kind: 'always' } | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null } | { kind: 'metadata-equals'; key: string; value: string | number | boolean | null } };
 /**
  * A content-owned, immediate event trigger resolved once for every equipped card
  * instance that is still attached to the event actor's party.
@@ -32,7 +32,8 @@ export const LifecycleHookSchema = z.object({
   priority: z.number().finite().optional(),
   activation: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('always') }).strict(),
-    z.object({ kind: z.literal('module-state-equals'), key: nonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict()
+    z.object({ kind: z.literal('module-state-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict(),
+    z.object({ kind: z.literal('metadata-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict()
   ]).optional()
 }).strict() as unknown as z.ZodType<LifecycleHook>;
 export const EquipmentEventTriggerSchema = z.object({
