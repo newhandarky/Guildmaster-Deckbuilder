@@ -103,8 +103,9 @@ describe('LocalGameSession transactional boundary', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
     expect(session.current().entrySummary).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       contentMode: 'demo',
+      advancedRules: { helpers: false },
       contentPackId: 'base:demo',
       canContinue: false,
       gameId: session.current().view.gameId,
@@ -139,8 +140,9 @@ describe('LocalGameSession transactional boundary', () => {
     });
     expect(restored.view).toMatchObject({ gameId: saved.view.gameId, revision: saved.view.revision });
     expect(restored.entrySummary).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       contentMode: 'demo',
+      advancedRules: { helpers: false },
       contentPackId: 'base:demo',
       canContinue: true,
       gameId: restored.view.gameId,
@@ -203,7 +205,7 @@ describe('LocalGameSession transactional boundary', () => {
     const ruleset = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
     const session = new LocalGameSession(ruleset);
     expect(session.current().entrySummary).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       contentMode: 'provisional-playtest',
       contentPackId: 'base:provisional-foundation',
       canContinue: false,

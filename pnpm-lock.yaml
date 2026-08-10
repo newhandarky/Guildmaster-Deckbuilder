@@ -38,6 +38,9 @@ importers:
       '@guildmaster/content-base':
         specifier: workspace:*
         version: link:../../packages/content-base
+      '@guildmaster/content-base-helpers':
+        specifier: workspace:*
+        version: link:../../packages/content-base-helpers
       '@guildmaster/game-ai':
         specifier: workspace:*
         version: link:../../packages/game-ai

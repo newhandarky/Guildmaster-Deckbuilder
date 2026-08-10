@@ -177,8 +177,9 @@ export class LocalGameSession {
       legalCommands,
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
       entrySummary: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         contentMode: basePack.contentStatus === 'provisional-playtest' ? 'provisional-playtest' : 'demo',
+        advancedRules: { helpers: this.ruleset.modules.some(({ id }) => id === 'base:helpers') },
         contentPackId: basePack.id,
         canContinue: this.persistenceState === 'restored',
         gameId: this.state.gameId,

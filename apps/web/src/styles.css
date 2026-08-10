@@ -46,7 +46,8 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 .expedition-summary dd { margin: 0; font-weight: 700; }
 .expedition-entry-actions { justify-content: flex-end; }
 .content-mode-picker { display: grid; gap: .75rem; min-width: 0; margin: 0; padding: 1rem; border: 1px solid #405878; border-radius: .85rem; }
-.content-mode-picker legend { padding: 0 .4rem; color: #f4d9a5; font-weight: 800; }
+.advanced-rules-picker { display: grid; gap: .75rem; min-width: 0; margin: 0; padding: 1rem; border: 1px solid #405878; border-radius: .85rem; }
+.content-mode-picker legend, .advanced-rules-picker legend { padding: 0 .4rem; color: #f4d9a5; font-weight: 800; }
 .content-mode-option { display: grid; grid-template-columns: auto 1fr; gap: .75rem; align-items: start; min-width: 0; padding: .85rem; border: 1px solid #405878; border-radius: .75rem; background: rgb(10 20 35 / .42); cursor: pointer; }
 .content-mode-option-selected { border-color: #ffd27d; box-shadow: inset 0 0 0 1px rgb(255 210 125 / .3); }
 .content-mode-option input { width: 1.2rem; height: 1.2rem; margin: .1rem 0 0; accent-color: #ffd27d; }
@@ -82,6 +83,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .area-title { margin-bottom: 1rem; color: #f4d9a5; font-size: 1.15rem; }
 .board-row, .party-panel, .hand-panel { min-width: 0; }
 .board-row + .board-row, .party-panel + .hand-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #304664; }
+.helper-retired-count { margin: .35rem 0 0; color: #b6c7e3; font-size: .85rem; }
 .activity-rail { display: grid; gap: 1rem; align-content: start; }
 
 .card-row {

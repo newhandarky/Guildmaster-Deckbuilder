@@ -1,6 +1,7 @@
 import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
-import type { EffectDefinition } from '@guildmaster/game-protocol';
+import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
 import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
 
 const modifyPurchase = (amount: number): EffectDefinition['body'] => ({
@@ -77,29 +78,9 @@ const consentModule: RulesModule = {
   }],
 };
 
-/** E2E-only neutral helper proving explicit optional module composition. */
-const optionalHelperModule: RulesModule = {
-  id: 'e2e:helper/expanded-party',
-  version: '1.0.0',
-  config: { helperDefinitionId: 'e2e:helper/expanded-party' },
-  composition: {
-    schemaVersion: 1,
-    kind: 'optional',
-    priority: 10,
-    dependencies: [{ moduleId: baseRulesModule.id, version: baseRulesModule.version }],
-  },
-  createInitialState: () => ({ active: true, helperDefinitionId: 'e2e:helper/expanded-party' }),
-  zoneDefinitions: [{
-    zoneId: 'e2e:helper/active',
-    kind: 'singleSlot',
-    visibility: 'public',
-    rulesModuleId: 'e2e:helper/expanded-party',
-  }],
-  getPartyLimit: (_state, _player, limit) => limit + 1,
-  onSupplyDepleted: () => 'handled',
-};
-
 export type WebContentMode = 'demo' | 'provisional-playtest';
+export type WebGameSetup = { contentMode: WebContentMode; advancedRules: { helpers: boolean } };
+export const defaultWebGameSetup: WebGameSetup = { contentMode: 'demo', advancedRules: { helpers: false } };
 
 export const webContentModeOptions: Readonly<Record<WebContentMode, {
   label: string;
@@ -121,21 +102,51 @@ export function webContentModeFromPackIds(packIds: readonly string[]): WebConten
   return packIds.includes(baseProvisionalFoundationContentPack.manifest.id) ? 'provisional-playtest' : 'demo';
 }
 
-export function createWebRuleset(scenario?: E2EScenario, contentMode: WebContentMode = 'demo') {
+export function webGameSetupFromSnapshot(packIds: readonly string[], moduleIds: readonly string[]): WebGameSetup {
+  const contentMode = webContentModeFromPackIds(packIds);
+  const helperPack = packIds.includes(baseProvisionalHelpersContentPack.manifest.id);
+  const helperModule = moduleIds.includes(baseHelpersRulesModule.id);
+  if (helperPack !== helperModule || helperModule && contentMode !== 'provisional-playtest') throw new Error('Saved helper setup has an inconsistent Content Pack or Rules Module identity.');
+  return { contentMode, advancedRules: { helpers: helperModule } };
+}
+
+function normalizeSetup(setup: WebGameSetup | WebContentMode): WebGameSetup {
+  return typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
+}
+
+function e2eHelperPack(basePack: ContentPack): ContentPack {
+  const fixtureIds = new Set(['base:helper/helper-01', 'base:helper/helper-08']);
+  return {
+    ...baseProvisionalHelpersContentPack,
+    manifest: {
+      ...baseProvisionalHelpersContentPack.manifest,
+      id: 'e2e:helper-content',
+      hash: 'e2e-helper-content-v1',
+      contentStatus: 'demo',
+      dependencies: [basePack.manifest.id],
+    },
+    definitions: baseProvisionalHelpersContentPack.definitions.filter(({ id }) => fixtureIds.has(id)),
+  };
+}
+
+export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetup | WebContentMode = defaultWebGameSetup) {
+  const setup = normalizeSetup(setupInput);
+  if (!scenario && setup.contentMode === 'demo' && setup.advancedRules.helpers) throw new Error('Helper advanced rules require provisional playtest content.');
   const scenarioModule = scenario === 'lifecycle-choice'
     ? choiceModule
     : scenario === 'lifecycle-consent'
       ? consentModule
-      : scenario === 'optional-helper'
-        ? optionalHelperModule
-        : undefined;
+      : undefined;
+  const scenarioPack = scenario ? getE2EScenarioPack(scenario) : undefined;
+  const helperScenario = scenario === 'optional-helper';
+  const packs = scenarioPack
+    ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack)] : [])]
+    : setup.contentMode === 'provisional-playtest'
+      ? [baseProvisionalFoundationContentPack, ...(setup.advancedRules.helpers ? [baseProvisionalHelpersContentPack] : [])]
+      : [baseDemoContentPack];
   return createRuleset(
-    [scenario
-      ? getE2EScenarioPack(scenario)
-      : contentMode === 'provisional-playtest'
-        ? baseProvisionalFoundationContentPack
-        : baseDemoContentPack],
-    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : [])],
-    { allowProvisionalPlaytest: !scenario && contentMode === 'provisional-playtest' },
+    packs,
+    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
+    { allowProvisionalPlaytest: !scenario && setup.contentMode === 'provisional-playtest' },
   );
 }

@@ -6,6 +6,7 @@ import {
   createRuleset,
   dispatch,
   envelope,
+  executeEffect,
   getPartyLimit,
   projectPlayerView,
   restoreSnapshot,
@@ -149,6 +150,25 @@ describe('generic helper Rules Module runtime', () => {
     expect(Object.keys(view.cards)).not.toEqual(expect.arrayContaining(first.zones[helperZoneIds.deck]!.cardIds));
     expect(() => restoreSnapshot(serializeSnapshot(first))).toThrow(/hidden Rules Module zones requires the active ruleset/);
     expect(restoreSnapshot(serializeSnapshot(first), activeRuleset)).toEqual(first);
+  });
+
+  it('rejects controller effects that select a card from the hidden helper deck', () => {
+    const activeRuleset = ruleset();
+    const state = createGame(config, activeRuleset);
+    const before = structuredClone(state);
+    const cardId = state.zones[helperZoneIds.deck]!.cardIds.at(-1)!;
+    const result = executeEffect(state, activeRuleset, {
+      schemaVersion: 1,
+      effectId: 'test:helpers/illegal-hidden-selection',
+      body: {
+        kind: 'move-card',
+        card: { kind: 'context-card', key: 'hidden-helper' },
+        from: { kind: 'shared-zone', zoneId: helperZoneIds.deck },
+        to: { kind: 'removed' },
+      },
+    }, { controllerId: 'p1', cardRefs: { 'hidden-helper': cardId } }, 'hidden-helper-selection');
+    expect(result).toMatchObject({ status: 'failed', error: expect.stringContaining('hidden') });
+    expect(state).toEqual(before);
   });
 
   it('rotates only after a boss defeat and immediately discards the rightmost overflow member with equipment', () => {

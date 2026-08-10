@@ -1,7 +1,8 @@
 import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseHelperZoneIds } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createGame, createRuleset, dispatch, envelope, getLegalCommands, getPartyLimit, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
-import { createWebRuleset, webContentModeFromPackIds } from './ruleset.js';
+import { createWebRuleset, webContentModeFromPackIds, webGameSetupFromSnapshot } from './ruleset.js';
 
 describe('web content modes', () => {
   it('keeps demo as the production default', () => {
@@ -9,9 +10,9 @@ describe('web content modes', () => {
     expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:demo', contentStatus: 'demo' })]);
   });
 
-  it('composes the neutral optional helper through state, Snapshot, Replay, and derived party capacity', () => {
+  it('composes the deterministic E2E helper fixture through state, Snapshot, Replay, and derived party capacity', () => {
     const ruleset = createWebRuleset('optional-helper');
-    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'e2e:helper/expanded-party']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers']);
     const initialConfig = {
       gameId: 'optional-helper-mode',
       seed: 20260820,
@@ -21,7 +22,8 @@ describe('web content modes', () => {
     const state = createGame(initialConfig, ruleset);
 
     expect(state.rulesModules[1]?.compositionFingerprint).toBeTruthy();
-    expect(state.moduleState['e2e:helper/expanded-party']).toEqual({ active: true, helperDefinitionId: 'e2e:helper/expanded-party' });
+    expect(state.moduleState['base:helpers']).toEqual({ schemaVersion: 1 });
+    expect(state.zones[baseHelperZoneIds.active]!.cardIds).toHaveLength(1);
     expect(getPartyLimit(ruleset, state, state.players[0]!)).toBe(6);
     expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
     expect(replayGame({
@@ -31,6 +33,18 @@ describe('web content modes', () => {
       initialConfig,
       commands: [],
     }, ruleset)).toMatchObject({ status: 'completed', finalSnapshot: serializeSnapshot(state) });
+  });
+
+  it('loads helper rules only for an explicit provisional setup and derives that setup from Snapshot identity', () => {
+    expect(() => createWebRuleset(undefined, { contentMode: 'demo', advancedRules: { helpers: true } })).toThrow(/require provisional/);
+    const ruleset = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: true } });
+    expect(ruleset.registry.packs.map(({ id }) => id)).toEqual(['base:provisional-foundation', 'base:provisional-helpers']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers']);
+    expect(webGameSetupFromSnapshot(ruleset.registry.packs.map(({ id }) => id), ruleset.modules.map(({ id }) => id))).toEqual({
+      contentMode: 'provisional-playtest',
+      advancedRules: { helpers: true },
+    });
+    expect(() => webGameSetupFromSnapshot(['base:provisional-foundation'], ['base:rules', 'base:helpers'])).toThrow(/inconsistent/);
   });
 
   it('requires explicit provisional permission at the engine boundary', () => {

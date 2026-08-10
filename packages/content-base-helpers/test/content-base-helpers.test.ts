@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
-import { baseRulesModule, createGame, createRuleset } from '@guildmaster/game-engine';
+import {
+  baseRulesModule,
+  createGame,
+  createRuleset,
+  dispatch,
+  envelope,
+  executeEffect,
+  getPartyLimit,
+} from '@guildmaster/game-engine';
 import {
   baseHelperIds,
   baseHelpersRulesModule,
@@ -39,5 +47,90 @@ describe('provisional helper content extension', () => {
     expect(state.zones[baseHelperZoneIds.deck]!.cardIds).toHaveLength(3);
     expect(state.zones[baseHelperZoneIds.retired]!.cardIds).toEqual([]);
     expect(baseProvisionalFoundationContentPack.definitions).toHaveLength(34);
+  });
+
+  it('runs equipment triggers before helper rotation and capacity enforcement', () => {
+    const ruleset = createRuleset(
+      [baseProvisionalFoundationContentPack, baseProvisionalHelpersContentPack],
+      [baseRulesModule, baseHelpersRulesModule],
+      { allowProvisionalPlaytest: true },
+    );
+    let state: ReturnType<typeof createGame> | undefined;
+    for (let seed = 1; seed <= 256; seed += 1) {
+      const candidate = createGame({
+        gameId: `base-helper-order-${seed}`,
+        seed,
+        players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }],
+        startingPlayerId: 'p1',
+      }, ruleset);
+      const selected = [
+        ...candidate.zones[baseHelperZoneIds.active]!.cardIds,
+        ...candidate.zones[baseHelperZoneIds.deck]!.cardIds,
+      ];
+      if (selected.some((cardId) => candidate.cards[cardId]!.definitionId === enabledBaseHelperDefinitionId)) {
+        state = candidate;
+        break;
+      }
+    }
+    if (!state) throw new Error('A deterministic seed must select helper 08 within the test budget.');
+
+    const active = state.zones[baseHelperZoneIds.active]!.cardIds;
+    const helperDeck = state.zones[baseHelperZoneIds.deck]!.cardIds;
+    const helper08 = [...active, ...helperDeck]
+      .find((cardId) => state!.cards[cardId]!.definitionId === enabledBaseHelperDefinitionId)!;
+    if (active[0] !== helper08) {
+      const current = active[0]!;
+      helperDeck.splice(helperDeck.indexOf(helper08), 1, current);
+      active[0] = helper08;
+    }
+    const nextDisabled = helperDeck
+      .findIndex((cardId) => state!.cards[cardId]!.definitionId !== enabledBaseHelperDefinitionId);
+    helperDeck.push(...helperDeck.splice(nextDisabled, 1));
+
+    const player = state.players[0]!;
+    while (player.party.length < 6) {
+      player.party.push({ adventurerId: state.zones['base:adventurer-deck']!.cardIds.pop()! });
+    }
+    const equipmentDefinitionId = 'base:resource/resource-18';
+    const equipmentZone = ['base:item-row', 'base:item-deck']
+      .map((zoneId) => state!.zones[zoneId]!)
+      .find((zone) => zone.cardIds.some((cardId) => state!.cards[cardId]!.definitionId === equipmentDefinitionId));
+    if (!equipmentZone) throw new Error('The foundation setup must contain resource 18.');
+    const equipmentIndex = equipmentZone.cardIds
+      .findIndex((cardId) => state!.cards[cardId]!.definitionId === equipmentDefinitionId);
+    const [equipmentId] = equipmentZone.cardIds.splice(equipmentIndex, 1);
+    if (!equipmentId) throw new Error('The resource 18 instance must be available.');
+    const discardedMemberId = player.party.at(-1)!.adventurerId;
+    player.party.at(-1)!.equipmentId = equipmentId;
+    player.turnCombatBonus = 99;
+    state.phase = 'combat';
+    expect(getPartyLimit(ruleset, state, player)).toBe(6);
+
+    const boss = Object.values(state.enemyTargets).find(({ kind }) => kind === 'boss')!;
+    const result = dispatch(state, ruleset, envelope(
+      state,
+      'p1',
+      { type: 'ATTACK_TARGET', targetId: boss.targetId },
+      'base-helper-ordering',
+    ));
+    expect(result.error).toBeUndefined();
+    expect(result.state.players[0]!.discardPile.slice(-2)).toEqual([discardedMemberId, equipmentId]);
+    expect(getPartyLimit(ruleset, result.state, result.state.players[0]!)).toBe(5);
+    const eventTypes = result.events.map(({ type }) => type);
+    expect(eventTypes.indexOf('CARD_DRAWN')).toBeGreaterThanOrEqual(0);
+    expect(eventTypes.indexOf('CARD_DRAWN')).toBeLessThan(eventTypes.indexOf('SUPPLY_ROW_REFRESHED'));
+    expect(eventTypes.indexOf('SUPPLY_ROW_REFRESHED')).toBeLessThan(eventTypes.indexOf('PARTY_MEMBER_DISCARDED'));
+
+    const hookEffect = baseHelpersRulesModule.lifecycleHooks![0]!.effect;
+    while (result.state.zones[baseHelperZoneIds.active]!.cardIds.length > 0) {
+      expect(executeEffect(
+        result.state,
+        ruleset,
+        hookEffect,
+        { controllerId: 'p1' },
+        `empty-helper-${result.state.zones[baseHelperZoneIds.retired]!.cardIds.length}`,
+      ).status).toBe('completed');
+    }
+    expect(result.state.zones[baseHelperZoneIds.retired]!.cardIds).toHaveLength(4);
   });
 });
