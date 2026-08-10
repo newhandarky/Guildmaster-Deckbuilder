@@ -46,13 +46,15 @@ export type ActionPreviewItem =
       status: 'ready';
       command: PurchaseCommand;
       cardId: string;
-      cost: number;
+      printedCost: number;
+      effectiveCost: number;
+      appliedModifiers: readonly { moduleId: string; ruleId: string; amount: number }[];
       availablePurchasePower: number;
       remainingPurchasePower: number;
     };
 
 export type ActionPreviewSet = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   gameId: string;
   revision: number;
   actorId: string;
@@ -116,12 +118,15 @@ const purchaseSchema = z.object({
   status: z.literal('ready'),
   command: purchaseCommandSchema,
   cardId: nonEmpty,
-  cost: nonNegative,
+  printedCost: nonNegative,
+  effectiveCost: nonNegative,
+  appliedModifiers: z.array(z.object({ moduleId: nonEmpty, ruleId: nonEmpty, amount: z.number().finite().int() }).strict()),
   availablePurchasePower: nonNegative,
   remainingPurchasePower: nonNegative,
 }).strict().superRefine((value, context) => {
   if (value.command.cardId !== value.cardId) context.addIssue({ code: z.ZodIssueCode.custom, path: ['cardId'], message: 'Purchase preview card must match its command.' });
-  if (value.availablePurchasePower - value.cost !== value.remainingPurchasePower) context.addIssue({ code: z.ZodIssueCode.custom, path: ['remainingPurchasePower'], message: 'Purchase preview remaining power is inconsistent.' });
+  if (value.availablePurchasePower - value.effectiveCost !== value.remainingPurchasePower) context.addIssue({ code: z.ZodIssueCode.custom, path: ['remainingPurchasePower'], message: 'Purchase preview remaining power is inconsistent.' });
+  if (Math.max(0, value.printedCost + value.appliedModifiers.reduce((sum, modifier) => sum + modifier.amount, 0)) !== value.effectiveCost) context.addIssue({ code: z.ZodIssueCode.custom, path: ['effectiveCost'], message: 'Purchase preview modifiers do not produce the effective cost.' });
 });
 
 const purchaseLifecycleSchema = z.object({
@@ -135,7 +140,7 @@ const purchaseLifecycleSchema = z.object({
 
 export const ActionPreviewItemSchema: z.ZodType<ActionPreviewItem> = z.union([attackReadySchema, attackLifecycleSchema, purchaseSchema, purchaseLifecycleSchema]);
 export const ActionPreviewSetSchema: z.ZodType<ActionPreviewSet> = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   gameId: nonEmpty,
   revision: z.number().finite().int().nonnegative(),
   actorId: nonEmpty,

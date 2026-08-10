@@ -32,3 +32,5 @@ export * from './rules/counter-consent-evaluator.js';
 export * from './rules/rules-module-composition.js';
 export * from './rules/ruleset-compatibility.js';
 export * from './rules/ruleset.js';
+export * from './rules/purchase-cost-evaluator.js';
+export * from './rules/rest-hand-size-evaluator.js';

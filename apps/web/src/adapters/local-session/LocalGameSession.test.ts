@@ -233,7 +233,7 @@ describe('LocalGameSession transactional boundary', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
     const combat = session.submit({ type: 'END_PHASE', phase: 'action1' });
-    expect(combat.actionPreviews).toMatchObject({ schemaVersion: 1, gameId: combat.view.gameId, revision: combat.view.revision, actorId: 'human-1' });
+    expect(combat.actionPreviews).toMatchObject({ schemaVersion: 2, gameId: combat.view.gameId, revision: combat.view.revision, actorId: 'human-1' });
     expect(combat.actionPreviews.items.length).toBeGreaterThan(0);
     expect(combat.actionPreviews.items.every(({ command }) => combat.legalCommands.some((legal) => JSON.stringify(legal) === JSON.stringify(command)))).toBe(true);
   });

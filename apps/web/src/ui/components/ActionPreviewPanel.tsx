@@ -32,7 +32,9 @@ export function ActionPreviewPanel({ preview }: { preview: ActionPreviewItem }) 
     <h3 id="action-preview-title">購買預覽</h3>
     <dl>
       <div><dt>目前購買力</dt><dd>{preview.availablePurchasePower}</dd></div>
-      <div><dt>卡牌費用</dt><dd>{preview.cost}</dd></div>
+      {preview.appliedModifiers.length > 0
+        ? <><div><dt>原費用</dt><dd>{preview.printedCost}</dd></div><div><dt>協助者折扣後費用</dt><dd>{preview.effectiveCost}</dd></div></>
+        : <div><dt>卡牌費用</dt><dd>{preview.effectiveCost}</dd></div>}
       <div><dt>購買後剩餘</dt><dd>{preview.remainingPurchasePower}</dd></div>
     </dl>
     <p>送出時仍會由對局版本與 authoritative rules 重新驗證。</p>

@@ -2,9 +2,8 @@ import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type Eng
 import { getDefinition, getPlayer } from '../model/factories.js';
 import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
 import { getEndCondition, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
-import { drawCards } from './draw.js';
 import { attachTargets } from './create-game.js';
-import { refillConfiguredSupplyRows, refillSupply } from './supply.js';
+import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice, resumeEffectCounterConsent } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
@@ -21,6 +20,8 @@ import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
+import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
+import { finishRest } from './rest.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -258,7 +259,9 @@ function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, comman
   const isItem = getZone(state, baseZoneIds.itemRow).cardIds.includes(command.cardId);
   if (!isAdventurer && !isItem) return { code: 'INVALID_COMMAND', message: '只能購買招募區或商店的公開卡。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
-  const cost = definition.cost ?? Number.POSITIVE_INFINITY;
+  const evaluation = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: player.id, cardId: command.cardId });
+  if (evaluation.status !== 'ready') return { code: 'INVALID_COMMAND', message: evaluation.error };
+  const cost = evaluation.evaluation.effectiveCost;
   if (getPurchasePower(state, ruleset, player.id) < cost) return { code: 'INVALID_COMMAND', message: '購買力不足。' };
   removeFrom(getZone(state, isAdventurer ? baseZoneIds.adventurerRow : baseZoneIds.itemRow).cardIds, command.cardId);
   player.turnPurchaseSpent += cost;
@@ -267,33 +270,10 @@ function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, comman
   return undefined;
 }
 
-function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, events: DomainEvent[], commandId: string): void {
-  player.discardPile.push(...player.hand, ...player.playArea);
-  player.hand = [];
-  player.playArea = [];
-  player.turnPurchaseBonus = 0;
-  player.turnPurchaseSpent = 0;
-  player.turnCombatBonus = 0;
-  refillConfiguredSupplyRows(state, ruleset, events);
-  attachTargets(state);
-  drawCards(state, player.id, 5, events);
-  event(state, events, 'REST_FINISHED', `${player.name} 完成休息。`, commandId);
-  if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === player.id) {
-    state.status = 'finished';
-    event(state, events, 'GAME_FINISHED', '目前輪次已完成，遊戲結束。', commandId);
-    return;
-  }
-  const currentIndex = state.players.findIndex((candidate) => candidate.id === player.id);
-  const next = state.players[(currentIndex + 1) % state.players.length]!;
-  state.activePlayerId = next.id;
-  state.phase = 'action1';
-  if (next.id === state.startingPlayerId) state.round += 1;
-}
-
 function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'END_PHASE' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
   if (command.phase !== state.phase) return { code: 'INVALID_COMMAND', message: '指令階段與目前階段不一致。' };
   const next: Record<Exclude<Phase, 'rest'>, Phase> = { action1: 'combat', combat: 'action2', action2: 'purchase', purchase: 'rest' };
-  if (state.phase === 'rest') finishRest(state, ruleset, player, events, commandId);
+  if (state.phase === 'rest') return finishRest(state, ruleset, player, events, commandId);
   else {
     state.phase = next[state.phase];
     event(state, events, 'PHASE_ENDED', `${player.name} 結束階段。`, commandId);
