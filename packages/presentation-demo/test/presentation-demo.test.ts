@@ -9,6 +9,7 @@ import {
   demoPresentationAssetManifest,
   demoPresentationPack,
   provisionalFoundationPresentationPack,
+  provisionalHelpersPresentationPack,
 } from '../src/index.js';
 
 describe('demo presentation package', () => {
@@ -44,6 +45,15 @@ describe('demo presentation package', () => {
     expect(registry.resolveAsset(demoPresentationAssetKeys[0]!)).toBeUndefined();
     expect(registry.diagnostics).toHaveLength(18);
     expect(registry.diagnostics).toEqual([...registry.diagnostics].sort());
+  });
+
+  it('provides neutral helper copy and marks only helper 08 as enabled', () => {
+    expect(validatePresentationPack(provisionalHelpersPresentationPack)).toEqual({ valid: true, errors: [] });
+    expect(provisionalHelpersPresentationPack.entries).toHaveLength(12);
+    expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-08')))
+      .toMatchObject({ displayName: '候選協助者 08', shortDisplayText: expect.stringContaining('隊伍上限 +1') });
+    expect(provisionalHelpersPresentationPack.entries.filter(({ definitionId }) => !definitionId.endsWith('helper-08'))
+      .every(({ shortDisplayText }) => shortDisplayText.includes('效果尚未啟用'))).toBe(true);
   });
 
   it('keeps the manifest JSON-only', () => {

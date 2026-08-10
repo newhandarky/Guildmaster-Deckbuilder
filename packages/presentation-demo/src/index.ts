@@ -143,6 +143,32 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
   ],
 };
 
+/** Neutral client-only copy for the provisional helper rotation slice. */
+export const provisionalHelpersPresentationPack: PresentationPack = {
+  manifest: {
+    id: 'presentation:provisional-helpers-neutral',
+    version: '1.0.0',
+    theme: 'neutral-text',
+    locale: 'zh-TW',
+  },
+  entries: Array.from({ length: 12 }, (_, index) => {
+    const sequence = String(index + 1).padStart(2, '0');
+    const enabled = sequence === '08';
+    return {
+      definitionId: `base:helper/helper-${sequence}`,
+      displayName: `候選協助者 ${sequence}`,
+      portraitAssetKey: 'placeholder:provisional-helper',
+      portraitAltText: `候選協助者 ${sequence} 的中性圖像 placeholder`,
+      shortDisplayText: enabled
+        ? '所有玩家隊伍上限 +1；離場時棄置最右側的超額隊員。'
+        : '目前僅測試揭示與輪替，卡牌效果尚未啟用。',
+      detailDisplayText: enabled
+        ? '此協助者在場時，所有玩家的隊伍上限為 6。離場後若隊伍超過 5 人，立即將最右側隊員及其裝備放入該玩家棄牌堆。'
+        : '此 provisional 協助者會參與本局抽選、揭示、離場與輪替；第一階段尚未啟用其個別卡牌效果。',
+    };
+  }),
+};
+
 /**
  * Only approved runtime assets belong here. Empty/partial coverage is valid and
  * deliberately leaves the Web client on its neutral CSS placeholder.
