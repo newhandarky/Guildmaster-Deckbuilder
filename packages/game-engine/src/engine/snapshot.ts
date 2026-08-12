@@ -60,6 +60,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   }
   const state = structuredClone(envelope.state) as GameState; state.effectState ??= {};
   assertGameStateInvariants(state);
+  if (state.effectState.pendingChoice?.source && !ruleset) throw new Error('Pending dynamic card choice Snapshot requires the active ruleset for canonical restore.');
   if (!ruleset && Object.values(state.zones).some(({ visibility }) => visibility === 'hidden')) throw new Error('Snapshot with hidden Rules Module zones requires the active ruleset for canonical restore.');
   if (ruleset) {
     assertRulesetGameStateInvariants(state, ruleset);
@@ -86,8 +87,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (continuityErrors.length) throw new Error(`Snapshot supply continuity mismatch: ${continuityErrors.join(' ')}`);
   }
   if (state.effectState.pendingChoice?.source) {
-    if (!ruleset) throw new Error('Pending dynamic card choice Snapshot requires the active ruleset for canonical restore.');
-    const choiceError = validatePendingDynamicCardChoice(state, ruleset);
+    const choiceError = validatePendingDynamicCardChoice(state, ruleset!);
     if (choiceError) throw new Error(choiceError);
   }
   const pending = state.effectState.pendingLifecycle;

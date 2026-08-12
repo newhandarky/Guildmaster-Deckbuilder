@@ -38,6 +38,8 @@ export type TurnFactLedger = {
   extraCardsDrawn: number; itemsUsed: number; bossesDefeated: number; monstersDefeated: number;
   marketRefreshed: boolean; combatResolved: boolean; combatSkipped: boolean;
 };
+export type PlayerDecisionKind = 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card';
+export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string }[] };
 
 export type GameState = {
   schemaVersion: 2; engineVersion: string; rulesetVersion: string;
@@ -56,6 +58,7 @@ export type PlayerView = {
   self: Omit<PlayerState, 'drawPile'> & { drawPileCount: number }; partyLimit: number;
   opponents: { id: string; name: string; kind: PlayerKind; seatIndex: number; isActive: boolean; handCount: number; partyCount: number; discardCount: number; defeatedBosses: number; defeatedMonsters: number; bonds: BondState[]; counters: PlayerCounterState[] }[];
   bondSetup?: { schemaVersion: 1; offerId: string; currentActorId: string; offeredBondIds?: readonly string[]; completedPlayerIds: readonly string[] };
+  decisionPrompt?: PlayerDecisionPrompt;
   pendingCounterConsent?: { requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwnerId: string; requesterId: string; requiredActorIds: readonly string[]; acceptedActorIds: readonly string[]; status: 'pending' };
   zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, EnemyTargetState>; cards: Record<string, CardInstance>; endState?: EndState;
 };

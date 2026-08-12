@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent } from './commands.js';
+import { CommandEnvelopeSchema, GameCommandSchema, type CommandEnvelope, type DomainEvent } from './commands.js';
 import { DomainEventSchema, SnapshotEnvelopeSchema, type VersionedSnapshot } from './snapshot.js';
 import type { PlayerKind } from './state.js';
 import { isFiniteJsonValue } from './encounter.js';
@@ -37,6 +37,7 @@ export type ReplayBundle = {
   commands: readonly CommandEnvelope[];
   expectedEvents?: readonly DomainEvent[] | undefined;
   expectedFinalSnapshot?: VersionedSnapshot | undefined;
+  automation?: { profileId: string; profileVersion: string; decisions: readonly { revision: number; actorId: string; command: CommandEnvelope['command']; reasonCode: string; score: number }[] } | undefined;
 };
 export type ReplayResult =
   | { status: 'completed'; finalSnapshot: VersionedSnapshot; events: readonly DomainEvent[] }
@@ -49,13 +50,15 @@ export const ReplayBundleSchema = z.object({
   initialConfig: z.object({ gameId: id, seed: z.number().finite().int().refine((value) => value !== 0), players: z.array(player).min(2), startingPlayerId: id }).strict(),
   commands: z.array(CommandEnvelopeSchema),
   expectedEvents: z.array(DomainEventSchema).optional(),
-  expectedFinalSnapshot: SnapshotEnvelopeSchema.optional()
+  expectedFinalSnapshot: SnapshotEnvelopeSchema.optional(),
+  automation: z.object({ profileId: id, profileVersion: id, decisions: z.array(z.object({ revision: z.number().int().nonnegative(), actorId: id, command: GameCommandSchema, reasonCode: id, score: z.number().finite() }).strict()) }).strict().optional()
 }).strict().superRefine((value, context) => {
   if (new Set(value.commands.map((command) => command.commandId)).size !== value.commands.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['commands'], message: 'Replay command IDs must be unique.' });
   if (new Set(value.initialConfig.players.map((candidate) => candidate.id)).size !== value.initialConfig.players.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['initialConfig', 'players'], message: 'Replay players must have unique IDs.' });
   if (!value.initialConfig.players.some((candidate) => candidate.id === value.initialConfig.startingPlayerId)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['initialConfig', 'startingPlayerId'], message: 'Replay starting player must be a listed player.' });
   if (new Set(value.registry.contentPacks.map((candidate) => candidate.id)).size !== value.registry.contentPacks.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['registry', 'contentPacks'], message: 'Replay content packs must have unique IDs.' });
   if (new Set(value.registry.rulesModules.map((candidate) => candidate.id)).size !== value.registry.rulesModules.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['registry', 'rulesModules'], message: 'Replay Rules Modules must have unique IDs.' });
+  if (value.automation?.decisions.some((decision) => !value.initialConfig.players.some(({ id: playerId, kind }) => playerId === decision.actorId && kind === 'ai'))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'decisions'], message: 'Automation decisions must belong to configured AI players.' });
 });
 
 /** A stable JSON-only representation used for Rules Module config fingerprints. */

@@ -34,6 +34,14 @@ describe('deterministic CPU strategy', () => {
     expect(decideCpuAction(context([choice]))).toMatchObject({ status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND' });
   });
 
+  it('resolves a typed discard prompt by choosing the lowest-utility visible card', () => {
+    const low = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'x', choiceId: 'discard-card', optionId: 'low' };
+    const high = { ...low, optionId: 'high' };
+    const typedView = { ...view(), decisionPrompt: { schemaVersion: 1 as const, decisionKind: 'discard-card' as const, choiceId: 'discard-card', minSelections: 1, maxSelections: 1, options: [{ id: 'low', cardId: 'low', definitionId: 'd-low' }, { id: 'high', cardId: 'high', definitionId: 'd-high' }] }, cards: { low: { id: 'low', definitionId: 'd-low' }, high: { id: 'high', definitionId: 'd-high' } } } as PlayerView;
+    const result = decideCpuAction({ ...context([high, low]), view: typedView, definitions: { 'd-low': { id: 'd-low', name: 'Low', type: 'starter', copies: 1, source: 'test' }, 'd-high': { id: 'd-high', name: 'High', type: 'adventurer', copies: 1, combat: 5, honor: 3, source: 'test' } } });
+    expect(result).toMatchObject({ status: 'ready', command: low, reasonCode: 'RESOLVE_HIGHEST_UTILITY_CHOICE' });
+  });
+
   it('returns a structured repeat guard instead of silently stopping', () => {
     const runner = new CpuTurnRunner();
     const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };

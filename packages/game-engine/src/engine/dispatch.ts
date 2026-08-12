@@ -316,28 +316,41 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
   attachTargets(state);
   drawCards(state, player.id, 5, events);
   event(state, events, 'REST_FINISHED', `${player.name} 完成休息。`, commandId);
-  if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === player.id) {
-    state.status = 'finished';
-    event(state, events, 'GAME_FINISHED', '目前輪次已完成，遊戲結束。', commandId);
-    return;
-  }
-  const next = nextSeat(state.players, player.id);
-  state.activePlayerId = next.id;
-  state.phase = 'action1';
-  state.turnFacts = createTurnFactLedger(next.id);
-  if (next.id === state.startingPlayerId) state.round += 1;
+}
+
+function lifecycleBoundary(state: GameState, ruleset: Ruleset, point: 'turn-start' | 'turn-end' | 'phase-start' | 'phase-end' | 'game-start' | 'game-end-evaluation', actorId: string, events: DomainEvent[]): EngineError | undefined {
+  const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId, phase: state.phase }, { controllerId: actorId });
+  events.push(...result.events);
+  if (result.status !== 'completed') return { code: 'INVALID_COMMAND', message: `${point} lifecycle must complete within the current transition; ${result.error ?? result.reason ?? 'a suspension is not yet supported at this boundary'}.` };
+  return undefined;
 }
 
 function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'END_PHASE' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
   if (command.phase !== state.phase) return { code: 'INVALID_COMMAND', message: '指令階段與目前階段不一致。' };
+  const phaseEndError = lifecycleBoundary(state, ruleset, 'phase-end', player.id, events); if (phaseEndError) return phaseEndError;
   const next: Record<Exclude<Phase, 'rest'>, Phase> = { action1: 'combat', combat: 'action2', action2: 'purchase', purchase: 'rest' };
-  if (state.phase === 'rest') finishRest(state, ruleset, player, events, commandId);
+  if (state.phase === 'rest') {
+    finishRest(state, ruleset, player, events, commandId);
+    const turnEndError = lifecycleBoundary(state, ruleset, 'turn-end', player.id, events); if (turnEndError) return turnEndError;
+    const bondError = maybeCompleteBonds(state, player, ruleset, events, commandId); if (bondError) return bondError;
+    checkEnd(state, ruleset, events, commandId);
+    if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === player.id) {
+      state.status = 'finished';
+      event(state, events, 'GAME_FINISHED', '目前輪次已完成，遊戲結束。', commandId);
+      return lifecycleBoundary(state, ruleset, 'game-end-evaluation', player.id, events);
+    }
+    const following = nextSeat(state.players, player.id);
+    state.activePlayerId = following.id; state.phase = 'action1'; state.turnFacts = createTurnFactLedger(following.id);
+    if (following.id === state.startingPlayerId) state.round += 1;
+    const turnStartError = lifecycleBoundary(state, ruleset, 'turn-start', following.id, events); if (turnStartError) return turnStartError;
+    return lifecycleBoundary(state, ruleset, 'phase-start', following.id, events);
+  }
   else {
     if (state.phase === 'combat' && !facts(state, player.id).combatResolved) facts(state, player.id).combatSkipped = true;
     state.phase = next[state.phase];
     event(state, events, 'PHASE_ENDED', `${player.name} 結束階段。`, commandId);
+    return lifecycleBoundary(state, ruleset, 'phase-start', player.id, events);
   }
-  return undefined;
 }
 
 function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, resolutionEnvelopes: readonly CommandEnvelope[], events: DomainEvent[], rollbackState: GameState, factStart: number): EngineError | undefined {
