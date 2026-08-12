@@ -3,6 +3,7 @@ export * from './engine/dispatch.js';
 export * from './engine/snapshot.js';
 export * from './engine/replay.js';
 export * from './engine/state-invariants.js';
+export * from './model/seats.js';
 export * from './engine/post-command-pipeline.js';
 export * from './engine/card-use-effect-pipeline.js';
 export * from './effects/executor.js';

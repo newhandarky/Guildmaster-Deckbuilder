@@ -21,6 +21,7 @@ import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
+import { nextSeat, previousSeat } from '../model/seats.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -143,8 +144,7 @@ function checkEnd(state: GameState, ruleset: Ruleset, events: DomainEvent[], com
   if (state.status !== 'playing') return;
   const conditionId = getEndCondition(ruleset, state);
   if (!conditionId) return;
-  const startingIndex = state.players.findIndex((player) => player.id === state.startingPlayerId);
-  const finalRoundEndPlayerId = state.players[(startingIndex + 1) % state.players.length]!.id;
+  const finalRoundEndPlayerId = previousSeat(state.players, state.startingPlayerId).id;
   state.status = 'finalRound';
   state.endState = { conditionId, finalRoundEndPlayerId, triggeredAtRevision: state.revision + 1 };
   event(state, events, 'FINAL_ROUND_TRIGGERED', '已觸發遊戲結束，將完成目前輪次。', commandId);
@@ -283,8 +283,7 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
     event(state, events, 'GAME_FINISHED', '目前輪次已完成，遊戲結束。', commandId);
     return;
   }
-  const currentIndex = state.players.findIndex((candidate) => candidate.id === player.id);
-  const next = state.players[(currentIndex + 1) % state.players.length]!;
+  const next = nextSeat(state.players, player.id);
   state.activePlayerId = next.id;
   state.phase = 'action1';
   if (next.id === state.startingPlayerId) state.round += 1;
