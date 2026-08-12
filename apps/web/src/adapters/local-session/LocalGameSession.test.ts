@@ -3,6 +3,7 @@ import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guil
 import { baseRulesModule, createGame, createRuleset, dispatch, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
+import { createWebRuleset } from '../../app/ruleset.js';
 
 const storageKey = 'guildmaster-mvp-save-v2';
 const modify = (amount: number): EffectDefinition['body'] => ({
@@ -80,6 +81,7 @@ function seedPendingConsentSave(ruleset: ReturnType<typeof createRuleset>): void
     startingPlayerId: 'human-1'
   }, ruleset);
   state.activePlayerId = 'ai-1';
+  state.turnFacts = { schemaVersion: 1, playerId: 'ai-1', adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false };
   state.phase = 'rest';
   state.players[1]!.counters.push({ resourceId: 'test:session/token', amount: 3, visibility: 'allPlayersByConsent' });
   const suspended = dispatch(state, ruleset, {
@@ -98,6 +100,62 @@ describe('LocalGameSession transactional boundary', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage());
   });
+
+  it('runs a full four-player bond setup one deterministic CPU command at a time', () => {
+    const session = new LocalGameSession(createWebRuleset(undefined, 'provisional-original-full'));
+    const initial = session.current();
+    expect(initial.view.status).toBe('setup');
+    expect(initial.view.opponents).toHaveLength(3);
+    const humanChoice = initial.legalCommands.find(({ type }) => type === 'SELECT_BONDS');
+    if (!humanChoice) throw new Error('Expected human bond setup command.');
+    let update = session.submit(humanChoice);
+    expect(update.view.activePlayerId).toBe('ai-1');
+    expect(update.cpu.status).toBe('ready');
+    update = session.stepCpu();
+    expect(update.view.activePlayerId).toBe('ai-2');
+    update = session.stepCpu();
+    expect(update.view.activePlayerId).toBe('ai-3');
+    update = session.stepCpu();
+    expect(update.view).toMatchObject({ status: 'playing', activePlayerId: 'human-1', revision: 4 });
+    expect(update.cpu.decisions).toHaveLength(3);
+    expect(update.cpu.decisions.every(({ command, reasonCode }) => command.type === 'SELECT_BONDS' && reasonCode === 'KEEP_HIGHEST_BOND_VALUE')).toBe(true);
+  });
+
+  it('finishes a deterministic four-player provisional expedition without illegal CPU commands', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    let session = new LocalGameSession(ruleset);
+    let update = session.current();
+    const chooseHumanCommand = () => {
+      const legal = update.legalCommands;
+      const choice = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESPOND_COUNTER_CONSENT');
+      if (choice) return choice;
+      const attack = legal.filter((command): command is Extract<typeof command, { type: 'ATTACK_TARGET' }> => command.type === 'ATTACK_TARGET').sort((left, right) => {
+        const targetValue = (targetId: string) => { const target = update.view.enemyTargets[targetId]; const definition = target ? update.definitions[update.view.cards[target.cardInstanceId]?.definitionId ?? ''] : undefined; return (target?.kind === 'boss' ? 10_000 : 0) + (definition?.honor ?? 0) * 100; };
+        return targetValue(right.targetId) - targetValue(left.targetId);
+      })[0];
+      if (attack) return attack;
+      for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
+      const buys = legal.filter((command): command is Extract<typeof command, { type: 'BUY_CARD' }> => command.type === 'BUY_CARD').sort((left, right) => {
+        const value = (cardId: string) => { const definition = update.definitions[update.view.cards[cardId]?.definitionId ?? '']; return (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
+        return value(right.cardId) - value(left.cardId);
+      });
+      return buys[0] ?? legal.find(({ type }) => type === 'END_PHASE');
+    };
+    for (let step = 0; step < 5_000 && update.view.status !== 'finished'; step += 1) {
+      if (step === 40) { session = new LocalGameSession(ruleset); update = session.current(); }
+      if (update.cpu.status === 'blocked') throw new Error(update.cpu.diagnostic);
+      if (update.view.activePlayerId === update.view.viewerId || update.legalCommands.length) {
+        const command = chooseHumanCommand();
+        if (!command) throw new Error(`Human has no legal command at revision ${update.view.revision}.`);
+        update = session.submit(command);
+      } else update = session.stepCpu();
+      if (update.error) throw new Error(`${update.error.code}: ${update.error.message}`);
+    }
+    expect(update.view.status).toBe('finished');
+    expect(update.scoreboard).toHaveLength(4);
+    expect(update.scoreboard!.filter(({ rank }) => rank === 1).length).toBeGreaterThan(0);
+    expect(session.exportReplayDiagnostic().json).toContain('base:cpu-balanced');
+  }, 30_000);
 
   it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);

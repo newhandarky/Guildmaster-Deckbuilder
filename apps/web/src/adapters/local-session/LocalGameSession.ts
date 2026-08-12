@@ -1,5 +1,5 @@
-import { simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
-import { createGame, dispatch, getActionPreviewSet, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset } from '@guildmaster/game-engine';
+import { CpuTurnRunner, baseBalancedCpuProfile, simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
+import { createGame, dispatch, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset } from '@guildmaster/game-engine';
 import type { CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, ReplayBundle, ReplayInitialConfig } from '@guildmaster/game-protocol';
 import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
@@ -17,6 +17,9 @@ export class LocalGameSession {
   private persistenceState: SessionPersistenceStatus['state'] = 'fresh';
   private commandSequence = 0;
   private gameSequence = 0;
+  private readonly cpuRunner = new CpuTurnRunner(baseBalancedCpuProfile);
+  private cpuDiagnostic: string | undefined;
+  private cpuDecisions: { revision: number; actorId: string; command: GameCommand; reasonCode: string; score: number }[] = [];
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const loaded = loadLocalGame();
@@ -34,6 +37,11 @@ export class LocalGameSession {
           this.auditEvents = structuredClone([...(saved.replayBundle.expectedEvents ?? [])]);
           this.commandSequence = this.commands.length;
         }
+        if (saved.cpuAutomation) {
+          if (saved.cpuAutomation.profileId !== baseBalancedCpuProfile.profileId || saved.cpuAutomation.profileVersion !== baseBalancedCpuProfile.version) throw new Error('Saved CPU profile is incompatible.');
+          this.cpuRunner.restore(saved.cpuAutomation.runner);
+          this.cpuDecisions = structuredClone(saved.cpuAutomation.decisions);
+        }
       } catch {
         const cleared = clearLocalGame();
         this.state = this.createFreshGame();
@@ -49,12 +57,18 @@ export class LocalGameSession {
 
   private createFreshGame(): GameState {
     this.gameSequence += 1;
-    this.initialConfig = { gameId: `local-${this.gameSequence}`, seed: 20260726, players: [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId };
+    const fourPlayer = this.isFourPlayerMode();
+    this.initialConfig = { gameId: `local-${this.gameSequence}`, seed: 20260726, players: fourPlayer
+      ? [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: 'CPU 一號', kind: 'ai' }, { id: 'ai-2', name: 'CPU 二號', kind: 'ai' }, { id: 'ai-3', name: 'CPU 三號', kind: 'ai' }]
+      : [{ id: this.humanId, name: '你', kind: 'human' }, { id: 'ai-1', name: '星塵 AI', kind: 'ai' }], startingPlayerId: this.humanId };
     this.commands = [];
     this.auditEvents = [];
     this.replayHistoryComplete = true;
+    this.cpuRunner.reset(); this.cpuDecisions = []; this.cpuDiagnostic = undefined;
     return createGame(this.initialConfig, this.ruleset);
   }
+
+  private isFourPlayerMode(): boolean { return this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full'); }
 
   private restoreGameSequence(gameId: string): void {
     const match = localGameIdPattern.exec(gameId);
@@ -74,6 +88,7 @@ export class LocalGameSession {
   }
 
   submit(command: GameCommand): SessionUpdate {
+    this.cpuRunner.reset();
     const envelope: CommandEnvelope = { protocolVersion: 1, gameId: this.state.gameId, commandId: this.nextCommandId(this.humanId), actorId: this.humanId, expectedRevision: this.state.revision, command };
     return this.submitEnvelope(envelope);
   }
@@ -97,10 +112,26 @@ export class LocalGameSession {
     const committedEvents = this.committedEvents(priorCursor, result.events);
     this.events.push(...committedEvents);
     this.recordAccepted(envelope, committedEvents);
-    const aiError = this.runAi();
+    const aiError = this.isFourPlayerMode() ? undefined : this.runAi();
     const update = this.persistAndReturn(committedEvents, aiError);
     this.processed.set(envelope.commandId, update);
     return update;
+  }
+
+  stepCpu(): SessionUpdate {
+    const actor = this.nextAiActor();
+    if (!actor) { this.cpuDiagnostic = undefined; return this.persistAndReturn([]); }
+    const view = projectPlayerView(this.state, this.ruleset, actor.id);
+    const legalCommands = getLegalCommands(this.state, this.ruleset, actor.id);
+    const decision = this.cpuRunner.step({
+      view, legalCommands, actionFeatures: getCpuActionFeatures(this.state, this.ruleset, actor.id),
+      definitions: this.ruleset.registry.definitions, bonds: this.ruleset.registry.bonds,
+      rulesetFingerprint: JSON.stringify(replayRegistryFingerprint(this.ruleset)), profile: baseBalancedCpuProfile,
+    });
+    if (decision.status === 'blocked') { this.cpuDiagnostic = `${decision.reasonCode}: ${decision.diagnostic}`; return this.persistAndReturn([]); }
+    this.cpuDiagnostic = undefined;
+    this.cpuDecisions.push({ revision: view.revision, actorId: actor.id, command: structuredClone(decision.command), reasonCode: decision.reasonCode, score: decision.score });
+    return this.submitEnvelope(asEnvelope(view, actor.id, decision.command, this.nextCommandId(actor.id)));
   }
 
   private runAi(): EngineError | undefined {
@@ -158,7 +189,7 @@ export class LocalGameSession {
 
   private persistAndReturn(newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     try {
-      saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined);
+      saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined, { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: this.cpuRunner.snapshot(), decisions: structuredClone(this.cpuDecisions) });
       this.persistenceState = 'saved';
     } catch {
       this.persistenceState = 'memory-only';
@@ -173,12 +204,13 @@ export class LocalGameSession {
     const update: SessionUpdate = {
       view: projectPlayerView(this.state, this.ruleset, this.humanId),
       definitions: this.ruleset.registry.definitions,
+      bondDefinitions: this.ruleset.registry.bonds,
       events: this.events.slice(-60),
       legalCommands,
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
       entrySummary: {
         schemaVersion: 3,
-        contentMode: basePack.contentStatus === 'provisional-playtest' ? 'provisional-playtest' : 'demo',
+        contentMode: basePack.id === 'base:provisional-original-full' ? 'provisional-original-full' : basePack.contentStatus === 'provisional-playtest' ? 'provisional-playtest' : 'demo',
         advancedRules: { helpers: this.ruleset.modules.some(({ id }) => id === 'base:helpers') },
         contentPackId: basePack.id,
         canContinue: this.persistenceState === 'restored',
@@ -196,6 +228,7 @@ export class LocalGameSession {
         replayHistoryComplete: this.replayHistoryComplete,
       },
       replayHistoryComplete: this.replayHistoryComplete,
+      cpu: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, status: this.cpuDiagnostic ? 'blocked' : this.nextAiActor() ? 'ready' : 'idle', ...(this.cpuDiagnostic ? { diagnostic: this.cpuDiagnostic } : {}), decisions: this.cpuDecisions.slice(-100) },
       error,
     };
     return { ...update, scoreboard: this.state.status === 'finished' ? getScoreboard(this.state, this.ruleset) : undefined };
@@ -207,7 +240,7 @@ export class LocalGameSession {
   }
 
   private replayBundle(): ReplayBundle {
-    return { schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(this.ruleset), initialConfig: structuredClone(this.initialConfig), commands: structuredClone(this.commands), expectedEvents: structuredClone(this.auditEvents), expectedFinalSnapshot: serializeSnapshot(this.state) };
+    return { schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(this.ruleset), initialConfig: structuredClone(this.initialConfig), commands: structuredClone(this.commands), expectedEvents: structuredClone(this.auditEvents), expectedFinalSnapshot: serializeSnapshot(this.state), automation: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, decisions: structuredClone(this.cpuDecisions) } };
   }
 
   exportReplayDiagnostic(): ReplayDiagnosticExport {

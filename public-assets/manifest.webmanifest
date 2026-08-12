@@ -1,0 +1,9 @@
+{
+  "name": "晨星公會離線測試",
+  "short_name": "晨星公會",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#18120d",
+  "theme_color": "#18120d",
+  "lang": "zh-Hant"
+}

@@ -4,15 +4,16 @@ const storageKey = 'guildmaster-mvp-save-v2';
 const legacyStorageKey = 'guildmaster-mvp-snapshot-v1';
 const legacyEventKey = 'guildmaster-mvp-events-v1';
 
-export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean };
+export type CpuAutomationState = { profileId: string; profileVersion: string; runner: { autonomousSteps: number; turnActions: [string, number][]; visibleStates: [string, number][] }; decisions: { revision: number; actorId: string; command: import('@guildmaster/game-protocol').GameCommand; reasonCode: string; score: number }[] };
+export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean; cpuAutomation?: CpuAutomationState };
 export type LoadLocalGameResult =
   | { status: 'empty' }
   | { status: 'loaded'; game: LoadedLocalGame }
   | { status: 'invalid-cleared' }
   | { status: 'unavailable' };
 
-export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle): void {
-  localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}) }));
+export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): void {
+  localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 4, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}), ...(cpuAutomation ? { cpuAutomation } : {}) }));
 }
 export function clearLocalGame(): boolean {
   try {
@@ -38,11 +39,12 @@ export function loadLocalGame(): LoadLocalGameResult {
       const value: unknown = JSON.parse(current);
       if (value && typeof value === 'object' && 'snapshot' in value && 'events' in value && Array.isArray(value.events) && value.events.every(isDomainEvent)) {
         const record = value as Record<string, unknown>;
-        if (record.schemaVersion === 3) {
+        if (record.schemaVersion === 4 || record.schemaVersion === 3) {
           const replay = ReplayBundleSchema.safeParse(record.replayBundle);
+          const cpuAutomation = record.schemaVersion === 4 && record.cpuAutomation && typeof record.cpuAutomation === 'object' ? record.cpuAutomation as CpuAutomationState : undefined;
           return { status: 'loaded', game: replay.success
-            ? { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayBundle: replay.data as ReplayBundle, replayHistoryComplete: true }
-            : { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
+            ? { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayBundle: replay.data as ReplayBundle, replayHistoryComplete: true, ...(cpuAutomation ? { cpuAutomation } : {}) }
+            : { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false, ...(cpuAutomation ? { cpuAutomation } : {}) } };
         }
         if (record.schemaVersion !== 2) throw new Error('Unsupported local save version.');
         // v2 stored only a Snapshot and a display-event tail; it has no authoritative command history.
