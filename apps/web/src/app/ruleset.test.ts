@@ -12,7 +12,7 @@ describe('web content modes', () => {
 
   it('composes the deterministic E2E helper fixture through state, Snapshot, Replay, and derived party capacity', () => {
     const ruleset = createWebRuleset('optional-helper');
-    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'e2e:boss-setup', 'base:helpers']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers']);
     const initialConfig = {
       gameId: 'optional-helper-mode',
       seed: 20260820,

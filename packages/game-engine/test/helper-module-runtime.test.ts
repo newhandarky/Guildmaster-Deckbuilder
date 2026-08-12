@@ -310,6 +310,7 @@ describe('generic helper Rules Module runtime', () => {
         card: { kind: 'card-instance', cardInstanceId: bossCardId },
         from: { kind: 'shared-zone', zoneId: baseZoneIds.bossDeck },
         to: { kind: 'removed' },
+        permission: 'system',
       },
     }, { controllerId: 'p1' }, 'move-counted-boss');
     expect(moved.status).toBe('completed');

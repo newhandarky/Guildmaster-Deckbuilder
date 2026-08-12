@@ -155,6 +155,7 @@ export function App() {
     return <GameResultsScreen
       ref={appRootRef}
       conditionId={view.endState?.conditionId ?? '遊戲結束'}
+      viewerId={view.viewerId}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
       notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}

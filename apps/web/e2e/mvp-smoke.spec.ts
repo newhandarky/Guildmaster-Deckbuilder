@@ -15,6 +15,7 @@ function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
     startingPlayerId: 'human-1',
   }, ruleset);
   state.activePlayerId = requesterId;
+  state.turnFacts!.playerId = requesterId;
   state.phase = requesterId === 'ai-1' ? 'rest' : 'action1';
   state.players.find(({ id }) => id === requesterId)!.counters.push({
     resourceId: 'e2e:private-counter',
@@ -30,7 +31,7 @@ function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
     command: { type: 'END_PHASE', phase: state.phase },
   };
   const suspended = dispatch(state, ruleset, envelope);
-  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error('Failed to create pending E2E consent state.');
+  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error(`Failed to create pending E2E consent state: ${suspended.error?.message ?? 'missing pending consent'}.`);
   return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] });
 }
 
@@ -358,7 +359,7 @@ test('provisional card choice survives restore and shows visible card names inst
 
   const dock = page.getByTestId('lifecycle-dock');
   await expect(dock).toContainText('選擇要棄置的手牌');
-  const visibleCard = dock.getByRole('button', { name: '中性卡牌 summoning-stone' }).first();
+  const visibleCard = dock.getByRole('button', { name: '候選起始資源 A' }).first();
   await expect(visibleCard).toBeVisible();
   await expect(dock).not.toContainText('base:starter');
   await visibleCard.click();
@@ -605,7 +606,7 @@ test('replay runner reports the first assertion divergence without changing the 
   await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
 });
 
-test('deterministic full-game journey defeats, recruits, rests, restores v3 save, and continues legally', async ({ page }) => {
+test('deterministic full-game journey defeats, recruits, rests, restores v4 save, and continues legally', async ({ page }) => {
   await openGame(page);
   const endPhase = page.getByTestId('end-phase');
 
@@ -636,7 +637,7 @@ test('deterministic full-game journey defeats, recruits, rests, restores v3 save
   await expect(playableAdventurer).toBeVisible();
   await runCardAction(page, playableAdventurer, '加入隊伍');
   await expect(page.locator('.log')).toContainText('加入了一名冒險者');
-  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(3);
+  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(4);
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
@@ -676,6 +677,7 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(page.getByTestId('game-app')).toBeVisible();
   await finishTriggeredFinalRound(page);
   await expect(page.getByText('base:all-bosses-defeated')).toBeVisible();
+  await expect(page.getByTestId('viewer-outcome')).toContainText('你的結果：勝利');
 
   const rows = page.locator('.scoreboard .score-row');
   await expect(rows).toHaveCount(2);

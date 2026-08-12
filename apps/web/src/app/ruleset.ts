@@ -2,7 +2,7 @@ import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisio
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
-import { getE2EScenarioBossCount, getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
+import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
 
 const modifyPurchase = (amount: number): EffectDefinition['body'] => ({
   kind: 'modify-value',
@@ -145,7 +145,6 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
       ? consentModule
       : undefined;
   const scenarioPack = scenario ? getE2EScenarioPack(scenario) : undefined;
-  const scenarioBossSetupModule: RulesModule | undefined = scenario ? { id: 'e2e:boss-setup', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', getBossSetupCount: () => getE2EScenarioBossCount(scenario) } : undefined;
   const helperScenario = scenario === 'optional-helper';
   const packs = scenarioPack
     ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack)] : [])]
@@ -156,7 +155,7 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
       : [baseDemoContentPack];
   return createRuleset(
     packs,
-    [baseRulesModule, ...(scenarioBossSetupModule ? [scenarioBossSetupModule] : []), ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
+    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
     { allowProvisionalPlaytest: !scenario && setup.contentMode !== 'demo' },
   );
 }
