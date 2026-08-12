@@ -240,6 +240,13 @@ describe('data-driven card use effects', () => {
     const partyOption = pending.options.find(({ id }) => id === partyId)!;
     expect(partyOption.context?.locationRefs?.removedFrom).toEqual({ kind: 'party', player: { kind: 'player-id', playerId: 'p1' }, position: 0 });
 
+    const handId = pending.options.find(({ context }) => context?.locationRefs?.removedFrom?.kind === 'player-zone' && context.locationRefs.removedFrom.zone === 'hand')!.id;
+    const restoredHand = restoreSnapshot(serializeSnapshot(suspended.state), multiSourceRemovalRuleset);
+    const handChoice = getLegalCommands(restoredHand, multiSourceRemovalRuleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === handId)!;
+    const handCompleted = dispatch(restoredHand, multiSourceRemovalRuleset, envelope(restoredHand, 'p1', handChoice, 'multi-source-hand-resolution'));
+    expect(handCompleted.error).toBeUndefined();
+    expect(handCompleted.state.removedCards).toContain(handId);
+
     const restored = restoreSnapshot(serializeSnapshot(suspended.state), multiSourceRemovalRuleset);
     const choice = getLegalCommands(restored, multiSourceRemovalRuleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === partyId)!;
     const completed = dispatch(restored, multiSourceRemovalRuleset, envelope(restored, 'p1', choice, 'multi-source-resolution'));

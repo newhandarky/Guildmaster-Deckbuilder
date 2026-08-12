@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
-import { baseRulesModule, createGame, createRuleset, dispatch, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
-import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
+import { CpuTurnRunner, baseBalancedCpuProfile } from '@guildmaster/game-ai';
+import { baseRulesModule, createGame, createRuleset, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayRegistryFingerprint, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
+import type { EffectDefinition, GameCommand, LifecycleHook, PlayerView } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
 import { createWebRuleset } from '../../app/ruleset.js';
 
@@ -156,6 +157,73 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.scoreboard!.filter(({ rank }) => rank === 1).length).toBeGreaterThan(0);
     expect(session.exportReplayDiagnostic().json).toContain('base:cpu-balanced');
   }, 30_000);
+
+  it.skipIf(import.meta.env.RUN_HEADLESS_REGRESSION !== '1')('finishes the committed 20-seed headless regression set within 250 rounds', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const registryFingerprint = JSON.stringify(replayRegistryFingerprint(ruleset));
+    const players = [
+      { id: 'p1', name: 'P1', kind: 'human' as const },
+      { id: 'p2', name: 'P2', kind: 'ai' as const },
+      { id: 'p3', name: 'P3', kind: 'ai' as const },
+      { id: 'p4', name: 'P4', kind: 'ai' as const },
+    ];
+    const scriptedHumanCommand = (view: PlayerView, legal: readonly GameCommand[]): GameCommand | undefined => {
+      const mandatory = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESPOND_COUNTER_CONSENT');
+      if (mandatory) return mandatory;
+      const attack = legal.filter((command): command is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => command.type === 'ATTACK_TARGET').sort((left, right) => {
+        const targetValue = (targetId: string) => { const target = view.enemyTargets[targetId]; const definition = target ? ruleset.registry.definitions[view.cards[target.cardInstanceId]?.definitionId ?? ''] : undefined; return (target?.kind === 'boss' ? 10_000 : 0) + (definition?.honor ?? 0) * 100; };
+        return targetValue(right.targetId) - targetValue(left.targetId);
+      })[0];
+      if (attack) return attack;
+      for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
+      const buy = legal.filter((command): command is Extract<GameCommand, { type: 'BUY_CARD' }> => command.type === 'BUY_CARD').sort((left, right) => {
+        const utility = (cardId: string) => { const definition = ruleset.registry.definitions[view.cards[cardId]?.definitionId ?? '']; return (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
+        return utility(right.cardId) - utility(left.cardId);
+      })[0];
+      return buy ?? legal.find(({ type }) => type === 'END_PHASE');
+    };
+    for (const seed of Array.from({ length: 20 }, (_, index) => 10_001 + index)) {
+      let state = createGame({ gameId: `headless-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
+      const runner = new CpuTurnRunner(baseBalancedCpuProfile);
+      let actorKey = '';
+      for (let step = 0; step < 8_000 && state.status !== 'finished'; step += 1) {
+        const consent = state.effectState.pendingCounterConsent;
+        const actorId = consent?.requiredActorIds.find((id) => !consent.acceptedActorIds.includes(id))
+          ?? state.effectState.pendingChoice?.actorId
+          ?? state.activePlayerId;
+        const nextActorKey = `${state.round}:${state.activePlayerId}:${actorId}`;
+        if (nextActorKey !== actorKey) { runner.reset(); actorKey = nextActorKey; }
+        const view = projectPlayerView(state, ruleset, actorId);
+        const legalCommands = getLegalCommands(state, ruleset, actorId);
+        const humanCommand = actorId === 'p1' ? scriptedHumanCommand(view, legalCommands) : undefined;
+        const decision = actorId === 'p1' ? undefined : runner.step({
+          view,
+          legalCommands,
+          actionFeatures: getCpuActionFeatures(state, ruleset, actorId),
+          definitions: ruleset.registry.definitions,
+          bonds: ruleset.registry.bonds,
+          rulesetFingerprint: registryFingerprint,
+          profile: baseBalancedCpuProfile,
+        });
+        if (!humanCommand && !decision) throw new Error(`Seed ${seed} scripted human has no legal command at revision ${state.revision}.`);
+        if (decision?.status === 'blocked') throw new Error(`Seed ${seed} blocked at revision ${state.revision}: ${decision.reasonCode} ${decision.diagnostic}`);
+        const command = humanCommand ?? (decision?.status === 'ready' ? decision.command : undefined);
+        if (!command) throw new Error(`Seed ${seed} produced no command at revision ${state.revision}.`);
+        const result = dispatch(state, ruleset, {
+          protocolVersion: 1,
+          gameId: state.gameId,
+          commandId: `headless-${seed}-${step}`,
+          actorId,
+          expectedRevision: state.revision,
+          command,
+        });
+        if (result.error) throw new Error(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message}`);
+        state = result.state;
+        if (state.round > 250) throw new Error(`Seed ${seed} exceeded 250 rounds.`);
+      }
+      expect(state.status, `seed ${seed}`).toBe('finished');
+    }
+  }, 120_000);
 
   it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
