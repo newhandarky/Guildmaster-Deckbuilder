@@ -9,13 +9,15 @@ import type {
   Phase,
   PlayerView,
   ReplayDiagnostic,
+  ReplayAutomationDecision,
 } from '@guildmaster/game-protocol';
 
 export type SessionPersistenceStatus = {
-  schemaVersion: 1;
-  state: 'fresh' | 'restored' | 'saved' | 'memory-only';
+  schemaVersion: 2;
+  state: 'fresh' | 'restored' | 'saving' | 'saved' | 'memory-only';
   revision: number;
   replayHistoryComplete: boolean;
+  recoveryReason?: 'INVALID_SAVE' | 'REGISTRY_MISMATCH' | 'REPLAY_DIVERGENCE' | 'CPU_PROFILE_MISMATCH';
 };
 
 export type SessionEntrySummary = {
@@ -45,8 +47,10 @@ export type SessionUpdate = {
   cpu: {
     profileId: string; profileVersion: string;
     status: 'idle' | 'ready' | 'blocked';
+    nextActorId?: string;
+    stepKey: string;
     diagnostic?: string;
-    decisions: readonly { revision: number; actorId: string; command: GameCommand; reasonCode: string; score: number }[];
+    decisions: readonly ReplayAutomationDecision[];
   };
   error?: EngineError | undefined;
   scoreboard?: ScoreRow[] | undefined;

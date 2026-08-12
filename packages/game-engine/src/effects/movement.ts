@@ -1,5 +1,5 @@
 import type { ContentRegistry, EffectCardLocation, EffectConcreteCardLocation, EffectContext, GameState } from '@guildmaster/game-protocol';
-import { getPlayer } from '../model/factories.js';
+import { getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { getZone } from '../model/zones.js';
 
 export type MoveFailure = { ok: false; code: 'CARD_NOT_FOUND' | 'SOURCE_MISMATCH' | 'UNKNOWN_ZONE' | 'HIDDEN_INFORMATION' | 'OWNERSHIP_VIOLATION' | 'INVALID_DESTINATION' | 'EQUIPMENT_RELATIONSHIP' | 'CARD_TYPE_MISMATCH'; message: string };
@@ -79,7 +79,7 @@ export function moveCard(state: GameState, request: MoveRequest): MoveResult {
   const attachedEquipmentId = from.kind === 'party' ? getPlayer(state, sourceOwner!).party[from.position]?.equipmentId : undefined;
   if (attachedEquipmentId && request.attachedEquipmentDisposition !== 'discard') return { ok: false, code: 'EQUIPMENT_RELATIONSHIP', message: 'Move attached equipment first to avoid a dangling relationship.' };
   if (request.attachedEquipmentDisposition && to.kind !== 'removed') return { ok: false, code: 'INVALID_DESTINATION', message: 'Attached equipment disposition is only valid when removing a card from the game.' };
-  if (to.kind === 'party' && !['adventurer', 'starter'].includes(definition.type)) return { ok: false, code: 'CARD_TYPE_MISMATCH', message: 'Only adventurer cards may enter a party slot.' };
+  if (to.kind === 'party' && !isPartyMemberCard(request.registry, state, request.cardInstanceId)) return { ok: false, code: 'CARD_TYPE_MISMATCH', message: 'Only configured party-member cards may enter a party slot.' };
   if (to.kind === 'equipment') { const target = getPlayer(state, ownerOf(to)!).party[to.partyPosition]; if (!target || target.equipmentId || definition.type !== 'equipment') return { ok: false, code: 'INVALID_DESTINATION', message: 'Equipment destination requires an empty existing party slot and equipment card.' }; }
   if (to.kind === 'enemy-target-card' && state.enemyTargets[to.targetId]!.cardInstanceId !== request.cardInstanceId) return { ok: false, code: 'INVALID_DESTINATION', message: 'Enemy target card destination is already occupied.' };
   if (to.kind === 'enemy-target-attachment' && state.enemyTargets[to.targetId]!.attachments.includes(request.cardInstanceId)) return { ok: false, code: 'INVALID_DESTINATION', message: 'Enemy target already contains this attachment.' };

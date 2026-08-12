@@ -1,7 +1,17 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './app/App.js';
 import './styles.css';
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
-if (import.meta.env.PROD && 'serviceWorker' in navigator) window.addEventListener('load', () => { void navigator.serviceWorker.register('/service-worker.js'); });
+async function bootstrap(): Promise<void> {
+  const { hydrateLocalGameFromIndexedDb } = await import('./adapters/local-session/local-storage.js');
+  await hydrateLocalGameFromIndexedDb();
+  const { App } = await import('./app/App.js');
+  createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    const register = () => { void navigator.serviceWorker.register('/service-worker.js'); };
+    if (document.readyState === 'complete') register();
+    else window.addEventListener('load', register, { once: true });
+  }
+}
+
+void bootstrap();

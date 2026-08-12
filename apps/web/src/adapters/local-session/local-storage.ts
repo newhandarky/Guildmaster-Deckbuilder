@@ -1,10 +1,14 @@
-import { ReplayBundleSchema, type DomainEvent, type ReplayBundle, type VersionedSnapshot } from '@guildmaster/game-protocol';
+import { DomainEventSchema, ReplayAutomationSchema, ReplayBundleSchema, SnapshotEnvelopeSchema, type DomainEvent, type ReplayAutomationDecision, type ReplayBundle, type VersionedSnapshot } from '@guildmaster/game-protocol';
+import { indexedDbSessionRepository, serializedIndexedDbSessionPersistence } from './indexed-db.js';
 
 const storageKey = 'guildmaster-mvp-save-v2';
 const legacyStorageKey = 'guildmaster-mvp-snapshot-v1';
 const legacyEventKey = 'guildmaster-mvp-events-v1';
+const summaryStorageKey = 'guildmaster-mvp-entry-summary-v1';
+const usesIndexedDb = (import.meta.env.PROD || (globalThis as { __GUILDMASTER_FORCE_INDEXED_DB__?: boolean }).__GUILDMASTER_FORCE_INDEXED_DB__ === true) && typeof indexedDB !== 'undefined';
+let hydratedIndexedDbResult: LoadLocalGameResult | undefined;
 
-export type CpuAutomationState = { profileId: string; profileVersion: string; runner: { autonomousSteps: number; turnActions: [string, number][]; visibleStates: [string, number][] }; decisions: { revision: number; actorId: string; command: import('@guildmaster/game-protocol').GameCommand; reasonCode: string; score: number }[] };
+export type CpuAutomationState = { profileId: string; profileVersion: string; runner: { autonomousSteps: number; turnActions: [string, number][]; visibleStates: [string, number][] }; decisions: ReplayAutomationDecision[] };
 export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean; cpuAutomation?: CpuAutomationState };
 export type LoadLocalGameResult =
   | { status: 'empty' }
@@ -12,21 +16,46 @@ export type LoadLocalGameResult =
   | { status: 'invalid-cleared' }
   | { status: 'unavailable' };
 
-export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): void {
-  localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 4, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}), ...(cpuAutomation ? { cpuAutomation } : {}) }));
+type LocalSaveEnvelope = {
+  schemaVersion: 4;
+  snapshot: VersionedSnapshot;
+  events: readonly DomainEvent[];
+  replayBundle?: ReplayBundle;
+  cpuAutomation?: CpuAutomationState;
+};
+export type PersistenceReceipt = { durable: true } | { durable: false; completion: Promise<void> };
+
+function createEnvelope(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): LocalSaveEnvelope {
+  return { schemaVersion: 4, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}), ...(cpuAutomation ? { cpuAutomation } : {}) };
 }
-export function clearLocalGame(): boolean {
-  try {
-    localStorage.removeItem(storageKey);
-    localStorage.removeItem(legacyStorageKey);
-    localStorage.removeItem(legacyEventKey);
-    return true;
-  } catch {
-    return false;
+
+export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): PersistenceReceipt {
+  const envelope = createEnvelope(snapshot, events, replayBundle, cpuAutomation);
+  if (usesIndexedDb) {
+    hydratedIndexedDbResult = parseLocalSave(envelope);
+    const completion = serializedIndexedDbSessionPersistence.write(envelope).then(() => {
+      try { localStorage.setItem(summaryStorageKey, JSON.stringify({ schemaVersion: 1, gameId: snapshot.state.gameId, revision: snapshot.state.revision, round: snapshot.state.round, status: snapshot.state.status })); }
+      catch { /* The compact summary is optional; IndexedDB is authoritative. */ }
+    });
+    return { durable: false, completion };
   }
+  localStorage.setItem(storageKey, JSON.stringify(envelope));
+  return { durable: true };
+}
+export function clearLocalGame(): PersistenceReceipt {
+  hydratedIndexedDbResult = { status: 'empty' };
+  const indexedDbClear = usesIndexedDb ? serializedIndexedDbSessionPersistence.clear() : undefined;
+  let localStorageAvailable = true;
+  for (const key of [storageKey, legacyStorageKey, legacyEventKey, summaryStorageKey]) {
+    try { localStorage.removeItem(key); }
+    catch { localStorageAvailable = false; }
+  }
+  if (indexedDbClear) return { durable: false, completion: indexedDbClear };
+  return localStorageAvailable ? { durable: true } : { durable: false, completion: Promise.reject(new Error('Local persistence is unavailable.')) };
 }
 
 export function loadLocalGame(): LoadLocalGameResult {
+  if (usesIndexedDb && hydratedIndexedDbResult) return hydratedIndexedDbResult;
   let current: string | null;
   try {
     current = localStorage.getItem(storageKey);
@@ -36,37 +65,94 @@ export function loadLocalGame(): LoadLocalGameResult {
 
   if (current) {
     try {
-      const value: unknown = JSON.parse(current);
-      if (value && typeof value === 'object' && 'snapshot' in value && 'events' in value && Array.isArray(value.events) && value.events.every(isDomainEvent)) {
-        const record = value as Record<string, unknown>;
-        if (record.schemaVersion === 4 || record.schemaVersion === 3) {
-          const replay = ReplayBundleSchema.safeParse(record.replayBundle);
-          const cpuAutomation = record.schemaVersion === 4 && record.cpuAutomation && typeof record.cpuAutomation === 'object' ? record.cpuAutomation as CpuAutomationState : undefined;
-          return { status: 'loaded', game: replay.success
-            ? { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayBundle: replay.data as ReplayBundle, replayHistoryComplete: true, ...(cpuAutomation ? { cpuAutomation } : {}) }
-            : { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false, ...(cpuAutomation ? { cpuAutomation } : {}) } };
-        }
-        if (record.schemaVersion !== 2) throw new Error('Unsupported local save version.');
-        // v2 stored only a Snapshot and a display-event tail; it has no authoritative command history.
-        return { status: 'loaded', game: { snapshot: record.snapshot as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
-      }
+      const result = parseLocalSave(JSON.parse(current));
+      if (result.status === 'loaded') return result;
     } catch {
       // Invalid current saves are handled below with the same recoverable clear path.
     }
-    return { status: clearLocalGame() ? 'invalid-cleared' : 'unavailable' };
+    const cleared = clearLocalGame();
+    if (!cleared.durable) void cleared.completion.catch(() => undefined);
+    return { status: cleared.durable || usesIndexedDb ? 'invalid-cleared' : 'unavailable' };
   }
 
   try {
     const legacySnapshot = localStorage.getItem(legacyStorageKey);
     if (!legacySnapshot) return { status: 'empty' };
     const legacyEvents = localStorage.getItem(legacyEventKey);
+    const snapshot = SnapshotEnvelopeSchema.safeParse(JSON.parse(legacySnapshot));
     const events: unknown = JSON.parse(legacyEvents ?? '[]');
-    if (!Array.isArray(events) || !events.every(isDomainEvent)) throw new Error('Malformed stored events.');
+    if (!snapshot.success || isFullFourPlayerSnapshot(snapshot.data) || !Array.isArray(events) || !events.every(isDomainEvent)) throw new Error('Malformed or unauditable legacy save.');
     // v1 predates the local-save envelope. Preserve its Snapshot, never fabricate commands.
-    return { status: 'loaded', game: { snapshot: JSON.parse(legacySnapshot) as VersionedSnapshot, events, replayHistoryComplete: false } };
+    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events, replayHistoryComplete: false } };
   } catch {
-    return { status: clearLocalGame() ? 'invalid-cleared' : 'unavailable' };
+    const cleared = clearLocalGame();
+    if (!cleared.durable) void cleared.completion.catch(() => undefined);
+    return { status: cleared.durable || usesIndexedDb ? 'invalid-cleared' : 'unavailable' };
   }
+}
+
+/** Production bootstrap must await this before importing the application store. */
+export async function hydrateLocalGameFromIndexedDb(): Promise<void> {
+  if (!usesIndexedDb) return;
+  try {
+    const persisted = await indexedDbSessionRepository.read();
+    if (persisted !== undefined) {
+      const parsed = parseLocalSave(persisted);
+      if (parsed.status === 'loaded') {
+        hydratedIndexedDbResult = parsed;
+        return;
+      }
+      await indexedDbSessionRepository.clear();
+      hydratedIndexedDbResult = { status: 'invalid-cleared' };
+      return;
+    }
+    // One-time migration from the former localStorage envelope.
+    const legacyCurrent = localStorage.getItem(storageKey);
+    if (legacyCurrent) {
+      const parsed = parseLocalSave(JSON.parse(legacyCurrent));
+      if (parsed.status === 'loaded') {
+        await indexedDbSessionRepository.write(JSON.parse(legacyCurrent));
+        localStorage.removeItem(storageKey);
+        hydratedIndexedDbResult = parsed;
+        return;
+      }
+    }
+    hydratedIndexedDbResult = { status: 'empty' };
+  } catch {
+    hydratedIndexedDbResult = { status: 'unavailable' };
+  }
+}
+
+function parseLocalSave(value: unknown): LoadLocalGameResult {
+  if (!value || typeof value !== 'object' || !('snapshot' in value) || !('events' in value)) return { status: 'invalid-cleared' };
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.events) || !record.events.every(isDomainEvent)) return { status: 'invalid-cleared' };
+  if (record.schemaVersion === 4 || record.schemaVersion === 3) {
+    const snapshot = SnapshotEnvelopeSchema.safeParse(record.snapshot);
+    const events = record.events.map((event) => DomainEventSchema.safeParse(event));
+    if (!snapshot.success || events.some((event) => !event.success)) return { status: 'invalid-cleared' };
+    const replay = ReplayBundleSchema.safeParse(record.replayBundle);
+    const automation = record.schemaVersion === 4 ? ReplayAutomationSchema.safeParse(record.cpuAutomation) : undefined;
+    const isFullFourPlayer = isFullFourPlayerSnapshot(snapshot.data);
+    if (record.schemaVersion === 4 && record.replayBundle !== undefined && !replay.success) return { status: 'invalid-cleared' };
+    if (record.schemaVersion === 4 && record.cpuAutomation !== undefined && !automation?.success) return { status: 'invalid-cleared' };
+    if (isFullFourPlayer && (record.schemaVersion !== 4 || !replay.success || replay.data.schemaVersion !== 2 || !replay.data.expectedEvents || !replay.data.expectedFinalSnapshot || !automation?.success)) return { status: 'invalid-cleared' };
+    const cpuAutomation = automation?.success ? automation.data as CpuAutomationState : undefined;
+    const parsedEvents = events.map((event) => event.data!) as DomainEvent[];
+    return { status: 'loaded', game: replay.success
+      ? { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayBundle: replay.data as ReplayBundle, replayHistoryComplete: Boolean(replay.data.expectedEvents && replay.data.expectedFinalSnapshot), ...(cpuAutomation ? { cpuAutomation } : {}) }
+      : { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayHistoryComplete: false, ...(cpuAutomation ? { cpuAutomation } : {}) } };
+  }
+  if (record.schemaVersion === 2) {
+    const snapshot = SnapshotEnvelopeSchema.safeParse(record.snapshot);
+    if (!snapshot.success || isFullFourPlayerSnapshot(snapshot.data)) return { status: 'invalid-cleared' };
+    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
+  }
+  return { status: 'invalid-cleared' };
+}
+
+function isFullFourPlayerSnapshot(snapshot: { contentPacks: readonly { id: string }[] }): boolean {
+  return snapshot.contentPacks.some(({ id }) => id === 'base:provisional-original-full');
 }
 
 function isDomainEvent(value: unknown): value is DomainEvent {

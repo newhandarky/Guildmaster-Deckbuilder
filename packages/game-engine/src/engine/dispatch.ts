@@ -1,5 +1,5 @@
-import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type EngineError, type EngineResult, type GameCommand, type GameState, type Phase, type PlayerState } from '@guildmaster/game-protocol';
-import { getDefinition, getPlayer } from '../model/factories.js';
+import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type EngineError, type EngineResult, type GameCommand, type GameState, type PendingCommandContinuation, type Phase, type PlayerState } from '@guildmaster/game-protocol';
+import { getDefinition, getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
 import { getEndCondition, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { attachTargets } from './create-game.js';
@@ -26,24 +26,10 @@ import { dispatchBondSetup } from './bond-setup.js';
 import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
 
-function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
-  events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
-}
-
-function fail(state: GameState, code: EngineError['code'], message: string): EngineResult {
-  return { state, events: [], error: { code, message } };
-}
-
-function removeFrom<T>(items: T[], item: T): boolean {
-  const index = items.indexOf(item);
-  if (index < 0) return false;
-  items.splice(index, 1);
-  return true;
-}
-function facts(state: GameState, playerId: string) {
-  if (!state.turnFacts || state.turnFacts.playerId !== playerId) state.turnFacts = createTurnFactLedger(playerId);
-  return state.turnFacts;
-}
+function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
+function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
+function removeFrom<T>(items: T[], item: T): boolean { const index = items.indexOf(item); if (index < 0) return false; items.splice(index, 1); return true; }
+function facts(state: GameState, playerId: string) { if (!state.turnFacts || state.turnFacts.playerId !== playerId) state.turnFacts = createTurnFactLedger(playerId); return state.turnFacts; }
 const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand;
 type CounterConsentCommand = Extract<GameCommand, { type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT' }>;
 const isCounterConsentCommand = (command: GameCommand): command is CounterConsentCommand => command.type === 'RESPOND_COUNTER_CONSENT' || command.type === 'CANCEL_COUNTER_CONSENT' || command.type === 'EXPIRE_COUNTER_CONSENT';
@@ -51,14 +37,8 @@ const counterConsentAction = (command: CounterConsentCommand): 'accept' | 'decli
 const transactionEvents = (events: readonly DomainEvent[], commandId: string): DomainEvent[] => events.map((entry, index) => ({ ...entry, eventId: `transaction:${commandId}:${index + 1}`, causedByCommandId: commandId }));
 function combinations(ids: readonly string[], count: number, limit = 257): string[][] { const results: string[][] = []; const visit = (start: number, prefix: string[]): void => { if (results.length >= limit) return; if (prefix.length === count) { results.push(prefix); return; } for (let index = start; index < ids.length && results.length < limit; index += 1) visit(index + 1, [...prefix, ids[index]!]); }; visit(0, []); return results; }
 
-function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined {
-  return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` };
-}
-
-function resolveItem(player: PlayerState, effect: string | undefined): void {
-  if (effect === 'purchase+2') player.turnPurchaseBonus += 2;
-  if (effect === 'combat+2') player.turnCombatBonus += 2;
-}
+function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined { return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` }; }
+function resolveItem(player: PlayerState, effect: string | undefined): void { if (effect === 'purchase+2') player.turnPurchaseBonus += 2; if (effect === 'combat+2') player.turnCombatBonus += 2; }
 
 function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Ruleset, events: DomainEvent[], commandId: string): EngineError | undefined {
   for (const bond of player.bonds) {
@@ -74,15 +54,8 @@ function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Rule
   return undefined;
 }
 
-function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined {
-  const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload;
-  return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined;
-}
-
-function fixedAttackResolution(events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined {
-  const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload;
-  return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined;
-}
+function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined { const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload; return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined; }
+function fixedAttackResolution(events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined { const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload; return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined; }
 
 function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, targetId: string, outcome: 'defeat-target' | 'remove-target', events: DomainEvent[], commandId: string): EngineError | undefined {
   const target = state.enemyTargets[targetId];
@@ -164,8 +137,7 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
   const phaseError = requirePhase(state, ['action1', 'action2']);
   if (phaseError) return phaseError;
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該卡不在手牌中。' };
-  const definition = getDefinition(ruleset.registry, state, command.cardId);
-  if (definition.type !== 'adventurer') return { code: 'INVALID_COMMAND', message: '只有冒險者可加入隊伍。' };
+  if (!isPartyMemberCard(ruleset.registry, state, command.cardId)) return { code: 'INVALID_COMMAND', message: '只有冒險者可加入隊伍。' };
   const overflow = fixedCandidates ? undefined : evaluateTeamOverflow(state, ruleset, { schemaVersion: 1, playerId: player.id, incomingMemberId: command.cardId });
   if (overflow && overflow.status !== 'ready') return { code: 'INVALID_COMMAND', message: overflow.error };
   if (fixedCandidates || overflow?.evaluation.status === 'overflow-required') {
@@ -178,7 +150,8 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
       const index = player.party.indexOf(slot!); player.party.splice(index, 1);
       player.discardPile.push(slot!.adventurerId);
       if (slot!.equipmentId) player.discardPile.push(slot!.equipmentId);
-      event(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 的隊伍容量 policy 移出成員。`, commandId, { schemaVersion: 1, kind: 'team-overflow', policy: fixedCandidates ? undefined : overflow!.evaluation.policy, candidateIds: [...candidates] } as DomainEvent['payload']);
+      const policy = fixedCandidates ? undefined : { moduleId: overflow!.evaluation.policy!.moduleId, policyId: overflow!.evaluation.policy!.policyId };
+      event(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 的隊伍容量 policy 移出成員。`, commandId, { schemaVersion: 1, kind: 'team-overflow', ...(policy ? { policy } : {}), candidateIds: [...candidates] });
     }
   }
   player.party.push({ adventurerId: command.cardId });
@@ -293,7 +266,7 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'REFRESH_MARKET': { const message = applyMarketRefresh(state, ruleset, player, envelope.command, events, envelope.commandId); if (!message) facts(state, player.id).marketRefreshed = true; return message ? { code: 'INVALID_COMMAND', message } : undefined; }
     case 'SELECT_BONDS': return { code: 'INVALID_COMMAND', message: 'Bond setup commands are only valid during setup.' };
-    case 'END_PHASE': return applyPhaseTransition(state, ruleset, player, envelope.command.phase, events, envelope.commandId, (candidate, activeRuleset, activePlayer, activeEvents, commandId) => maybeCompleteBonds(candidate, activePlayer, activeRuleset, activeEvents, commandId), (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEnd(candidate, activeRuleset, activeEvents, commandId); return undefined; });
+    case 'END_PHASE': return applyPhaseTransition(state, ruleset, player, envelope.command.phase, events, envelope, rollbackState, factStart, (candidate, activeRuleset, activePlayer, activeEvents, commandId) => maybeCompleteBonds(candidate, activePlayer, activeRuleset, activeEvents, commandId), (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEnd(candidate, activeRuleset, activeEvents, commandId); return undefined; }, 'phase-end', resolutionEnvelopes);
     case 'RESOLVE_EFFECT_CHOICE': return { code: 'INVALID_COMMAND', message: 'A choice command cannot be used as an original command continuation.' };
     case 'RESPOND_COUNTER_CONSENT':
     case 'CANCEL_COUNTER_CONSENT':
@@ -365,6 +338,37 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
     nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
   }
+  if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand?.kind === 'phase-transition') {
+    const continuation = structuredClone(nextState.effectState.pendingCommand);
+    if (!nextState.effectState.pendingLifecycle) return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: 'Phase transition lifecycle continuation is missing.' } };
+    const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE'
+      ? resumeLifecycleChoice(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId)
+      : resumeLifecycleCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
+    if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? resumed.reason ?? 'Unable to resume phase transition lifecycle.' } };
+    const events = transactionEvents([...continuation.events, ...resumed.events], continuation.envelope.commandId);
+    if (resumed.status === 'suspended') {
+      const pending = nextState.effectState.pendingCommand;
+      if (!pending || pending.kind !== 'phase-transition') return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: 'Phase transition continuation changed kind while suspended.' } };
+      pending.events = structuredClone(events);
+      pending.resolutionEnvelopes = [...continuation.resolutionEnvelopes, structuredClone(envelope)];
+      return { state: nextState, events };
+    }
+    delete nextState.effectState.pendingCommand;
+    const player = getPlayer(nextState, continuation.envelope.actorId);
+    const resolutionEnvelopes = [...continuation.resolutionEnvelopes, structuredClone(envelope)];
+    const transitionError = applyPhaseTransition(nextState, ruleset, player, continuation.envelope.command.phase, events, continuation.envelope, continuation.rollbackState, continuation.factStart, (candidate, activeRuleset, activePlayer, activeEvents, commandId) => maybeCompleteBonds(candidate, activePlayer, activeRuleset, activeEvents, commandId), (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEnd(candidate, activeRuleset, activeEvents, commandId); return undefined; }, continuation.cursor, resolutionEnvelopes);
+    if (transitionError) return { state: structuredClone(continuation.rollbackState), events: [], error: transitionError };
+    const pending = nextState.effectState.pendingCommand as PendingCommandContinuation | undefined;
+    if (pending?.kind === 'phase-transition') {
+      const normalized = transactionEvents(events, continuation.envelope.commandId);
+      pending.events = structuredClone(normalized);
+      return { state: nextState, events: normalized };
+    }
+    const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, structuredClone(continuation.rollbackState), events.slice(continuation.factStart), events);
+    if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed after phase transition.' } };
+    if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
+    nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+  }
   if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingPostCommand) {
     const rollback = structuredClone(nextState.effectState.pendingPostCommand.rollbackState);
     const result = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumePostCommandPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId, envelope) : resumePostCommandCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command), envelope);
@@ -403,7 +407,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       const nextContinuation = nextState.effectState.pendingCommand;
       if (!nextContinuation || nextContinuation.kind === 'team-overflow' || nextContinuation.kind === 'card-use-effect' || nextContinuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Command-before continuation changed kind while suspended.');
       nextContinuation.events = structuredClone(events);
-      if (continuation.envelope.command.type === 'USE_ITEM') nextContinuation.resolutionEnvelopes = resolutionEnvelopes;
+      nextContinuation.resolutionEnvelopes = resolutionEnvelopes;
       return { state: nextState, events };
     }
     delete nextState.effectState.pendingCommand;
@@ -418,6 +422,11 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       return { state: nextState, events };
     }
     if (reducerContinuation?.kind === 'card-use-effect') return { state: nextState, events: [...reducerContinuation.events] };
+    if (reducerContinuation?.kind === 'phase-transition') {
+      const normalized = transactionEvents(events, continuation.envelope.commandId);
+      reducerContinuation.events = structuredClone(normalized);
+      return { state: nextState, events: normalized };
+    }
     const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, rollback ? structuredClone(rollback) : structuredClone(state), events.slice(factStart), events, continuation.envelope.command.type === 'USE_ITEM' ? resolutionEnvelopes : []);
     if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: rollback ? structuredClone(rollback) : state, events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
     if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
@@ -456,7 +465,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     if (overflow.evaluation.status === 'overflow-required' && overflow.evaluation.policy?.mode === 'player-choice') {
       const candidateIds = overflow.evaluation.candidateIds; const count = overflow.evaluation.overflowCount; const sets = combinations(candidateIds, count); if (!sets.length) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow has insufficient candidates.' } }; if (sets.length > 256) return { state, events: [], error: { code: 'INVALID_COMMAND', message: 'Team overflow choice exceeds the supported option budget.' } };
       const optionCandidates = Object.fromEntries(sets.map((set, index) => [`overflow-${index + 1}`, set])); const choiceId = `team-overflow:${overflow.evaluation.policy.policyId}`; const executionId = `team-overflow:${envelope.commandId}`;
-      nextState.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId, actorId: envelope.actorId, options: Object.keys(optionCandidates).map((id) => ({ id, effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } })), remaining: [], context: { controllerId: envelope.actorId } };
+      nextState.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId, decisionKind: 'choose-party-member', actorId: envelope.actorId, options: Object.keys(optionCandidates).map((id) => ({ id, effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } })), remaining: [], context: { controllerId: envelope.actorId } };
       nextState.effectState.pendingCommand = { schemaVersion: 1, kind: 'team-overflow', envelope: structuredClone(envelope), events: structuredClone(events), rollbackState: structuredClone(rollback), policy: { moduleId: overflow.evaluation.policy.moduleId, policyId: overflow.evaluation.policy.policyId }, candidateIds: structuredClone(candidateIds), requiredSelectionCount: count, optionCandidates: structuredClone(optionCandidates), registry: structuredClone(overflow.evaluation.registry) };
       return { state: nextState, events };
     }
@@ -464,6 +473,11 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   const factStart = events.length;
   const error = reduceCommand(nextState, ruleset, envelope, [], events, rollback, factStart);
   if (error) return { state, events: [], error };
+  if (nextState.effectState.pendingCommand?.kind === 'phase-transition') {
+    const pendingEvents = transactionEvents(events, envelope.commandId);
+    nextState.effectState.pendingCommand.events = structuredClone(pendingEvents);
+    return { state: nextState, events: pendingEvents };
+  }
   if (nextState.effectState.pendingCommand?.kind === 'combat-reward') { nextState.effectState.pendingCommand.rollbackState = structuredClone(rollback); nextState.effectState.pendingCommand.factStart = factStart; return { state: nextState, events }; }
   if (nextState.effectState.pendingCommand?.kind === 'card-use-effect') return { state: nextState, events: [...nextState.effectState.pendingCommand.events] };
   const pipeline = beginPostCommandPipeline(nextState, ruleset, envelope, rollback, events.slice(factStart), events);

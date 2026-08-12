@@ -55,6 +55,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
       body: {
         kind: 'choose-card',
         choiceId: 'base:resource/resource-01-recover-adventurer',
+        decisionKind: 'recover-card',
         actor: { kind: 'controller' },
         from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
         predicate: { kind: 'definition-type-in', values: ['adventurer'] },
@@ -78,6 +79,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
           {
             kind: 'choose-card',
             choiceId: 'base:resource/resource-04-discard-boss',
+            decisionKind: 'discard-card',
             actor: { kind: 'controller' },
             from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
             predicate: { kind: 'definition-type-in', values: ['boss'] },
@@ -96,6 +98,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
       body: {
         kind: 'choose-card',
         choiceId: 'base:resource/resource-05-recover-equipment',
+        decisionKind: 'recover-card',
         actor: { kind: 'controller' },
         from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
         predicate: { kind: 'definition-type-in', values: ['equipment'] },
@@ -126,6 +129,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
           {
             kind: 'choose-card',
             choiceId: 'base:resource/resource-10-discard',
+            decisionKind: 'discard-card',
             actor: { kind: 'controller' },
             from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
             selectedCardKey: 'discard',
@@ -143,6 +147,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
       body: {
         kind: 'choose-card',
         choiceId: 'base:resource/resource-13-recover-mage-card',
+        decisionKind: 'recover-card',
         actor: { kind: 'controller' },
         from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
         predicate: {
@@ -178,6 +183,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
       body: {
         kind: 'choose-card',
         choiceId: 'base:resource/resource-15-remove',
+        decisionKind: 'remove-card',
         actor: { kind: 'controller' },
         from: {
           kind: 'one-of',
@@ -209,6 +215,7 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
           {
             kind: 'choose-card',
             choiceId: 'base:resource/resource-17-discard',
+            decisionKind: 'discard-card',
             actor: { kind: 'controller' },
             from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
             selectedCardKey: 'discard',
@@ -253,8 +260,8 @@ function definitionFor(runtimeDefinition: CardDefinition): CardDefinition {
 export const baseProvisionalFoundationContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-foundation',
-    version: '0.8.0',
-    hash: 'base-provisional-foundation-v8-equipment-instance-event-triggers',
+    version: '0.9.0',
+    hash: 'base-provisional-foundation-v9-explicit-decision-kinds',
     role: 'base',
     contentStatus: 'provisional-playtest',
   },

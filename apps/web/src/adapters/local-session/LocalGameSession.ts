@@ -1,8 +1,9 @@
 import { CpuTurnRunner, baseBalancedCpuProfile, simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
 import { createGame, dispatch, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset } from '@guildmaster/game-engine';
-import type { CommandEnvelope, DomainEvent, EngineError, GameCommand, GameState, ReplayBundle, ReplayInitialConfig } from '@guildmaster/game-protocol';
+import { stableJsonFingerprint, type CommandEnvelope, type DomainEvent, type EngineError, type GameCommand, type GameState, type ReplayAutomationDecision, type ReplayBundle, type ReplayInitialConfig } from '@guildmaster/game-protocol';
 import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
+import { auditCpuReplay } from './cpu-replay-audit.js';
 
 const localGameIdPattern = /^local-(\d+)$/;
 
@@ -19,7 +20,10 @@ export class LocalGameSession {
   private gameSequence = 0;
   private readonly cpuRunner = new CpuTurnRunner(baseBalancedCpuProfile);
   private cpuDiagnostic: string | undefined;
-  private cpuDecisions: { revision: number; actorId: string; command: GameCommand; reasonCode: string; score: number }[] = [];
+  private cpuDecisions: ReplayAutomationDecision[] = [];
+  private persistenceCompletion: Promise<void> = Promise.resolve();
+  private persistenceGeneration = 0;
+  private recoveryReason: SessionPersistenceStatus['recoveryReason'];
 
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const loaded = loadLocalGame();
@@ -27,7 +31,20 @@ export class LocalGameSession {
       try {
         const saved = loaded.game;
         if (typeof saved.snapshot?.state?.gameId === 'string') this.restoreGameSequence(saved.snapshot.state.gameId);
-        this.state = restoreSnapshot(saved.snapshot, this.ruleset);
+        if (saved.replayBundle && saved.replayHistoryComplete) {
+          const replayed = replayGame(saved.replayBundle, this.ruleset);
+          if (replayed.status !== 'completed') throw new Error(`Saved replay failed validation: ${replayed.diagnostic.message}`);
+          if (this.isFourPlayerMode()) {
+            const cpuAudit = auditCpuReplay(saved.replayBundle, this.ruleset);
+            if (cpuAudit.status !== 'verified') throw new Error(`Saved CPU Replay is not auditable: ${cpuAudit.diagnostic}`);
+          }
+          if (stableJsonFingerprint(replayed.finalSnapshot) !== stableJsonFingerprint(saved.snapshot)) throw new Error('Saved replay final Snapshot does not match the outer save Snapshot.');
+          if (stableJsonFingerprint(replayed.events.slice(-60)) !== stableJsonFingerprint(saved.events)) throw new Error('Saved replay events do not match the outer save event tail.');
+          if (saved.replayBundle.schemaVersion === 2 && (!saved.cpuAutomation || stableJsonFingerprint(saved.replayBundle.automation) !== stableJsonFingerprint(saved.cpuAutomation))) throw new Error('Saved CPU automation does not match Replay v2 metadata.');
+        }
+        const restoredState = restoreSnapshot(saved.snapshot, this.ruleset);
+        this.assertPlayerAuthority(restoredState, saved.replayBundle?.initialConfig);
+        this.state = restoredState;
         this.events = saved.events;
         this.replayHistoryComplete = saved.replayHistoryComplete;
         this.persistenceState = 'restored';
@@ -35,22 +52,30 @@ export class LocalGameSession {
           this.initialConfig = structuredClone(saved.replayBundle.initialConfig);
           this.commands = structuredClone([...saved.replayBundle.commands]);
           this.auditEvents = structuredClone([...(saved.replayBundle.expectedEvents ?? [])]);
-          this.commandSequence = this.commands.length;
+          this.commandSequence = this.commands.reduce((maximum, { commandId }) => {
+            const suffix = /-(\d+)$/.exec(commandId)?.[1];
+            const sequence = suffix === undefined ? 0 : Number(suffix);
+            return Number.isSafeInteger(sequence) ? Math.max(maximum, sequence) : maximum;
+          }, this.commands.length);
         }
         if (saved.cpuAutomation) {
           if (saved.cpuAutomation.profileId !== baseBalancedCpuProfile.profileId || saved.cpuAutomation.profileVersion !== baseBalancedCpuProfile.version) throw new Error('Saved CPU profile is incompatible.');
           this.cpuRunner.restore(saved.cpuAutomation.runner);
           this.cpuDecisions = structuredClone(saved.cpuAutomation.decisions);
         }
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        this.recoveryReason = message.includes('profile') ? 'CPU_PROFILE_MISMATCH' : message.includes('registry') || message.includes('Rules Module') ? 'REGISTRY_MISMATCH' : 'REPLAY_DIVERGENCE';
         const cleared = clearLocalGame();
         this.state = this.createFreshGame();
         this.events = [];
-        this.persistenceState = cleared ? 'fresh' : 'memory-only';
+        this.persistenceState = cleared.durable ? 'fresh' : 'saving';
+        if (!cleared.durable) this.trackPersistence(cleared.completion, 'fresh');
       }
     } else {
       this.state = this.createFreshGame();
       this.events = [];
+      if (loaded.status === 'invalid-cleared') this.recoveryReason = 'INVALID_SAVE';
       this.persistenceState = loaded.status === 'unavailable' ? 'memory-only' : 'fresh';
     }
   }
@@ -70,6 +95,19 @@ export class LocalGameSession {
 
   private isFourPlayerMode(): boolean { return this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full'); }
 
+  private assertPlayerAuthority(state: GameState, initialConfig?: ReplayInitialConfig): void {
+    if (!this.isFourPlayerMode()) return;
+    const ids = state.players.map(({ id }) => id);
+    const human = state.players.filter(({ kind }) => kind === 'human');
+    const ai = state.players.filter(({ kind }) => kind === 'ai');
+    if (state.players.length !== 4 || new Set(ids).size !== 4 || human.length !== 1 || human[0]?.id !== this.humanId || ai.length !== 3 || state.startingPlayerId !== this.humanId) throw new Error('Full offline mode requires exactly one authoritative human and three AI players, with the human as starting player.');
+    if (initialConfig) {
+      const configured = initialConfig.players.map(({ id, kind }) => `${id}:${kind}`).sort();
+      const restored = state.players.map(({ id, kind }) => `${id}:${kind}`).sort();
+      if (initialConfig.startingPlayerId !== this.humanId || stableJsonFingerprint(configured) !== stableJsonFingerprint(restored)) throw new Error('Full offline Replay player authority does not match the restored Snapshot.');
+    }
+  }
+
   private restoreGameSequence(gameId: string): void {
     const match = localGameIdPattern.exec(gameId);
     if (!match) return;
@@ -79,7 +117,10 @@ export class LocalGameSession {
 
   current(): SessionUpdate { return this.makeUpdate([]); }
 
+  async whenPersistenceSettled(): Promise<SessionUpdate> { await this.persistenceCompletion; return this.current(); }
+
   restart(): SessionUpdate {
+    this.recoveryReason = undefined;
     this.state = this.createFreshGame();
     this.events = [];
     this.processed.clear();
@@ -88,9 +129,8 @@ export class LocalGameSession {
   }
 
   submit(command: GameCommand): SessionUpdate {
-    this.cpuRunner.reset();
     const envelope: CommandEnvelope = { protocolVersion: 1, gameId: this.state.gameId, commandId: this.nextCommandId(this.humanId), actorId: this.humanId, expectedRevision: this.state.revision, command };
-    return this.submitEnvelope(envelope);
+    return this.submitEnvelope(envelope, { accepted: () => this.cpuRunner.reset() });
   }
 
   private nextCommandId(actorId: string): string {
@@ -98,7 +138,7 @@ export class LocalGameSession {
     return `${actorId}-${this.state.revision + 1}-${this.commandSequence}`;
   }
 
-  private submitEnvelope(envelope: CommandEnvelope): SessionUpdate {
+  private submitEnvelope(envelope: CommandEnvelope, automation?: { accepted?: () => void; rejected?: () => void }): SessionUpdate {
     const duplicate = this.processed.get(envelope.commandId);
     if (duplicate) return duplicate;
     const priorCursor = this.state.eventLogCursor;
@@ -106,9 +146,11 @@ export class LocalGameSession {
     const result = dispatch(this.state, this.ruleset, envelope);
     this.state = result.state;
     if (result.error) {
+      automation?.rejected?.();
       this.rollbackCommandHistoryIfNeeded(pendingRootCommandId);
       return this.persistAndReturn([], result.error);
     }
+    automation?.accepted?.();
     const committedEvents = this.committedEvents(priorCursor, result.events);
     this.events.push(...committedEvents);
     this.recordAccepted(envelope, committedEvents);
@@ -123,15 +165,25 @@ export class LocalGameSession {
     if (!actor) { this.cpuDiagnostic = undefined; return this.persistAndReturn([]); }
     const view = projectPlayerView(this.state, this.ruleset, actor.id);
     const legalCommands = getLegalCommands(this.state, this.ruleset, actor.id);
+    const actionFeatures = getCpuActionFeatures(this.state, this.ruleset, actor.id);
+    const runnerBeforeDecision = this.cpuRunner.snapshot();
     const decision = this.cpuRunner.step({
-      view, legalCommands, actionFeatures: getCpuActionFeatures(this.state, this.ruleset, actor.id),
+      view, legalCommands, actionFeatures,
       definitions: this.ruleset.registry.definitions, bonds: this.ruleset.registry.bonds,
       rulesetFingerprint: JSON.stringify(replayRegistryFingerprint(this.ruleset)), profile: baseBalancedCpuProfile,
     });
-    if (decision.status === 'blocked') { this.cpuDiagnostic = `${decision.reasonCode}: ${decision.diagnostic}`; return this.persistAndReturn([]); }
+    if (decision.status === 'blocked') {
+      this.cpuRunner.restore(runnerBeforeDecision);
+      this.cpuDiagnostic = `${decision.reasonCode}: ${decision.diagnostic}`;
+      return this.persistAndReturn([]);
+    }
     this.cpuDiagnostic = undefined;
-    this.cpuDecisions.push({ revision: view.revision, actorId: actor.id, command: structuredClone(decision.command), reasonCode: decision.reasonCode, score: decision.score });
-    return this.submitEnvelope(asEnvelope(view, actor.id, decision.command, this.nextCommandId(actor.id)));
+    const commandId = this.nextCommandId(actor.id);
+    const recordedDecision = { commandId, revision: view.revision, actorId: actor.id, command: structuredClone(decision.command), reasonCode: decision.reasonCode, score: decision.score, scoreBreakdown: structuredClone(decision.scoreBreakdown), contextFingerprint: decision.contextFingerprint, legalCommandsFingerprint: stableJsonFingerprint(legalCommands), actionFeaturesFingerprint: stableJsonFingerprint(actionFeatures) };
+    return this.submitEnvelope(asEnvelope(view, actor.id, decision.command, commandId), {
+      accepted: () => this.cpuDecisions.push(recordedDecision),
+      rejected: () => this.cpuRunner.restore(runnerBeforeDecision),
+    });
   }
 
   private runAi(): EngineError | undefined {
@@ -189,16 +241,37 @@ export class LocalGameSession {
 
   private persistAndReturn(newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     try {
-      saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined, { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: this.cpuRunner.snapshot(), decisions: structuredClone(this.cpuDecisions) });
-      this.persistenceState = 'saved';
+      const receipt = saveLocalGame(serializeSnapshot(this.state), this.events, this.replayHistoryComplete ? this.replayBundle() : undefined, { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: this.cpuRunner.snapshot(), decisions: structuredClone(this.cpuDecisions) });
+      this.persistenceState = receipt.durable ? 'saved' : 'saving';
+      if (!receipt.durable) this.trackPersistence(receipt.completion, 'saved');
     } catch {
       this.persistenceState = 'memory-only';
     }
     return this.makeUpdate(newEvents, error);
   }
 
+  private trackPersistence(completion: Promise<void>, successState: SessionPersistenceStatus['state']): void {
+    const generation = ++this.persistenceGeneration;
+    this.persistenceCompletion = completion.then(
+      () => { if (generation === this.persistenceGeneration) this.persistenceState = successState; },
+      () => { if (generation === this.persistenceGeneration) this.persistenceState = 'memory-only'; },
+    );
+  }
+
   private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
+    const nextAiActor = this.nextAiActor();
+    const pendingChoice = this.state.effectState.pendingChoice;
+    const pendingConsent = this.state.effectState.pendingCounterConsent;
+    const cpuStepKey = JSON.stringify({
+      gameId: this.state.gameId,
+      revision: this.state.revision,
+      eventLogCursor: this.state.eventLogCursor,
+      actorId: nextAiActor?.id ?? null,
+      choice: pendingChoice ? [pendingChoice.executionId, pendingChoice.choiceId] : null,
+      consent: pendingConsent ? [pendingConsent.executionId, pendingConsent.requestId, pendingConsent.acceptedActorIds] : null,
+      commandSequence: this.commandSequence,
+    });
     const basePack = this.ruleset.registry.packs.find(({ role }) => role === 'base');
     if (!basePack) throw new Error('LocalGameSession requires one base Content Pack.');
     const update: SessionUpdate = {
@@ -222,13 +295,14 @@ export class LocalGameSession {
         replayHistoryComplete: this.replayHistoryComplete,
       },
       persistence: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         state: this.persistenceState,
         revision: this.state.revision,
         replayHistoryComplete: this.replayHistoryComplete,
+        ...(this.recoveryReason ? { recoveryReason: this.recoveryReason } : {}),
       },
       replayHistoryComplete: this.replayHistoryComplete,
-      cpu: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, status: this.cpuDiagnostic ? 'blocked' : this.nextAiActor() ? 'ready' : 'idle', ...(this.cpuDiagnostic ? { diagnostic: this.cpuDiagnostic } : {}), decisions: this.cpuDecisions.slice(-100) },
+      cpu: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, status: this.cpuDiagnostic ? 'blocked' : nextAiActor ? 'ready' : 'idle', ...(nextAiActor ? { nextActorId: nextAiActor.id } : {}), stepKey: cpuStepKey, ...(this.cpuDiagnostic ? { diagnostic: this.cpuDiagnostic } : {}), decisions: this.cpuDecisions.slice(-100) },
       error,
     };
     return { ...update, scoreboard: this.state.status === 'finished' ? getScoreboard(this.state, this.ruleset) : undefined };
@@ -240,7 +314,9 @@ export class LocalGameSession {
   }
 
   private replayBundle(): ReplayBundle {
-    return { schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(this.ruleset), initialConfig: structuredClone(this.initialConfig), commands: structuredClone(this.commands), expectedEvents: structuredClone(this.auditEvents), expectedFinalSnapshot: serializeSnapshot(this.state), automation: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, decisions: structuredClone(this.cpuDecisions) } };
+    const common = { protocolVersion: 1 as const, registry: replayRegistryFingerprint(this.ruleset), initialConfig: structuredClone(this.initialConfig), commands: structuredClone(this.commands), expectedEvents: structuredClone(this.auditEvents), expectedFinalSnapshot: serializeSnapshot(this.state) };
+    if (!this.isFourPlayerMode()) return { ...common, schemaVersion: 1, automation: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, decisions: this.cpuDecisions.map(({ revision, actorId, command, reasonCode, score }) => ({ revision, actorId, command: structuredClone(command), reasonCode, score })) } };
+    return { ...common, schemaVersion: 2, automation: { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: this.cpuRunner.snapshot(), decisions: structuredClone(this.cpuDecisions) } };
   }
 
   exportReplayDiagnostic(): ReplayDiagnosticExport {
@@ -256,6 +332,10 @@ export class LocalGameSession {
     try { bundle = JSON.parse(source); }
     catch { return { status: 'failed', message: 'Replay JSON 無法解析。' }; }
     const result = replayGame(bundle, this.ruleset);
+    if (result.status === 'completed' && this.isFourPlayerMode()) {
+      const cpuAudit = auditCpuReplay(bundle, this.ruleset);
+      if (cpuAudit.status !== 'verified') return { status: 'failed', message: cpuAudit.diagnostic };
+    }
     if (result.status === 'completed') return { status: 'completed', message: 'Replay 完成，沒有偵測到 divergence。', commandCount: Array.isArray((bundle as { commands?: unknown }).commands) ? (bundle as { commands: unknown[] }).commands.length : 0, eventCount: result.events.length, revision: result.finalSnapshot.state.revision };
     const diagnostic = result.diagnostic;
     return { status: 'failed', message: diagnostic.message, reasonCode: diagnostic.reasonCode, commandIndex: diagnostic.commandIndex, commandId: diagnostic.commandId, expectedRevision: diagnostic.expectedRevision, actualRevision: diagnostic.actualRevision, engineErrorCode: diagnostic.engineErrorCode, ...(diagnostic.divergence ? { divergence: structuredClone(diagnostic.divergence) } : {}) };

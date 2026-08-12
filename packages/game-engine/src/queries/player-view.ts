@@ -3,19 +3,6 @@ import { getPlayer } from '../model/factories.js';
 import { getPartyLimit, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 
-function decisionKind(choiceId: string): import('@guildmaster/game-protocol').PlayerDecisionKind | undefined {
-  const value = choiceId.toLowerCase();
-  if (value.includes('discard')) return 'discard-card';
-  if (value.includes('remove')) return 'remove-card';
-  if (value.includes('recover')) return 'recover-card';
-  if (value.includes('market')) return 'choose-market-card';
-  if (value.includes('enemy') || value.includes('target')) return 'choose-enemy-target';
-  if (value.includes('overflow') || value.includes('party')) return 'choose-party-member';
-  if (value.includes('draft')) return 'draft-card';
-  if (value.includes('transfer')) return 'transfer-card';
-  return undefined;
-}
-
 export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: string): PlayerView {
   const compatibility = validateRulesetStateCompatibility(state, ruleset);
   if (compatibility) throw new Error(compatibility);
@@ -28,7 +15,7 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
   const visibleIds = new Set([...visibleSelf.hand, ...visibleSelf.discardPile, ...visibleSelf.playArea, ...visibleSelf.party.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])]), ...Object.values(visibleZones).flatMap((zone) => zone.cardIds), ...visibleTargetIds]);
   const cards = Object.fromEntries(Object.entries(state.cards).filter(([id]) => visibleIds.has(id)));
   const choice = state.effectState.pendingChoice;
-  const kind = choice?.actorId === viewerId ? decisionKind(choice.choiceId) : undefined;
+  const kind = choice?.actorId === viewerId ? choice.decisionKind : undefined;
   return {
     viewerId, gameId: state.gameId, status: state.status, phase: state.phase, round: state.round, revision: state.revision, activePlayerId: state.activePlayerId,
     self: { ...visibleSelf, drawPileCount: drawPile.length }, partyLimit: getPartyLimit(ruleset, state, player),

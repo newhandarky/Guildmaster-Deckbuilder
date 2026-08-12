@@ -1,5 +1,5 @@
 import { ActionPreviewSetSchema, type ActionPreviewItem, type ActionPreviewSet, type AttackResolutionCondition, type AttackResolutionResult, type CombatRewardCondition, type CommandEnvelope, type GameCommand, type GameState } from '@guildmaster/game-protocol';
-import { getDefinition, getPlayer } from '../model/factories.js';
+import { getDefinition, getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
@@ -227,7 +227,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   if (state.phase === 'action1' || state.phase === 'action2') {
     for (const cardId of player.hand) {
       const definition = getDefinition(ruleset.registry, state, cardId);
-      if (definition.type === 'adventurer') commands.push({ type: 'PLAY_ADVENTURER', cardId });
+      if (isPartyMemberCard(ruleset.registry, state, cardId)) commands.push({ type: 'PLAY_ADVENTURER', cardId });
       if (definition.type === 'item' && itemUseCanBegin(state, ruleset, actorId, cardId)) commands.push({ type: 'USE_ITEM', cardId });
       if (definition.type === 'equipment') for (const slot of player.party) {
         const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: cardId, adventurerId: slot.adventurerId });

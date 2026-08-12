@@ -1,4 +1,4 @@
-import type { CardDefinition, ContentPack } from '@guildmaster/game-protocol';
+import type { CardDefinition, ContentPack, EffectNode, PlayerDecisionKind } from '@guildmaster/game-protocol';
 import { baseProvisionalFoundationContentPack } from './provisional-foundation-pack.js';
 
 const source = 'provisional-original-full-playtest';
@@ -50,24 +50,71 @@ const bosses: CardDefinition[] = bossStats.map(([combat, purchasePower, honor], 
 const bondHonor = [4,4,3,3,3,3,4,4,4,4,5,5,4,6,5,5,7,5,5,5,5,4,6,3,4,4,4,4,4,4];
 
 export const baseProvisionalOriginalFullContentPack: ContentPack = {
-  manifest: { id: 'base:provisional-original-full', version: '0.1.0', hash: 'base-provisional-original-full-v1-neutral-roster-project-copy-policy', role: 'base', contentStatus: 'provisional-playtest' },
+  manifest: { id: 'base:provisional-original-full', version: '0.2.0', hash: 'base-provisional-original-full-v2-explicit-decisions-capability-gate', role: 'base', contentStatus: 'provisional-playtest' },
   definitions: [...starters, ...adventurers, ...resources, ...monsters, ...bosses],
   starter: { partyDefinitionIds: starters.slice(0, 5).map(({ id }) => id), summonStoneDefinitionId: 'base:starter/summoning-stone', crystalDefinitionId: 'base:starter/spirit-crystal' },
   bonds: bondHonor.map((honor, index) => ({ id: `base:bond/bond-${pad(index + 1)}`, name: `候選羈絆 ${pad(index + 1)}`, honor, requiredBosses: 99 })),
 };
 
 export type FullProvisionalCapabilityEntry = {
-  definitionId: string; evidenceStatus: 'visual-provisional' | 'project-policy'; copyPolicy: string;
+  contentId: string; contentKind: 'definition' | 'bond'; evidenceStatus: 'visual-provisional' | 'project-policy'; evidenceReference: string; copyPolicy: string;
   effectStatus: 'enabled' | 'blocked'; requiredCapabilities: readonly string[]; decisionKinds: readonly string[];
-  cpuResolver: string; testId: string;
+  effectPaths: readonly string[]; cpuResolver: string; testIds: readonly string[]; blocker?: 'unverified-effect-semantics' | 'unverified-bond-condition';
 };
-export const baseProvisionalOriginalFullCapabilityMatrix: readonly FullProvisionalCapabilityEntry[] = baseProvisionalOriginalFullContentPack.definitions.map((definition) => ({
-  definitionId: definition.id,
-  evidenceStatus: definition.tags?.includes('project-policy:digital-copy-count') ? 'project-policy' : 'visual-provisional',
-  copyPolicy: definition.type === 'adventurer' ? 'project-policy:2-each' : definition.type === 'monster' ? 'project-policy:32-card-distribution' : definition.type === 'item' || definition.type === 'equipment' ? 'project-policy:59-card-distribution' : 'visual-provisional',
-  effectStatus: definition.tags?.includes('playtest:effect-enabled') ? 'enabled' : 'blocked',
-  requiredCapabilities: definition.tags?.includes('playtest:effect-enabled') ? ['effect-ast', 'snapshot-continuation', 'cpu-typed-choice'] : [],
-  decisionKinds: definition.useEffect ? ['typed-effect-choice'] : [],
-  cpuResolver: definition.tags?.includes('playtest:effect-enabled') ? 'base:cpu-balanced/typed-effect-choice' : 'none-effect-disabled',
-  testId: definition.tags?.includes('playtest:effect-enabled') ? `foundation:${definition.id}` : `roster:${definition.id}`,
+export const baseProvisionalOriginalFullCapabilityRegistry = {
+  engineCapabilities: ['effect-ast', 'snapshot-continuation', 'equipment-event-lifecycle', 'typed-player-view-choice'] as const,
+  cpuResolvers: ['base:cpu-balanced/effect-card-choice', 'base:cpu-balanced/legal-command-scoring', 'base:cpu-balanced/keep-bonds', 'none-effect-disabled'] as const,
+  testIds: ['content:provisional-foundation-pack', 'content:provisional-original-full-roster', 'engine:card-use-effect', 'engine:post-command-pipeline', 'engine:bond-setup', 'cpu:deterministic-choice', 'cpu:deterministic-legal-scoring', 'cpu:keep-bonds'] as const,
+};
+
+function effectChoices(node: EffectNode, path = '$'): { path: string; decisionKind?: PlayerDecisionKind }[] {
+  if (node.kind === 'choice') return [{ path, ...(node.decisionKind ? { decisionKind: node.decisionKind } : {}) }, ...node.options.flatMap((option, index) => effectChoices(option.effect, `${path}.options[${index}]`))];
+  if (node.kind === 'choose-card') return [{ path, ...(node.decisionKind ? { decisionKind: node.decisionKind } : {}) }, ...effectChoices(node.effect, `${path}.effect`)];
+  if (node.kind === 'sequence') return node.effects.flatMap((effect, index) => effectChoices(effect, `${path}.effects[${index}]`));
+  if (node.kind === 'conditional') return [...effectChoices(node.whenTrue, `${path}.whenTrue`), ...(node.whenFalse ? effectChoices(node.whenFalse, `${path}.whenFalse`) : [])];
+  if (node.kind === 'random' || node.kind === 'roll-die') return node.outcomes.flatMap((outcome, index) => effectChoices(outcome.effect, `${path}.outcomes[${index}]`));
+  if (node.kind === 'request-counter-consent') return Object.entries(node.outcomes).flatMap(([outcome, effect]) => effectChoices(effect, `${path}.outcomes.${outcome}`));
+  return [];
+}
+
+const definitionCapabilities = baseProvisionalOriginalFullContentPack.definitions.map((definition): FullProvisionalCapabilityEntry => {
+  const enabled = definition.tags?.includes('playtest:effect-enabled') ?? false;
+  const roots = [definition.useEffect?.body, ...(definition.equipmentEventTriggers ?? []).map(({ effect }) => effect.body)].filter((node): node is EffectNode => node !== undefined);
+  const choices = roots.flatMap((node, index) => effectChoices(node, `$effects[${index}]`));
+  const hasChoice = choices.length > 0;
+  const requiredCapabilities = enabled
+    ? ['effect-ast', 'snapshot-continuation', ...(definition.equipmentEventTriggers ? ['equipment-event-lifecycle'] : []), ...(hasChoice ? ['typed-player-view-choice'] : [])]
+    : [];
+  return {
+    contentId: definition.id,
+    contentKind: 'definition',
+    evidenceStatus: definition.tags?.includes('project-policy:digital-copy-count') ? 'project-policy' : 'visual-provisional',
+    evidenceReference: enabled ? `foundation-audit:${definition.id}` : `visual-roster:${definition.id}`,
+    copyPolicy: definition.type === 'adventurer' ? 'project-policy:2-each' : definition.type === 'monster' ? 'project-policy:32-card-distribution' : definition.type === 'item' || definition.type === 'equipment' ? 'project-policy:59-card-distribution' : 'visual-provisional',
+    effectStatus: enabled ? 'enabled' : 'blocked',
+    requiredCapabilities,
+    decisionKinds: choices.flatMap(({ decisionKind }) => decisionKind ? [decisionKind] : []),
+    effectPaths: choices.map(({ path }) => path),
+    cpuResolver: enabled ? (hasChoice ? 'base:cpu-balanced/effect-card-choice' : 'base:cpu-balanced/legal-command-scoring') : 'none-effect-disabled',
+    testIds: enabled ? ['content:provisional-foundation-pack', definition.equipmentEventTriggers ? 'engine:post-command-pipeline' : 'engine:card-use-effect', hasChoice ? 'cpu:deterministic-choice' : 'cpu:deterministic-legal-scoring'] : ['content:provisional-original-full-roster'],
+    ...(!enabled ? { blocker: 'unverified-effect-semantics' as const } : {}),
+  };
+});
+
+const bondCapabilities = (baseProvisionalOriginalFullContentPack.bonds ?? []).map((bond): FullProvisionalCapabilityEntry => ({
+  contentId: bond.id,
+  contentKind: 'bond',
+  evidenceStatus: 'visual-provisional',
+  evidenceReference: `visual-roster:${bond.id}`,
+  copyPolicy: 'visual-provisional:1-each',
+  effectStatus: 'blocked',
+  requiredCapabilities: [],
+  decisionKinds: ['keep-bonds'],
+  effectPaths: [],
+  cpuResolver: 'base:cpu-balanced/keep-bonds',
+  testIds: ['content:provisional-original-full-roster', 'engine:bond-setup', 'cpu:keep-bonds'],
+  blocker: 'unverified-bond-condition',
 }));
+
+/** Machine-readable gate: roster completeness is intentionally separate from verified effect completeness. */
+export const baseProvisionalOriginalFullCapabilityMatrix: readonly FullProvisionalCapabilityEntry[] = [...definitionCapabilities, ...bondCapabilities];

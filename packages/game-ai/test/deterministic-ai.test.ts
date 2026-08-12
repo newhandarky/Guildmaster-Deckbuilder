@@ -29,6 +29,58 @@ describe('deterministic CPU strategy', () => {
     expect(decideCpuAction(context([refresh, end], [feature(refresh)]))).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
   });
 
+  it('preserves its party when a public boss is available but not yet legally attackable', () => {
+    const monsterAttack = { type: 'ATTACK_TARGET' as const, targetId: 'monster-target' };
+    const end = { type: 'END_PHASE' as const, phase: 'combat' as const };
+    const combatView = {
+      ...view(), phase: 'combat',
+      self: { turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 10 }, party: [{ adventurerId: 'party-card' }] },
+      cards: { 'party-card': { id: 'party-card', definitionId: 'party-def' }, 'boss-card': { id: 'boss-card', definitionId: 'boss-def' } },
+      enemyTargets: {
+        'boss-target': { targetId: 'boss-target', cardInstanceId: 'boss-card', kind: 'boss', status: 'available' },
+        'monster-target': { targetId: 'monster-target', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' },
+      },
+    } as unknown as PlayerView;
+    const result = decideCpuAction({ ...context([monsterAttack, end], [feature(monsterAttack, { honorGain: 5, monsterDefeat: 1 })]), view: combatView, definitions: { 'party-def': { id: 'party-def', name: 'Party', type: 'adventurer', copies: 1, source: 'test', combat: 12 }, 'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 14 } } });
+    expect(result).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
+  });
+
+  it('does not replace the actual discard-oldest member with a weaker incoming card', () => {
+    const play = { type: 'PLAY_ADVENTURER' as const, cardId: 'incoming' };
+    const end = { type: 'END_PHASE' as const, phase: 'action1' as const };
+    const party = ['p1', 'p2', 'p3', 'p4', 'p5'].map((adventurerId) => ({ adventurerId }));
+    const cards = Object.fromEntries([...party.map(({ adventurerId }) => [adventurerId, { id: adventurerId, definitionId: adventurerId === 'p1' ? 'strong' : 'weak' }]), ['incoming', { id: 'incoming', definitionId: 'medium' }]]);
+    const actionView = { ...view(), phase: 'action1', partyLimit: 5, self: { party }, cards, enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss-card', kind: 'boss', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({
+      ...context([play, end], [feature(play, { partyCombatGain: 2, partyCombatLoss: 5, overflowLoss: 1 })]), view: actionView,
+      definitions: { strong: { id: 'strong', name: 'Strong', type: 'adventurer', copies: 1, source: 'test', combat: 5 }, weak: { id: 'weak', name: 'Weak', type: 'adventurer', copies: 1, source: 'test', combat: 1 }, medium: { id: 'medium', name: 'Medium', type: 'adventurer', copies: 1, source: 'test', combat: 2 } },
+    });
+    expect(result).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
+    const lateGameView = { ...actionView, self: { ...actionView.self, history: { defeatedBosses: 0, defeatedMonsters: 10 } } } as PlayerView;
+    const boundedRotation = decideCpuAction({
+      ...context([play, end], [feature(play, { partyCombatGain: 3, partyCombatLoss: 5, overflowLoss: 1 })]), view: lateGameView,
+      definitions: { strong: { id: 'strong', name: 'Strong', type: 'adventurer', copies: 1, source: 'test', combat: 5 }, weak: { id: 'weak', name: 'Weak', type: 'adventurer', copies: 1, source: 'test', combat: 1 }, medium: { id: 'medium', name: 'Medium', type: 'adventurer', copies: 1, source: 'test', combat: 2 } },
+    });
+    expect(boundedRotation).toMatchObject({ status: 'ready', command: play, reasonCode: 'PLAY_FOR_PARTY_POWER' });
+    const beneficial = decideCpuAction({
+      ...context([play, end], [feature(play, { partyCombatGain: 6, partyCombatLoss: 5, overflowLoss: 1 })]), view: actionView,
+      definitions: { strong: { id: 'strong', name: 'Strong', type: 'adventurer', copies: 1, source: 'test', combat: 5 }, weak: { id: 'weak', name: 'Weak', type: 'adventurer', copies: 1, source: 'test', combat: 1 }, medium: { id: 'medium', name: 'Medium', type: 'adventurer', copies: 1, source: 'test', combat: 6 } },
+    });
+    expect(beneficial).toMatchObject({ status: 'ready', command: play, reasonCode: 'PLAY_FOR_PARTY_POWER' });
+  });
+
+  it('prioritizes permanent combat purchases while an available boss exceeds visible party power', () => {
+    const honorBuy = { type: 'BUY_CARD' as const, cardId: 'honor-card' };
+    const combatBuy = { type: 'BUY_CARD' as const, cardId: 'combat-card' };
+    const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
+    const purchaseView = { ...view(), self: { turnCombatBonus: 0, party: [] }, cards: { boss: { id: 'boss', definitionId: 'boss-def' }, 'honor-card': { id: 'honor-card', definitionId: 'honor-def' }, 'combat-card': { id: 'combat-card', definitionId: 'combat-def' } }, enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss', kind: 'boss', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({
+      ...context([honorBuy, combatBuy, end], [feature(honorBuy, { honorGain: 5, purchaseCost: 3 }), feature(combatBuy, { honorGain: 1, partyCombatGain: 3, purchaseCost: 3 })]), view: purchaseView,
+      definitions: { 'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 14 }, 'honor-def': { id: 'honor-def', name: 'Honor', type: 'adventurer', copies: 1, source: 'test', honor: 5 }, 'combat-def': { id: 'combat-def', name: 'Combat', type: 'adventurer', copies: 1, source: 'test', combat: 3, honor: 1 } },
+    });
+    expect(result).toMatchObject({ status: 'ready', command: combatBuy, reasonCode: 'BUY_HIGHEST_UTILITY' });
+  });
+
   it('fails closed for an untyped mandatory effect choice', () => {
     const choice = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'x', choiceId: 'unknown', optionId: 'first' };
     expect(decideCpuAction(context([choice]))).toMatchObject({ status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND' });

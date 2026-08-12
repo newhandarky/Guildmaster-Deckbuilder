@@ -6,6 +6,28 @@ import { enterGame, openGame } from './game-entry.js';
 
 const localSaveKey = 'guildmaster-mvp-save-v2';
 
+test('production persistence writes the complete session atomically to IndexedDB', async ({ page }) => {
+  await page.addInitScript(() => { (globalThis as { __GUILDMASTER_FORCE_INDEXED_DB__?: boolean }).__GUILDMASTER_FORCE_INDEXED_DB__ = true; });
+  await openGame(page);
+  await page.getByTestId('end-phase').click();
+  await expect(page.getByTestId('save-status')).toContainText('已保存');
+  expect(await page.evaluate((key) => localStorage.getItem(key), localSaveKey)).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-entry-summary-v1'))).not.toBeNull();
+  const storedRevision = await page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open('guildmaster-offline', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const read = database.transaction('sessions', 'readonly').objectStore('sessions').get('active');
+      read.onerror = () => reject(read.error);
+      read.onsuccess = () => { resolve((read.result as { snapshot: { state: { revision: number } } }).snapshot.state.revision); database.close(); };
+    };
+  }));
+  expect(storedRevision).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
+});
+
 function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
   const ruleset = createWebRuleset('lifecycle-consent');
   const state = createGame({

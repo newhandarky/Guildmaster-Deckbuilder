@@ -70,7 +70,7 @@
         "revision": 0,
         "eventLogCursor": 0,
         "rngState": 12182925,
-        "stateFingerprint": "fnv1a32:72eecbc3",
+        "stateFingerprint": "fnv1a32:6e004e8c",
         "orderedEvents": [
           { "eventId": "transaction:partial-start:1", "type": "EFFECT_STARTED", "causedByCommandId": "partial-start", "reasonCode": null },
           { "eventId": "transaction:partial-start:2", "type": "EFFECT_RANDOM_RESOLVED", "causedByCommandId": "partial-start", "reasonCode": null },

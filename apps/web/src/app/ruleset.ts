@@ -28,6 +28,7 @@ const choiceModule: RulesModule = {
       body: {
         kind: 'choice',
         choiceId: 'e2e:command-path',
+        decisionKind: 'choose-effect-option',
         actor: { kind: 'controller' },
         options: [
           { id: 'continue', effect: modifyPurchase(1) },

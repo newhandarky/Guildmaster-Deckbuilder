@@ -8,7 +8,7 @@ CPU 僅能使用該玩家的 `PlayerView`、同 revision 的 Legal Commands、�
 
 ## 內容與數位張數 policy
 
-完整測試 pack 必須與 `base:provisional-foundation` 分離，使用 `base:provisional-original-full@0.1.0` identity。候選 roster 為 30 種冒險者、28 種物資、14 種魔物、11 名魔王與 30 張羈絆；協助者不是 baseline。
+完整測試 pack 必須與 `base:provisional-foundation` 分離，使用 `base:provisional-original-full@0.2.0` identity。候選 roster 為 30 種冒險者、28 種物資、14 種魔物、11 名魔王與 30 張羈絆；協助者不是 baseline。
 
 以下逐種類張數是 project policy，不是官方實體配置：
 

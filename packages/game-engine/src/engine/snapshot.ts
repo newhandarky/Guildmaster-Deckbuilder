@@ -111,6 +111,25 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   const command = state.effectState.pendingCommand;
   if (command) {
     const choice = state.effectState.pendingChoice; const consent = state.effectState.pendingCounterConsent;
+    if (command.kind === 'phase-transition') {
+      const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState);
+      const rollbackEffects = rollbackState.effectState;
+      if (Boolean(choice) === Boolean(consent) || !pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'END_PHASE' || command.envelope.gameId !== state.gameId || command.envelope.expectedRevision !== state.revision || command.factStart > command.events.length || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid phase transition continuation.');
+      const eventError = validateTransactionEventSequence(command.events, state, pending.registry, command.envelope.commandId, ruleset);
+      if (eventError) throw new Error(eventError);
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending phase transition Snapshot requires the active ruleset for canonical restore.');
+      let canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error) throw new Error(`Phase transition canonical replay failed at the root command: ${canonical.error.message}`);
+      for (const resolutionEnvelope of command.resolutionEnvelopes) {
+        canonical = dispatch(canonical.state, ruleset, structuredClone(resolutionEnvelope));
+        if (canonical.error) throw new Error(`Phase transition canonical replay failed at a resolution command: ${canonical.error.message}`);
+      }
+      if (canonical.state.effectState.pendingCommand?.kind !== 'phase-transition') throw new Error('Phase transition canonical replay did not suspend at the expected boundary.');
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Phase transition suspended state does not match canonical replay at ${difference}.`);
+      return state;
+    }
     if (command.kind === 'team-overflow') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
       const optionSets = Object.values(command.optionCandidates);

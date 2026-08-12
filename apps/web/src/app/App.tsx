@@ -133,13 +133,13 @@ export function App() {
   />;
 
   useLifecycleFocus(hasEnteredGame && lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
-  const cpuActor = view.activePlayerId !== view.viewerId && view.opponents.find(({ id }) => id === view.activePlayerId)?.kind === 'ai';
+  const cpuNeedsStep = cpu.status === 'ready' && Boolean(cpu.nextActorId);
   useEffect(() => {
-    if (!hasEnteredGame || !cpuActor || cpuPaused || cpu.status === 'blocked' || view.status === 'finished') return undefined;
+    if (!hasEnteredGame || !cpuNeedsStep || cpuPaused || view.status === 'finished') return undefined;
     const delay = { slow: 1200, normal: 600, fast: 150, instant: 10 }[cpuSpeed];
     const timer = window.setTimeout(stepCpu, delay);
     return () => window.clearTimeout(timer);
-  }, [cpu.status, cpuActor, cpuPaused, cpuSpeed, hasEnteredGame, stepCpu, view.revision, view.status]);
+  }, [cpu.stepKey, cpuNeedsStep, cpuPaused, cpuSpeed, hasEnteredGame, stepCpu, view.status]);
   useEffect(() => { setSelectedBondIds([]); }, [view.bondSetup?.offerId, view.bondSetup?.currentActorId]);
 
   if (!hasEnteredGame) {
@@ -231,7 +231,7 @@ export function App() {
         : null}
       {entrySummary.contentMode === 'provisional-original-full'
         ? <section className="cpu-controls" aria-label="CPU 控制">
-            <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuActor || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
+            <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuNeedsStep || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
               <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>
             {cpu.diagnostic ? <p className="error" role="alert">CPU 已安全暫停：{cpu.diagnostic}</p> : null}
             <details><summary>CPU 決策紀錄（{cpu.decisions.length}）</summary><ol>{cpu.decisions.slice(-12).map((decision, index) => <li key={`${decision.revision}-${decision.actorId}-${index}`}>r{decision.revision} · {decision.actorId} · {decision.command.type} · {decision.reasonCode} · {decision.score}</li>)}</ol></details>

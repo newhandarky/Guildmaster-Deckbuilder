@@ -233,7 +233,7 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     const node = nodes[index]!;
     if (node.kind === 'sequence') return runNodes(state, ruleset, [...node.effects, ...nodes.slice(index + 1)], context, executionId, events);
     if (node.kind === 'conditional') { const valid = node.condition.kind === 'always' ? node.condition.value : (() => { const id = resolveCardId(node.condition.card, context); const location = resolveLocation(node.condition.location, context); try { return Boolean(id && location && state.cards[id] && isCardAtLocation(state, location, id)); } catch { return false; } })(); const next = valid ? node.whenTrue : node.whenFalse; return runNodes(state, ruleset, [...(next ? [next] : []), ...nodes.slice(index + 1)], context, executionId, events); }
-    if (node.kind === 'choice') { const actorId = playerId(node.actor, context); if (!actorId) return { status: 'failed', events, error: 'Choice actor could not be resolved.' }; state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options: node.options, remaining: nodes.slice(index + 1), context }; domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit player choice.'); return { status: 'suspended', events }; }
+    if (node.kind === 'choice') { const actorId = playerId(node.actor, context); if (!actorId) return { status: 'failed', events, error: 'Choice actor could not be resolved.' }; state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, ...(node.decisionKind ? { decisionKind: node.decisionKind } : {}), actorId, options: node.options, remaining: nodes.slice(index + 1), context }; domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit player choice.'); return { status: 'suspended', events }; }
     if (node.kind === 'choose-card') {
       const resolved = dynamicCardChoiceCandidates(state, ruleset, node, context);
       if (resolved.status !== 'ready') return { status: 'failed', events, error: resolved.error };
@@ -248,7 +248,7 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
           ...(node.selectedLocationKey ? { locationRefs: { ...(context.locationRefs ?? {}), [node.selectedLocationKey]: structuredClone(location) } } : {}),
         },
       }));
-      state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, actorId, options, remaining: nodes.slice(index + 1), context: structuredClone(context), source: visibleSource };
+      state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, ...(node.decisionKind ? { decisionKind: node.decisionKind } : {}), actorId, options, remaining: nodes.slice(index + 1), context: structuredClone(context), source: visibleSource };
       domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit card choice.');
       return { status: 'suspended', events };
     }

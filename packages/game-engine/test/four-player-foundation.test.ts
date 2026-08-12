@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentPack } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, getScoreboard, nextSeat, previousSeat, projectPlayerView, seatOrderFrom } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, getLegalCommands, getScoreboard, nextSeat, previousSeat, projectPlayerView, seatOrderFrom } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule } from '../src/rules/ruleset.js';
 import { baseZoneIds } from '../src/model/zones.js';
@@ -37,6 +37,19 @@ describe('four-player base authority', () => {
       expect(state.zones[zoneId]!.cardIds.length).toBeGreaterThan(0);
     }
     expect(view.zones[baseZoneIds.adventurerRow]!.cardIds).toHaveLength(3);
+  });
+
+  it('allows a configured starter adventurer, but not a starter resource, to rejoin the party', () => {
+    const ruleset = createRuleset([fourPlayerPack], [baseRulesModule]);
+    const state = createGame({ gameId: 'starter-rejoin', seed: 8, players }, ruleset);
+    const starter = state.players[0]!.party.shift()!.adventurerId;
+    state.players[0]!.hand.push(starter);
+    const legal = getLegalCommands(state, ruleset, 'p1');
+    expect(legal).toContainEqual({ type: 'PLAY_ADVENTURER', cardId: starter });
+    expect(legal).not.toContainEqual({ type: 'PLAY_ADVENTURER', cardId: state.players[0]!.hand.find((id) => state.cards[id]?.definitionId === 'test:starter/stone') });
+    const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'PLAY_ADVENTURER', cardId: starter }));
+    expect(result.error).toBeUndefined();
+    expect(result.state.players[0]!.party.at(-1)?.adventurerId).toBe(starter);
   });
 
   it('ends the final round at the seat immediately before the starting player', () => {

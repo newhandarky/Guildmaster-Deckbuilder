@@ -52,8 +52,9 @@ export function validateReplayBundleAgainstRuleset(bundle: unknown, ruleset: Rul
   if (!isFiniteJsonValue(bundle)) return { diagnostic: diagnostic('MALFORMED_BUNDLE', 'Replay bundle must contain finite, acyclic plain JSON data only.') };
   const parsed = ReplayBundleSchema.safeParse(bundle);
   if (!parsed.success) {
-    const unknownVersion = typeof bundle === 'object' && bundle !== null && ('schemaVersion' in bundle || 'protocolVersion' in bundle)
-      && ((bundle as Record<string, unknown>).schemaVersion !== 1 || (bundle as Record<string, unknown>).protocolVersion !== 1);
+    const record = typeof bundle === 'object' && bundle !== null ? bundle as Record<string, unknown> : undefined;
+    const unknownVersion = Boolean(record && ('schemaVersion' in record || 'protocolVersion' in record)
+      && (![1, 2].includes(Number(record.schemaVersion)) || record.protocolVersion !== 1));
     return { diagnostic: diagnostic(unknownVersion ? 'UNKNOWN_REPLAY_VERSION' : 'MALFORMED_BUNDLE', parsed.error.issues[0]?.message ?? 'Replay bundle is malformed.') };
   }
   const expected = replayRegistryFingerprint(ruleset);

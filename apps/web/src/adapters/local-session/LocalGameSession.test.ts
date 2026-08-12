@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base';
 import { CpuTurnRunner, baseBalancedCpuProfile } from '@guildmaster/game-ai';
-import { baseRulesModule, createGame, createRuleset, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayRegistryFingerprint, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
-import type { EffectDefinition, GameCommand, LifecycleHook, PlayerView } from '@guildmaster/game-protocol';
+import { baseRulesModule, createGame, createRuleset, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
+import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
 import { createWebRuleset } from '../../app/ruleset.js';
 
@@ -111,7 +111,7 @@ describe('LocalGameSession transactional boundary', () => {
     if (!humanChoice) throw new Error('Expected human bond setup command.');
     let update = session.submit(humanChoice);
     expect(update.view.activePlayerId).toBe('ai-1');
-    expect(update.cpu.status).toBe('ready');
+    expect(update.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-1' });
     update = session.stepCpu();
     expect(update.view.activePlayerId).toBe('ai-2');
     update = session.stepCpu();
@@ -122,6 +122,178 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.cpu.decisions.every(({ command, reasonCode }) => command.type === 'SELECT_BONDS' && reasonCode === 'KEEP_HIGHEST_BOND_VALUE')).toBe(true);
   });
 
+  it('rejects the previous full-pack identity in Snapshot and Replay', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const initialConfig = { gameId: 'old-full-identity', seed: 811, players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI 1', kind: 'ai' as const }, { id: 'ai-2', name: 'AI 2', kind: 'ai' as const }, { id: 'ai-3', name: 'AI 3', kind: 'ai' as const }], startingPlayerId: 'human-1' };
+    const snapshot = serializeSnapshot(createGame(initialConfig, ruleset));
+    for (const packs of [snapshot.contentPacks, snapshot.state.contentPacks]) {
+      const pack = packs.find(({ id }) => id === 'base:provisional-original-full')!;
+      pack.version = '0.1.0'; pack.hash = 'base-provisional-original-full-v1-neutral-roster-project-copy-policy';
+    }
+    expect(() => restoreSnapshot(snapshot, ruleset)).toThrow(/registry fingerprint/);
+    const registry = replayRegistryFingerprint(ruleset);
+    const oldPack = registry.contentPacks.find(({ id }) => id === 'base:provisional-original-full')!;
+    oldPack.version = '0.1.0'; oldPack.hash = 'base-provisional-original-full-v1-neutral-roster-project-copy-policy';
+    expect(replayGame({ schemaVersion: 1, protocolVersion: 1, registry, initialConfig, commands: [] }, ruleset)).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'REGISTRY_MISMATCH' } });
+  });
+
+  it('rejects a full-mode schema 4 save that omits Replay v2 or CPU audit metadata', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const session = new LocalGameSession(ruleset);
+    session.restart();
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as Record<string, unknown>;
+    delete persisted.replayBundle;
+    delete persisted.cpuAutomation;
+    localStorage.setItem(storageKey, JSON.stringify(persisted));
+    const recovered = new LocalGameSession(ruleset).current();
+    expect(recovered).toMatchObject({ view: { revision: 0, status: 'setup' }, persistence: { schemaVersion: 2, state: 'fresh', recoveryReason: 'INVALID_SAVE' } });
+    expect(recovered.view.gameId).not.toBe(session.current().view.gameId);
+  });
+
+  it.each(['schema-2-envelope', 'legacy-v1-keys'] as const)('rejects a current full-mode Snapshot smuggled through %s', (format) => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const session = new LocalGameSession(ruleset);
+    session.restart();
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as { snapshot: unknown };
+    localStorage.removeItem(storageKey);
+    if (format === 'schema-2-envelope') {
+      localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 2, snapshot: persisted.snapshot, events: [] }));
+    } else {
+      localStorage.setItem('guildmaster-mvp-snapshot-v1', JSON.stringify(persisted.snapshot));
+      localStorage.setItem('guildmaster-mvp-events-v1', '[]');
+    }
+    const recovered = new LocalGameSession(ruleset).current();
+    expect(recovered).toMatchObject({ view: { revision: 0, status: 'setup' }, persistence: { schemaVersion: 2, state: 'fresh', recoveryReason: 'INVALID_SAVE' } });
+    expect(recovered.view.gameId).not.toBe(session.current().view.gameId);
+  });
+
+  it('keeps Replay v2 CPU runner metadata canonical after a rejected human command', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const session = new LocalGameSession(ruleset);
+    let update = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) update = session.stepCpu();
+    const acceptedGameId = update.view.gameId;
+    const acceptedRevision = update.view.revision;
+    const rejected = session.submit({ type: 'BUY_CARD', cardId: 'missing-card' });
+    expect(rejected.error?.code).toBe('INVALID_COMMAND');
+    const restored = new LocalGameSession(ruleset).current();
+    expect(restored).toMatchObject({
+      view: { gameId: acceptedGameId, revision: acceptedRevision, status: 'playing' },
+      persistence: { schemaVersion: 2, state: 'restored', replayHistoryComplete: true },
+    });
+    expect(restored.persistence.recoveryReason).toBeUndefined();
+  });
+
+  it('does not reuse a command ID after rejection, suspended root, and reload', () => {
+    const humanChoice: EffectDefinition['body'] = { kind: 'choice', choiceId: 'human-phase-choice', decisionKind: 'choose-effect-option', actor: { kind: 'controller' }, options: [{ id: 'continue', effect: modify(0) }] };
+    const ruleset = createRuleset([baseProvisionalOriginalFullContentPack], [baseRulesModule, module([hook('phase-end', humanChoice)])], { allowProvisionalPlaytest: true });
+    let session = new LocalGameSession(ruleset);
+    let update = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) update = session.stepCpu();
+    expect(session.submit({ type: 'BUY_CARD', cardId: 'missing-card' }).error?.code).toBe('INVALID_COMMAND');
+    update = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(update.view.decisionPrompt?.choiceId).toBe('human-phase-choice');
+    session = new LocalGameSession(ruleset);
+    const resolution = session.current().legalCommands.find(({ type }) => type === 'RESOLVE_EFFECT_CHOICE');
+    if (!resolution) throw new Error('Expected restored human phase choice.');
+    expect(session.submit(resolution).error).toBeUndefined();
+    const replay = (JSON.parse(localStorage.getItem(storageKey)!) as { replayBundle: { commands: { commandId: string }[] } }).replayBundle;
+    expect(new Set(replay.commands.map(({ commandId }) => commandId)).size).toBe(replay.commands.length);
+    expect(new LocalGameSession(ruleset).current().persistence).toMatchObject({ state: 'restored', replayHistoryComplete: true });
+  });
+
+  it('does not persist an unaudited runner mutation when a CPU decision is blocked', () => {
+    const untypedCpuChoice: EffectDefinition['body'] = { kind: 'choice', choiceId: 'untyped-cpu-choice', actor: { kind: 'player-id', playerId: 'ai-1' }, options: [{ id: 'continue', effect: modify(0) }] };
+    const ruleset = createRuleset([baseProvisionalOriginalFullContentPack], [baseRulesModule, module([hook('phase-end', untypedCpuChoice)])], { allowProvisionalPlaytest: true });
+    const session = new LocalGameSession(ruleset);
+    let update = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) update = session.stepCpu();
+    update = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(update.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-1' });
+    const blocked = session.stepCpu();
+    expect(blocked.cpu).toMatchObject({ status: 'blocked' });
+    const restored = new LocalGameSession(ruleset).current();
+    expect(restored).toMatchObject({ persistence: { state: 'restored', replayHistoryComplete: true }, cpu: { status: 'ready', nextActorId: 'ai-1' } });
+    expect(new LocalGameSession(ruleset).stepCpu().cpu).toMatchObject({ status: 'blocked' });
+  });
+
+  it('rejects an obsolete deterministic CPU profile with a structured recovery reason', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const session = new LocalGameSession(ruleset);
+    let update = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) update = session.stepCpu();
+    expect(update.view.status).toBe('playing');
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as {
+      cpuAutomation: { profileVersion: string };
+      replayBundle: { automation: { profileVersion: string } };
+    };
+    persisted.cpuAutomation.profileVersion = '1.0.0';
+    persisted.replayBundle.automation.profileVersion = '1.0.0';
+    localStorage.setItem(storageKey, JSON.stringify(persisted));
+
+    expect(new LocalGameSession(ruleset).current().persistence).toMatchObject({
+      state: 'fresh',
+      recoveryReason: 'CPU_PROFILE_MISMATCH',
+    });
+  });
+
+  it.each([
+    { label: 'a missing authoritative human', players: [{ id: 'other-human', name: 'Other', kind: 'human' as const }, { id: 'ai-1', name: 'AI 1', kind: 'ai' as const }] },
+    { label: 'two human seats', players: [{ id: 'human-1', name: 'Human 1', kind: 'human' as const }, { id: 'human-2', name: 'Human 2', kind: 'human' as const }, { id: 'ai-1', name: 'AI 1', kind: 'ai' as const }, { id: 'ai-2', name: 'AI 2', kind: 'ai' as const }] },
+  ])('rejects a canonical full-pack save with $label', ({ players }) => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const initialConfig = { gameId: 'invalid-full-roster', seed: 20260726, players, startingPlayerId: players[0]!.id };
+    const snapshot = serializeSnapshot(createGame(initialConfig, ruleset));
+    const automation = { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: { autonomousSteps: 0, turnActions: [], visibleStates: [] }, decisions: [] };
+    const replayBundle = { schemaVersion: 2 as const, protocolVersion: 1 as const, registry: replayRegistryFingerprint(ruleset), initialConfig, commands: [], expectedEvents: [], expectedFinalSnapshot: snapshot, automation };
+    localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 4, snapshot, events: [], replayBundle, cpuAutomation: automation }));
+    const recovered = new LocalGameSession(ruleset).current();
+    expect(recovered).toMatchObject({ view: { viewerId: 'human-1', status: 'setup', opponents: expect.arrayContaining([expect.objectContaining({ id: 'ai-1' }), expect.objectContaining({ id: 'ai-2' }), expect.objectContaining({ id: 'ai-3' })]) }, persistence: { state: 'fresh', recoveryReason: 'REPLAY_DIVERGENCE' } });
+  });
+
+  it('exposes non-active CPUs as consecutive actors for a human-turn suspension', () => {
+    const cpuChoice = (actorId: string, choiceId: string): EffectDefinition['body'] => ({ kind: 'choice', choiceId, decisionKind: 'choose-effect-option', actor: { kind: 'player-id', playerId: actorId }, options: [{ id: 'continue', effect: modify(0) }] });
+    const ruleset = createRuleset(
+      [baseProvisionalOriginalFullContentPack],
+      [baseRulesModule, module([hook('command-before', { kind: 'sequence', effects: [cpuChoice('ai-1', 'ai-1-choice'), cpuChoice('ai-2', 'ai-2-choice')] })])],
+      { allowProvisionalPlaytest: true },
+    );
+    const session = new LocalGameSession(ruleset);
+    let update = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) update = session.stepCpu();
+    expect(update.view.activePlayerId).toBe('human-1');
+    update = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(update.error).toBeUndefined();
+    expect(update.view.activePlayerId).toBe('human-1');
+    expect(update.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-1' });
+    update = session.stepCpu();
+    expect(update.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-2' });
+  });
+
+  it('changes the scheduler step key for consecutive choices owned by the same CPU', () => {
+    const moduleId = 'test:same-cpu-choice';
+    const cpuChoice = (choiceId: string): EffectDefinition['body'] => ({ kind: 'choice', choiceId, decisionKind: 'choose-effect-option', actor: { kind: 'player-id', playerId: 'ai-1' }, options: [{ id: 'continue', effect: modify(0) }] });
+    const choiceRulesModule: RulesModule = {
+      id: moduleId, version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled',
+      lifecycleHooks: [{ schemaVersion: 1, moduleId, hookId: 'nested', point: 'command-before', kind: 'trigger', priority: 1, effect: { schemaVersion: 1, effectId: `${moduleId}:nested`, body: { kind: 'sequence', effects: [cpuChoice('first-cpu-choice'), cpuChoice('second-cpu-choice')] } } }],
+    };
+    const ruleset = createRuleset([baseProvisionalOriginalFullContentPack], [baseRulesModule, choiceRulesModule], { allowProvisionalPlaytest: true });
+    const session = new LocalGameSession(ruleset);
+    let setup = session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    for (let cpu = 0; cpu < 3; cpu += 1) setup = session.stepCpu();
+    expect(setup.view.status).toBe('playing');
+    const first = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(first.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-1' });
+    const second = session.stepCpu();
+    expect(second.cpu.diagnostic).toBeUndefined();
+    expect(second.cpu).toMatchObject({ status: 'ready', nextActorId: 'ai-1' });
+    expect(second.view.revision).toBe(first.view.revision);
+    expect(second.cpu.stepKey).not.toBe(first.cpu.stepKey);
+    const completed = session.stepCpu();
+    expect(completed.error).toBeUndefined();
+    expect(completed.view).toMatchObject({ revision: first.view.revision + 1, phase: 'combat' });
+  });
+
   it('finishes a deterministic four-player provisional expedition without illegal CPU commands', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-original-full');
     let session = new LocalGameSession(ruleset);
@@ -130,16 +302,26 @@ describe('LocalGameSession transactional boundary', () => {
       const legal = update.legalCommands;
       const choice = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESPOND_COUNTER_CONSENT');
       if (choice) return choice;
-      const attack = legal.filter((command): command is Extract<typeof command, { type: 'ATTACK_TARGET' }> => command.type === 'ATTACK_TARGET').sort((left, right) => {
+      const availableBoss = Object.values(update.view.enemyTargets).find(({ kind, status }) => kind === 'boss' && status === 'available');
+      const bossCombat = availableBoss ? update.definitions[update.view.cards[availableBoss.cardInstanceId]?.definitionId ?? '']?.combat ?? Number.POSITIVE_INFINITY : 0;
+      const partyCombat = update.view.self.turnCombatBonus + update.view.self.party.reduce((sum, { adventurerId, equipmentId }) => sum + (update.definitions[update.view.cards[adventurerId]?.definitionId ?? '']?.combat ?? 0) + (equipmentId ? update.definitions[update.view.cards[equipmentId]?.definitionId ?? '']?.combat ?? 0 : 0), 0);
+      const needsBossPower = Boolean(availableBoss) && partyCombat < bossCombat;
+      const attacks = legal.filter((command): command is Extract<typeof command, { type: 'ATTACK_TARGET' }> => command.type === 'ATTACK_TARGET').sort((left, right) => {
         const targetValue = (targetId: string) => { const target = update.view.enemyTargets[targetId]; const definition = target ? update.definitions[update.view.cards[target.cardInstanceId]?.definitionId ?? ''] : undefined; return (target?.kind === 'boss' ? 10_000 : 0) + (definition?.honor ?? 0) * 100; };
         return targetValue(right.targetId) - targetValue(left.targetId);
-      })[0];
-      if (attack) return attack;
+      });
+      const bossAttack = attacks.find(({ targetId }) => update.view.enemyTargets[targetId]?.kind === 'boss');
+      if (bossAttack) return bossAttack;
+      if (update.view.phase === 'combat' && needsBossPower && (partyCombat >= bossCombat - 3 || update.view.self.history.defeatedMonsters >= 10)) return legal.find(({ type }) => type === 'END_PHASE');
+      if (attacks[0]) return attacks[0];
       for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
       const buys = legal.filter((command): command is Extract<typeof command, { type: 'BUY_CARD' }> => command.type === 'BUY_CARD').sort((left, right) => {
-        const value = (cardId: string) => { const definition = update.definitions[update.view.cards[cardId]?.definitionId ?? '']; return (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
+        const value = (cardId: string) => { const definition = update.definitions[update.view.cards[cardId]?.definitionId ?? '']; return (needsBossPower ? (definition?.combat ?? 0) * 10_000 : 0) + (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
         return value(right.cardId) - value(left.cardId);
       });
+      if (needsBossPower) return buys.find(({ cardId }) => (update.definitions[update.view.cards[cardId]?.definitionId ?? '']?.combat ?? 0) > 0)
+        ?? legal.find((command) => command.type === 'REFRESH_MARKET' && command.row === 'adventurer')
+        ?? legal.find(({ type }) => type === 'END_PHASE');
       return buys[0] ?? legal.find(({ type }) => type === 'END_PHASE');
     };
     for (let step = 0; step < 5_000 && update.view.status !== 'finished'; step += 1) {
@@ -155,10 +337,20 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.view.status).toBe('finished');
     expect(update.scoreboard).toHaveLength(4);
     expect(update.scoreboard!.filter(({ rank }) => rank === 1).length).toBeGreaterThan(0);
-    expect(session.exportReplayDiagnostic().json).toContain('base:cpu-balanced');
+    const replaySource = session.exportReplayDiagnostic().json!;
+    const replay = JSON.parse(replaySource) as { schemaVersion: number; automation: { runner: unknown; decisions: { commandId: string; contextFingerprint: string }[] } };
+    expect(replay).toMatchObject({ schemaVersion: 2, automation: { runner: expect.any(Object), decisions: expect.any(Array) } });
+    const replayReport = session.runReplayDiagnosticJson(replaySource);
+    if (replayReport.status !== 'completed') throw new Error(JSON.stringify(replayReport));
+    const tampered = structuredClone(replay);
+    tampered.automation.decisions[0]!.commandId = 'tampered-command';
+    expect(replayGame(tampered, ruleset)).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'MALFORMED_BUNDLE' } });
+    const forgedAudit = structuredClone(replay);
+    forgedAudit.automation.decisions[0]!.contextFingerprint = 'forged-but-non-empty';
+    expect(session.runReplayDiagnosticJson(JSON.stringify(forgedAudit))).toMatchObject({ status: 'failed', message: 'Stored CPU decision does not match canonical recomputation.' });
   }, 30_000);
 
-  it.skipIf(import.meta.env.RUN_HEADLESS_REGRESSION !== '1')('finishes the committed 20-seed headless regression set within 250 rounds', () => {
+  it.skipIf(import.meta.env.RUN_HEADLESS_REGRESSION !== '1' && import.meta.env.RUN_HEADLESS_SOAK !== '1')('finishes its assigned headless regression seeds within 250 rounds', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-original-full');
     const registryFingerprint = JSON.stringify(replayRegistryFingerprint(ruleset));
     const players = [
@@ -167,26 +359,15 @@ describe('LocalGameSession transactional boundary', () => {
       { id: 'p3', name: 'P3', kind: 'ai' as const },
       { id: 'p4', name: 'P4', kind: 'ai' as const },
     ];
-    const scriptedHumanCommand = (view: PlayerView, legal: readonly GameCommand[]): GameCommand | undefined => {
-      const mandatory = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESPOND_COUNTER_CONSENT');
-      if (mandatory) return mandatory;
-      const attack = legal.filter((command): command is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => command.type === 'ATTACK_TARGET').sort((left, right) => {
-        const targetValue = (targetId: string) => { const target = view.enemyTargets[targetId]; const definition = target ? ruleset.registry.definitions[view.cards[target.cardInstanceId]?.definitionId ?? ''] : undefined; return (target?.kind === 'boss' ? 10_000 : 0) + (definition?.honor ?? 0) * 100; };
-        return targetValue(right.targetId) - targetValue(left.targetId);
-      })[0];
-      if (attack) return attack;
-      for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
-      const buy = legal.filter((command): command is Extract<GameCommand, { type: 'BUY_CARD' }> => command.type === 'BUY_CARD').sort((left, right) => {
-        const utility = (cardId: string) => { const definition = ruleset.registry.definitions[view.cards[cardId]?.definitionId ?? '']; return (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
-        return utility(right.cardId) - utility(left.cardId);
-      })[0];
-      return buy ?? legal.find(({ type }) => type === 'END_PHASE');
-    };
-    for (const seed of Array.from({ length: 20 }, (_, index) => 10_001 + index)) {
+    const seedStart = Number(import.meta.env.HEADLESS_SEED_START ?? 10_001);
+    const seedCount = Number(import.meta.env.HEADLESS_SEED_COUNT ?? 20);
+    const maximumShardSize = import.meta.env.RUN_HEADLESS_SOAK === '1' ? 100 : 20;
+    if (!Number.isSafeInteger(seedStart) || !Number.isSafeInteger(seedCount) || seedCount < 1 || seedCount > maximumShardSize) throw new Error(`Headless seed shard must contain 1–${maximumShardSize} safe integer seeds.`);
+    for (const seed of Array.from({ length: seedCount }, (_, index) => seedStart + index)) {
       let state = createGame({ gameId: `headless-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
       const runner = new CpuTurnRunner(baseBalancedCpuProfile);
       let actorKey = '';
-      for (let step = 0; step < 8_000 && state.status !== 'finished'; step += 1) {
+      for (let step = 0; step < 20_000 && state.status !== 'finished'; step += 1) {
         const consent = state.effectState.pendingCounterConsent;
         const actorId = consent?.requiredActorIds.find((id) => !consent.acceptedActorIds.includes(id))
           ?? state.effectState.pendingChoice?.actorId
@@ -195,8 +376,7 @@ describe('LocalGameSession transactional boundary', () => {
         if (nextActorKey !== actorKey) { runner.reset(); actorKey = nextActorKey; }
         const view = projectPlayerView(state, ruleset, actorId);
         const legalCommands = getLegalCommands(state, ruleset, actorId);
-        const humanCommand = actorId === 'p1' ? scriptedHumanCommand(view, legalCommands) : undefined;
-        const decision = actorId === 'p1' ? undefined : runner.step({
+        const decision = runner.step({
           view,
           legalCommands,
           actionFeatures: getCpuActionFeatures(state, ruleset, actorId),
@@ -205,9 +385,8 @@ describe('LocalGameSession transactional boundary', () => {
           rulesetFingerprint: registryFingerprint,
           profile: baseBalancedCpuProfile,
         });
-        if (!humanCommand && !decision) throw new Error(`Seed ${seed} scripted human has no legal command at revision ${state.revision}.`);
-        if (decision?.status === 'blocked') throw new Error(`Seed ${seed} blocked at revision ${state.revision}: ${decision.reasonCode} ${decision.diagnostic}`);
-        const command = humanCommand ?? (decision?.status === 'ready' ? decision.command : undefined);
+        if (decision.status === 'blocked') throw new Error(`Seed ${seed} blocked at revision ${state.revision}: ${decision.reasonCode} ${decision.diagnostic}`);
+        const command = decision.command;
         if (!command) throw new Error(`Seed ${seed} produced no command at revision ${state.revision}.`);
         const result = dispatch(state, ruleset, {
           protocolVersion: 1,
@@ -219,11 +398,11 @@ describe('LocalGameSession transactional boundary', () => {
         });
         if (result.error) throw new Error(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message}`);
         state = result.state;
-        if (state.round > 250) throw new Error(`Seed ${seed} exceeded 250 rounds.`);
+        if (state.round > 250) throw new Error(`Seed ${seed} exceeded 250 rounds: ${JSON.stringify({ activePlayerId: state.activePlayerId, phase: state.phase, bossTargets: Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'boss' && status === 'available').map(({ cardInstanceId }) => state.cards[cardInstanceId]?.definitionId), adventurerRow: state.zones['base:adventurer-row']?.cardIds.map((id) => state.cards[id]?.definitionId), players: state.players.map((player) => ({ id: player.id, history: player.history, party: player.party.map(({ adventurerId, equipmentId }) => [state.cards[adventurerId]?.definitionId, equipmentId ? state.cards[equipmentId]?.definitionId : null]), hand: player.hand.map((id) => state.cards[id]?.definitionId), draw: player.drawPile.map((id) => state.cards[id]?.definitionId), discard: player.discardPile.map((id) => state.cards[id]?.definitionId) })) })}`);
       }
       expect(state.status, `seed ${seed}`).toBe('finished');
     }
-  }, 120_000);
+  }, 2_400_000);
 
   it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
@@ -242,7 +421,7 @@ describe('LocalGameSession transactional boundary', () => {
       replayHistoryComplete: true,
     });
     expect(session.current().persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'fresh',
       revision: 0,
       replayHistoryComplete: true,
@@ -250,7 +429,7 @@ describe('LocalGameSession transactional boundary', () => {
 
     const saved = session.submit({ type: 'END_PHASE', phase: 'action1' });
     expect(saved.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'saved',
       revision: saved.view.revision,
       replayHistoryComplete: true,
@@ -259,7 +438,7 @@ describe('LocalGameSession transactional boundary', () => {
 
     const restored = new LocalGameSession(ruleset).current();
     expect(restored.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'restored',
       revision: saved.view.revision,
       replayHistoryComplete: true,
@@ -291,12 +470,24 @@ describe('LocalGameSession transactional boundary', () => {
     seedConsentSave(ruleset);
     const restored = new LocalGameSession(ruleset).current();
     expect(restored.persistence).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'restored',
       revision: 0,
       replayHistoryComplete: false,
     });
     expect(restored.replayHistoryComplete).toBe(false);
+  });
+
+  it('fails closed and clears a save whose outer Snapshot diverges from its command Replay', () => {
+    const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
+    const session = new LocalGameSession(ruleset);
+    session.submit({ type: 'END_PHASE', phase: 'action1' });
+    const stored = JSON.parse(localStorage.getItem(storageKey)!) as { snapshot: { state: { rngState: number } } };
+    stored.snapshot.state.rngState += 1;
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+    const recovered = new LocalGameSession(ruleset).current();
+    expect(recovered).toMatchObject({ view: { revision: 0, phase: 'action1' }, persistence: { schemaVersion: 2, state: 'fresh', recoveryReason: 'REPLAY_DIVERGENCE' } });
+    expect(localStorage.getItem(storageKey)).toBeNull();
   });
 
   it('keeps accepted progress playable and separates storage failure from engine errors', () => {
@@ -306,7 +497,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.error).toBeUndefined();
     expect(update.view).toMatchObject({ revision: 1, phase: 'combat' });
     expect(update.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'memory-only',
       revision: 1,
       replayHistoryComplete: true,
@@ -320,7 +511,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(current.error).toBeUndefined();
     expect(current.view).toMatchObject({ revision: 0, phase: 'action1' });
     expect(current.persistence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       state: 'memory-only',
       revision: 0,
       replayHistoryComplete: true,
@@ -367,6 +558,7 @@ describe('LocalGameSession transactional boundary', () => {
   it('records one committed audit after choice suspension and never duplicates suspended events', () => {
     const choice: EffectDefinition['body'] = {
       kind: 'choice',
+      decisionKind: 'choose-effect-option',
       choiceId: 'session-choice',
       actor: { kind: 'controller' },
       options: [{ id: 'continue', effect: modify(2) }]

@@ -38,7 +38,7 @@ export type TurnFactLedger = {
   extraCardsDrawn: number; itemsUsed: number; bossesDefeated: number; monstersDefeated: number;
   marketRefreshed: boolean; combatResolved: boolean; combatSkipped: boolean;
 };
-export type PlayerDecisionKind = 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card';
+export type PlayerDecisionKind = 'choose-effect-option' | 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card';
 export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string }[] };
 
 export type GameState = {

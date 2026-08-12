@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseProvisionalContentCatalog, baseProvisionalOriginalFullCapabilityMatrix, baseProvisionalOriginalFullContentPack } from '../src/index.js';
+import { baseProvisionalContentCatalog, baseProvisionalOriginalFullCapabilityMatrix, baseProvisionalOriginalFullCapabilityRegistry, baseProvisionalOriginalFullContentPack } from '../src/index.js';
 
 describe('full provisional original-derived pack', () => {
   it('contains the complete neutral roster and the explicit project copy policy', () => {
@@ -20,8 +20,16 @@ describe('full provisional original-derived pack', () => {
     const enabled = baseProvisionalOriginalFullContentPack.definitions.filter(({ tags }) => tags?.includes('playtest:effect-enabled'));
     expect(enabled.map(({ id }) => id).sort()).toEqual(['01','04','05','08','10','13','15','17','18','27'].map((id) => `base:resource/resource-${id}`).sort());
     expect(enabled.every((definition) => definition.useEffect || definition.equipmentEventTriggers)).toBe(true);
-    expect(baseProvisionalOriginalFullCapabilityMatrix).toHaveLength(baseProvisionalOriginalFullContentPack.definitions.length);
-    expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'enabled').every(({ requiredCapabilities, cpuResolver, testId }) => requiredCapabilities.length > 0 && cpuResolver !== 'none-effect-disabled' && testId.startsWith('foundation:'))).toBe(true);
+    expect(baseProvisionalOriginalFullCapabilityMatrix).toHaveLength(baseProvisionalOriginalFullContentPack.definitions.length + baseProvisionalOriginalFullContentPack.bonds!.length);
+    const enabledEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'enabled');
+    expect(enabledEntries).toHaveLength(10);
+    expect(enabledEntries.every(({ requiredCapabilities, cpuResolver, testIds, blocker }) => requiredCapabilities.length > 0 && cpuResolver !== 'none-effect-disabled' && testIds.length >= 3 && blocker === undefined)).toBe(true);
+    const blockedEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked');
+    expect(blockedEntries.every(({ blocker, evidenceReference, testIds }) => blocker !== undefined && evidenceReference.length > 0 && testIds.length > 0)).toBe(true);
+    expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond')).toHaveLength(30);
+    expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond').every(({ blocker }) => blocker === 'unverified-bond-condition')).toBe(true);
+    expect(baseProvisionalOriginalFullCapabilityMatrix.every((entry) => entry.requiredCapabilities.every((capability) => baseProvisionalOriginalFullCapabilityRegistry.engineCapabilities.includes(capability as never)) && baseProvisionalOriginalFullCapabilityRegistry.cpuResolvers.includes(entry.cpuResolver as never) && entry.testIds.every((testId) => baseProvisionalOriginalFullCapabilityRegistry.testIds.includes(testId as never)))).toBe(true);
+    expect(enabledEntries.every(({ effectPaths, decisionKinds }) => effectPaths.length === decisionKinds.length)).toBe(true);
   });
 
   it('does not put source names into Runtime or Presentation-facing names', () => {
