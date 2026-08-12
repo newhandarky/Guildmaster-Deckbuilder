@@ -16,6 +16,20 @@ import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choi
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
 type CommandBeforePreviewResult = { states: GameState[]; indeterminate: boolean; requiresLifecycle: boolean };
+function nonEmptySubsets(ids: readonly string[]): string[][] {
+  const results: string[][] = [];
+  for (let mask = 1; mask < (1 << ids.length); mask += 1) results.push(ids.filter((_id, index) => (mask & (1 << index)) !== 0));
+  return results;
+}
+function fixedCombinations(ids: readonly string[], count: number): string[][] {
+  const results: string[][] = [];
+  const visit = (start: number, prefix: string[]): void => {
+    if (prefix.length === count) { results.push(prefix); return; }
+    for (let index = start; index < ids.length; index += 1) visit(index + 1, [...prefix, ids[index]!]);
+  };
+  visit(0, []);
+  return results;
+}
 
 function attackPreviewObservesHiddenInformation(state: GameState, ruleset: Ruleset, actorId: string, targetId: string): boolean {
   const target = state.enemyTargets[targetId];
@@ -174,6 +188,11 @@ function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, ca
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (validateRulesetStateCompatibility(state, ruleset)) return [];
+  if (state.status === 'setup') {
+    const setup = state.bondSetup;
+    if (!setup || setup.currentActorId !== actorId || state.activePlayerId !== actorId) return [];
+    return fixedCombinations(setup.offers[actorId] ?? [], 5).map((bondIds) => ({ type: 'SELECT_BONDS', offerId: setup.offerId, bondIds }));
+  }
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
   if (validateSupplyContinuityState(state, ruleset).length) return [];
   const consent = state.effectState.pendingCounterConsent;
@@ -228,6 +247,13 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     const preview = previewCommandBefore(state, ruleset, actorId, 'BUY_CARD');
     for (const cardId of [...state.zones[baseZoneIds.adventurerRow]!.cardIds, ...state.zones[baseZoneIds.itemRow]!.cardIds]) {
       if (purchaseIsLegalInAnyPreview(preview, ruleset, actorId, cardId)) commands.push({ type: 'BUY_CARD', cardId });
+    }
+    if (!player.turnMarketRefreshed && player.hand.length) {
+      for (const [row, zoneId] of [['adventurer', baseZoneIds.adventurerRow], ['item', baseZoneIds.itemRow]] as const) {
+        for (const refreshCardIds of nonEmptySubsets(state.zones[zoneId]!.cardIds)) {
+          for (const discardCardId of player.hand) commands.push({ type: 'REFRESH_MARKET', row, discardCardId, refreshCardIds });
+        }
+      }
     }
   }
   commands.push({ type: 'END_PHASE', phase: state.phase });

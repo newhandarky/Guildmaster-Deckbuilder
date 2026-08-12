@@ -32,15 +32,24 @@ function migrateV1(snapshot: Record<string, unknown>): unknown {
   if (!state || !shared) throw new Error('Unsupported snapshot schema.');
   const zoneMap: Record<string, string> = { adventurerDeck: baseZoneIds.adventurerDeck, adventurerRow: baseZoneIds.adventurerRow, itemDeck: baseZoneIds.itemDeck, itemRow: baseZoneIds.itemRow, monsterDeck: baseZoneIds.monsterDeck, monsterRow: baseZoneIds.monsterRow, bossDeck: baseZoneIds.bossDeck, bossRow: baseZoneIds.bossRow };
   const zones = Object.fromEntries(Object.entries(zoneMap).map(([legacy, zoneId]) => [zoneId, { zoneId, kind: legacy.endsWith('Deck') ? 'orderedDeck' : legacy === 'bossRow' ? 'singleSlot' : 'faceUpRow', cardIds: shared[legacy] ?? [], visibility: 'public', rulesModuleId: 'base:rules' }]));
-  const players = ((state.players as Record<string, unknown>[]) ?? []).map((player) => ({ ...player, counters: [], moduleState: {} }));
+  const players = ((state.players as Record<string, unknown>[]) ?? []).map((player) => ({ ...player, counters: [], moduleState: {}, turnMarketRefreshed: false }));
   const enemyTargets = Object.fromEntries(Object.entries((state.enemyTargets as Record<string, Record<string, unknown>>) ?? {}).map(([id, target]) => [id, { ...target, parentEncounterId: 'base:enemies', zoneId: target.kind === 'boss' ? baseZoneIds.bossRow : baseZoneIds.monsterRow, attachments: [], moduleState: {} }]));
   const enemyEncounters = ((state.enemyEncounters as Record<string, unknown>[]) ?? []).map((encounter) => ({ ...encounter, status: 'active', rulesModuleId: 'base:rules', state: {} }));
-  const migratedState: Record<string, unknown> = { ...state, schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', players, zones, enemyTargets, enemyEncounters }; delete migratedState.sharedZones;
+  const activePlayerId = state.activePlayerId as string;
+  const migratedState: Record<string, unknown> = { ...state, schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', players, zones, enemyTargets, enemyEncounters, turnFacts: { schemaVersion: 1, playerId: activePlayerId, adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false } }; delete migratedState.sharedZones;
   return { schemaVersion: 2, engineVersion: migratedState.engineVersion, rulesetVersion: migratedState.rulesetVersion, contentPacks: migratedState.contentPacks, rulesModules: migratedState.rulesModules, state: migratedState };
 }
 export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState {
   if (!isFiniteJsonValue(snapshot)) throw new Error('Snapshot must contain finite, acyclic plain JSON data.');
-  const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : raw; const envelope = SnapshotEnvelopeSchema.parse(migrated);
+  const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : structuredClone(raw);
+  if ((migrated as Record<string, unknown>).schemaVersion === 2) {
+    const legacyState = (migrated as { state?: Record<string, unknown> }).state;
+    if (legacyState) {
+      for (const player of (legacyState.players as Record<string, unknown>[] | undefined) ?? []) player.turnMarketRefreshed ??= false;
+      legacyState.turnFacts ??= { schemaVersion: 1, playerId: legacyState.activePlayerId, adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false };
+    }
+  }
+  const envelope = SnapshotEnvelopeSchema.parse(migrated);
   if (envelope.engineVersion !== envelope.state.engineVersion || envelope.rulesetVersion !== envelope.state.rulesetVersion) throw new Error('Snapshot engine or ruleset version mismatch.');
   if (JSON.stringify(envelope.contentPacks) !== JSON.stringify(envelope.state.contentPacks)) throw new Error('Snapshot content manifest mismatch.');
   if (JSON.stringify(envelope.rulesModules) !== JSON.stringify(envelope.state.rulesModules)) throw new Error('Snapshot Rules Module manifest mismatch.');
@@ -63,6 +72,11 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       }, ruleset);
       const setupDifference = firstDifference(canonical.setupSelections, state.setupSelections, '$.setupSelections');
       if (setupDifference) throw new Error(`Snapshot setup selection does not match canonical seed replay at ${setupDifference}.`);
+    }
+    if (state.bondSetup) {
+      const canonical = createGame({ gameId: state.gameId, seed: state.seed, players: state.players.map(({ id, name, kind }) => ({ id, name, kind })), startingPlayerId: state.startingPlayerId }, ruleset);
+      const offerDifference = firstDifference(canonical.bondSetup?.offers, state.bondSetup.offers, '$.bondSetup.offers');
+      if (!canonical.bondSetup || canonical.bondSetup.offerId !== state.bondSetup.offerId || offerDifference) throw new Error(`Snapshot bond setup does not match canonical seed replay${offerDifference ? ` at ${offerDifference}` : ''}.`);
     }
     const encounterError = validateEncounterStateAgainstRuleset(state, ruleset);
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);

@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, type DomainEvent, type GameState, type PlayerKind } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, type DomainEvent, type GameState, type PlayerKind, type TurnFactLedger } from '@guildmaster/game-protocol';
 import { createCard } from '../model/factories.js';
 import { baseZoneIds } from '../model/zones.js';
 import { shuffle } from '../ports/random.js';
@@ -9,6 +9,9 @@ import { assertGameStateInvariants, assertRulesetGameStateInvariants } from './s
 import { supplyContinuityPolicyFor, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 export type GamePlayerConfig = { id: string; name: string; kind: PlayerKind };
 export type CreateGameConfig = { gameId: string; seed: number; players: readonly GamePlayerConfig[]; startingPlayerId?: string };
+export function createTurnFactLedger(playerId: string): TurnFactLedger {
+  return { schemaVersion: 1, playerId, adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false };
+}
 function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState {
   const startingPlayerId = config.startingPlayerId ?? config.players[0]?.id;
   const playerIds = config.players.map(({ id }) => id);
@@ -18,7 +21,22 @@ function createEmptyState(config: CreateGameConfig, ruleset: Ruleset): GameState
   const moduleState = Object.fromEntries(ruleset.modules.map((module) => [module.id, module.createInitialState?.() ?? {}]));
   if (!isFiniteJsonValue(moduleState)) throw new Error('Rules Module initial state must contain finite, acyclic, plain JSON data only.');
   const hasSetupContributions = ruleset.modules.some((module) => (module.setupContributions?.length ?? 0) > 0);
-  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map(rulesModuleRegistryIdentity), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, ...(hasSetupContributions ? { setupSelections: {} } : {}), enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
+  const usesBondSetup = ruleset.registry.bonds.length >= config.players.length * 7;
+  return { schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', contentPacks: ruleset.registry.packs.map(({ id, version, hash }) => ({ id, version, hash })), rulesModules: ruleset.modules.map(rulesModuleRegistryIdentity), gameId: config.gameId, seed: config.seed, rngState: config.seed, revision: 0, status: usesBondSetup ? 'setup' : 'playing', players: config.players.map((player) => ({ ...player, drawPile: [], hand: [], discardPile: [], party: [], playArea: [], bonds: usesBondSetup ? [] : ruleset.registry.bonds.map((bond) => ({ bondId: bond.id, completed: false })), counters: [], moduleState: {}, turnPurchaseBonus: 0, turnPurchaseSpent: 0, turnCombatBonus: 0, turnMarketRefreshed: false, history: { defeatedBosses: 0, defeatedMonsters: 0 } })), activePlayerId: startingPlayerId, startingPlayerId, round: 1, phase: 'action1', cards: {}, zones, ...(hasSetupContributions ? { setupSelections: {} } : {}), turnFacts: createTurnFactLedger(startingPlayerId), enemyTargets: {}, enemyEncounters: [{ encounterId: 'base:enemies', targetIds: [], kind: 'base:enemies', status: 'active', rulesModuleId: 'base:rules', state: {} }], removedCards: [], moduleState, effectState: {}, eventLogCursor: 0 };
+}
+
+function setupPrivateBonds(state: GameState, ruleset: Ruleset): void {
+  if (state.status !== 'setup') return;
+  const required = state.players.length * 7;
+  if (ruleset.registry.bonds.length < required) throw new Error(`Bond setup requires ${required} unique bonds; found ${ruleset.registry.bonds.length}.`);
+  const shuffled = shuffle(state, ruleset.registry.bonds.map(({ id }) => id));
+  state.bondSetup = {
+    schemaVersion: 1,
+    offerId: `base:bond-setup:${state.gameId}`,
+    currentActorId: state.startingPlayerId,
+    offers: Object.fromEntries(state.players.map((player, index) => [player.id, shuffled.slice(index * 7, (index + 1) * 7)])),
+    completedPlayerIds: [],
+  };
 }
 
 function executeSetupContributions(state: GameState, ruleset: Ruleset): void {
@@ -67,6 +85,7 @@ export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameStat
   if (bossDefinitionIds.length < bossCount) throw new Error(`A ${config.players.length}-player base game requires ${bossCount} boss definitions; found ${bossDefinitionIds.length}.`);
   state.zones[baseZoneIds.adventurerDeck]!.cardIds = shuffle(state, groups.adventurer); state.zones[baseZoneIds.itemDeck]!.cardIds = shuffle(state, [...groups.equipment, ...groups.item]); state.zones[baseZoneIds.monsterDeck]!.cardIds = [...cycleAnchors, ...shuffle(state, groups.monster)]; state.zones[baseZoneIds.bossDeck]!.cardIds = shuffle(state, bossDefinitionIds).slice(0, bossCount).map((definitionId) => createCard(state, definitionId).id);
   executeSetupContributions(state, ruleset);
+  setupPrivateBonds(state, ruleset);
   const starter = ruleset.registry.starter;
   let partyDefinitionIds: readonly string[];
   if ('partyDefinitionIds' in starter) partyDefinitionIds = starter.partyDefinitionIds;

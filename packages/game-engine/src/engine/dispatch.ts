@@ -22,6 +22,8 @@ import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
 import { nextSeat, previousSeat } from '../model/seats.js';
+import { shuffle } from '../ports/random.js';
+import { createTurnFactLedger } from './create-game.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void {
   events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) });
@@ -36,6 +38,10 @@ function removeFrom<T>(items: T[], item: T): boolean {
   if (index < 0) return false;
   items.splice(index, 1);
   return true;
+}
+function facts(state: GameState, playerId: string) {
+  if (!state.turnFacts || state.turnFacts.playerId !== playerId) state.turnFacts = createTurnFactLedger(playerId);
+  return state.turnFacts;
 }
 const pendingCommandFor = (state: GameState) => state.effectState.pendingCommand;
 type CounterConsentCommand = Extract<GameCommand, { type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT' }>;
@@ -136,6 +142,9 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (target.kind === 'boss') player.history.defeatedBosses += 1;
   else player.history.defeatedMonsters += 1;
+  if (target.kind === 'boss') facts(state, player.id).bossesDefeated += 1;
+  else facts(state, player.id).monstersDefeated += 1;
+  facts(state, player.id).combatResolved = true;
   const bondError = maybeCompleteBonds(state, player, ruleset, events, envelope.commandId); if (bondError) return bondError;
   event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEnd(state, ruleset, events, envelope.commandId); return undefined;
 }
@@ -172,6 +181,7 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
     }
   }
   player.party.push({ adventurerId: command.cardId });
+  facts(state, player.id).adventurersAddedToParty += 1;
   event(state, events, 'ADVENTURER_ENTERED_PARTY', `${player.name} 加入了一名冒險者。`, commandId);
   return undefined;
 }
@@ -199,6 +209,7 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, enve
   const definition = getDefinition(ruleset.registry, state, command.cardId);
   if (definition.type !== 'item') return { code: 'INVALID_COMMAND', message: '只有道具可使用。' };
   player.playArea.push(command.cardId);
+  facts(state, player.id).itemsUsed += 1;
   resolveItem(player, definition.itemEffect);
   if (definition.useEffect) {
     const result = beginCardUseEffectPipeline(state, ruleset, envelope, resolutionEnvelopes, rollbackState, events, factStart, definition.useEffect, { controllerId: player.id, cardRefs: { source: command.cardId } });
@@ -262,8 +273,34 @@ function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, comman
   if (getPurchasePower(state, ruleset, player.id) < cost) return { code: 'INVALID_COMMAND', message: '購買力不足。' };
   removeFrom(getZone(state, isAdventurer ? baseZoneIds.adventurerRow : baseZoneIds.itemRow).cardIds, command.cardId);
   player.turnPurchaseSpent += cost;
+  facts(state, player.id).purchasePowerSpent += cost;
+  if (definition.type === 'adventurer') facts(state, player.id).adventurersRecruited += 1;
+  if (definition.type === 'equipment') facts(state, player.id).equipmentBought += 1;
+  if (definition.type === 'item') facts(state, player.id).itemsBought += 1;
   player.discardPile.push(command.cardId);
   event(state, events, 'CARD_ACQUIRED', `${player.name} 取得了 ${definition.name}。`, commandId);
+  return undefined;
+}
+
+function refreshMarket(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'REFRESH_MARKET' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
+  const phaseError = requirePhase(state, ['purchase']);
+  if (phaseError) return phaseError;
+  if (player.turnMarketRefreshed) return { code: 'INVALID_COMMAND', message: '本回合已使用市場刷新。' };
+  if (!player.hand.includes(command.discardCardId)) return { code: 'INVALID_COMMAND', message: '市場刷新必須棄置目前手牌。' };
+  if (!command.refreshCardIds.length || command.refreshCardIds.length > 3 || new Set(command.refreshCardIds).size !== command.refreshCardIds.length) return { code: 'INVALID_COMMAND', message: '市場刷新卡牌集合無效。' };
+  const rowZoneId = command.row === 'adventurer' ? baseZoneIds.adventurerRow : baseZoneIds.itemRow;
+  const deckZoneId = command.row === 'adventurer' ? baseZoneIds.adventurerDeck : baseZoneIds.itemDeck;
+  const row = getZone(state, rowZoneId);
+  if (command.refreshCardIds.some((cardId) => !row.cardIds.includes(cardId))) return { code: 'INVALID_COMMAND', message: '市場刷新只能選擇指定公開列中的卡牌。' };
+  removeFrom(player.hand, command.discardCardId);
+  player.discardPile.push(command.discardCardId);
+  for (const cardId of command.refreshCardIds) removeFrom(row.cardIds, cardId);
+  const deck = getZone(state, deckZoneId);
+  deck.cardIds = shuffle(state, [...deck.cardIds, ...command.refreshCardIds]);
+  refillSupply(state, ruleset, command.row, events);
+  player.turnMarketRefreshed = true;
+  facts(state, player.id).marketRefreshed = true;
+  event(state, events, 'MARKET_REFRESHED', `${player.name} 刷新了 ${command.row} 公開列。`, commandId);
   return undefined;
 }
 
@@ -274,6 +311,7 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
   player.turnPurchaseBonus = 0;
   player.turnPurchaseSpent = 0;
   player.turnCombatBonus = 0;
+  player.turnMarketRefreshed = false;
   refillConfiguredSupplyRows(state, ruleset, events);
   attachTargets(state);
   drawCards(state, player.id, 5, events);
@@ -286,6 +324,7 @@ function finishRest(state: GameState, ruleset: Ruleset, player: PlayerState, eve
   const next = nextSeat(state.players, player.id);
   state.activePlayerId = next.id;
   state.phase = 'action1';
+  state.turnFacts = createTurnFactLedger(next.id);
   if (next.id === state.startingPlayerId) state.round += 1;
 }
 
@@ -294,6 +333,7 @@ function endPhase(state: GameState, ruleset: Ruleset, player: PlayerState, comma
   const next: Record<Exclude<Phase, 'rest'>, Phase> = { action1: 'combat', combat: 'action2', action2: 'purchase', purchase: 'rest' };
   if (state.phase === 'rest') finishRest(state, ruleset, player, events, commandId);
   else {
+    if (state.phase === 'combat' && !facts(state, player.id).combatResolved) facts(state, player.id).combatSkipped = true;
     state.phase = next[state.phase];
     event(state, events, 'PHASE_ENDED', `${player.name} 結束階段。`, commandId);
   }
@@ -308,6 +348,8 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
     case 'USE_ITEM': return applyItem(state, ruleset, player, envelope, resolutionEnvelopes, events, rollbackState, factStart);
     case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'REFRESH_MARKET': return refreshMarket(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'SELECT_BONDS': return { code: 'INVALID_COMMAND', message: 'Bond setup commands are only valid during setup.' };
     case 'END_PHASE': return endPhase(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'RESOLVE_EFFECT_CHOICE': return { code: 'INVALID_COMMAND', message: 'A choice command cannot be used as an original command continuation.' };
     case 'RESPOND_COUNTER_CONSENT':
@@ -327,6 +369,37 @@ function resolveEffectChoice(state: GameState, ruleset: Ruleset, player: PlayerS
   return result.status === 'failed' || result.status === 'unsupported' ? { code: 'INVALID_COMMAND', message } : undefined;
 }
 
+function dispatchBondSetup(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
+  if (envelope.command.type !== 'SELECT_BONDS') return fail(state, 'INVALID_COMMAND', '必須先完成羈絆保留選擇。');
+  const setup = state.bondSetup;
+  if (!setup || setup.currentActorId !== envelope.actorId || state.activePlayerId !== envelope.actorId) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家的羈絆選擇。');
+  const command = envelope.command;
+  const offer = setup.offers[envelope.actorId] ?? [];
+  if (command.offerId !== setup.offerId || command.bondIds.length !== 5 || new Set(command.bondIds).size !== 5 || command.bondIds.some((bondId) => !offer.includes(bondId) || !ruleset.registry.bonds.some(({ id }) => id === bondId))) return fail(state, 'INVALID_COMMAND', '羈絆選擇必須是本玩家 offer 中不重複的五張。');
+  const nextState = structuredClone(state);
+  const nextSetup = nextState.bondSetup!;
+  const player = getPlayer(nextState, envelope.actorId);
+  player.bonds = command.bondIds.map((bondId) => ({ bondId, completed: false }));
+  nextSetup.completedPlayerIds.push(player.id);
+  const events: DomainEvent[] = [];
+  event(nextState, events, 'BONDS_SELECTED', `${player.name} 已保留五張羈絆。`, envelope.commandId);
+  if (nextSetup.completedPlayerIds.length === nextState.players.length) {
+    nextState.status = 'playing';
+    nextState.activePlayerId = nextState.startingPlayerId;
+    nextState.turnFacts = createTurnFactLedger(nextState.activePlayerId);
+    delete nextState.bondSetup;
+    event(nextState, events, 'BOND_SETUP_FINISHED', '所有玩家已完成羈絆設置。', envelope.commandId);
+  } else {
+    const next = nextSeat(nextState.players, player.id);
+    nextSetup.currentActorId = next.id;
+    nextState.activePlayerId = next.id;
+    nextState.turnFacts = createTurnFactLedger(next.id);
+  }
+  nextState.revision += 1;
+  nextState.eventLogCursor += events.length;
+  return { state: nextState, events };
+}
+
 function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
   const parsedEnvelope = CommandEnvelopeSchema.safeParse(envelope);
   if (!parsedEnvelope.success) return fail(state, 'INVALID_COMMAND', `Malformed command envelope: ${parsedEnvelope.error.issues[0]?.message ?? 'invalid input'}.`);
@@ -337,6 +410,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   if (state.status === 'finished') return fail(state, 'GAME_FINISHED', '遊戲已結束。');
   if (state.status === 'pendingOfficialRuling') return fail(state, 'RULE_CLARIFICATION_REQUIRED', '目前 Rules Module 尚有必須先完成的規則裁定。');
   if (envelope.gameId !== state.gameId || envelope.expectedRevision !== state.revision) return fail(state, 'STALE_REVISION', '指令使用了過期的對局版本。');
+  if (state.status === 'setup') return dispatchBondSetup(state, ruleset, envelope);
   const pendingChoice = state.effectState.pendingChoice; const pendingConsent = state.effectState.pendingCounterConsent;
   if (pendingConsent ? !state.players.some(({ id }) => id === envelope.actorId) : envelope.actorId !== (pendingChoice?.actorId ?? state.activePlayerId)) return fail(state, 'NOT_AUTHORIZED', '目前不是此玩家可執行的指令。');
   const hasContinuation = pendingChoice || pendingConsent || state.effectState.pendingLifecycle || state.effectState.pendingCommand || state.effectState.pendingPostCommand;
