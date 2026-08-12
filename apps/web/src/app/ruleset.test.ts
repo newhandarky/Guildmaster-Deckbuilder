@@ -12,7 +12,7 @@ describe('web content modes', () => {
 
   it('composes the deterministic E2E helper fixture through state, Snapshot, Replay, and derived party capacity', () => {
     const ruleset = createWebRuleset('optional-helper');
-    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'e2e:boss-setup', 'base:helpers']);
     const initialConfig = {
       gameId: 'optional-helper-mode',
       seed: 20260820,
@@ -21,7 +21,7 @@ describe('web content modes', () => {
     };
     const state = createGame(initialConfig, ruleset);
 
-    expect(state.rulesModules[1]?.compositionFingerprint).toBeTruthy();
+    expect(state.rulesModules.find(({ id }) => id === 'base:helpers')?.compositionFingerprint).toBeTruthy();
     expect(state.moduleState['base:helpers']).toEqual({ schemaVersion: 1 });
     expect(state.zones[baseHelperZoneIds.active]!.cardIds).toHaveLength(1);
     expect(state.players[0]!.party).toHaveLength(6);
@@ -103,6 +103,16 @@ describe('web content modes', () => {
     expect(createWebRuleset(undefined, 'provisional-playtest').registry.packs).toEqual([
       expect.objectContaining({ id: 'base:provisional-foundation', contentStatus: 'provisional-playtest' }),
     ]);
+  });
+
+  it('creates the separate full provisional four-player ruleset without helpers', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' })]);
+    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(90);
+    expect(ruleset.registry.bonds).toHaveLength(30);
+    expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
+    expect(() => createWebRuleset(undefined, { contentMode: 'provisional-original-full', advancedRules: { helpers: true } })).toThrow(/does not enable helpers/);
   });
 
   it('creates and restores a deterministic foundation playtest snapshot', () => {

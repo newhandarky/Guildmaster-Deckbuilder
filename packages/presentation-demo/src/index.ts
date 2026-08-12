@@ -143,6 +143,26 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
   ],
 };
 
+const fullExistingResourceEntries = new Set(['01','02','04','05','08','10','13','15','17','18','27']);
+const fullNeutralEntry = (definitionId: string, displayName: string, kind: 'starter' | 'adventurer' | 'item' | 'equipment' | 'monster' | 'boss') => ({
+  definitionId, displayName,
+  portraitAssetKey: `placeholder:provisional-${kind}`,
+  portraitAltText: `${displayName} 的中性圖像 placeholder`,
+  shortDisplayText: '候選數值已載入；個別效果尚未啟用。',
+  detailDisplayText: '此卡屬於基礎版原作衍生 Provisional 測試。數值與非官方數位張數可供完整流程測試；未完成第二人覆核的個別效果保持停用。',
+});
+export const provisionalOriginalFullPresentationPack: PresentationPack = {
+  manifest: { id: 'presentation:provisional-original-full-neutral', version: '1.0.0', theme: 'neutral-text', locale: 'zh-TW' },
+  entries: [
+    ...Array.from({ length: 5 }, (_, index) => fullNeutralEntry(`base:starter/adventurer-${String(index + 1).padStart(2, '0')}`, `候選起始冒險者 ${String(index + 1).padStart(2, '0')}`, 'starter')),
+    fullNeutralEntry('base:starter/summoning-stone', '候選起始資源 A', 'starter'), fullNeutralEntry('base:starter/spirit-crystal', '候選起始資源 B', 'starter'),
+    ...Array.from({ length: 30 }, (_, index) => fullNeutralEntry(`base:adventurer/adventurer-${String(index + 1).padStart(2, '0')}`, `候選冒險者 ${String(index + 1).padStart(2, '0')}`, 'adventurer')),
+    ...Array.from({ length: 28 }, (_, index) => String(index + 1).padStart(2, '0')).filter((id) => !fullExistingResourceEntries.has(id)).map((id) => fullNeutralEntry(`base:resource/resource-${id}`, `候選物資 ${id}`, [2,3,7,9,11,12,14,16,18,19,20,21,24,25].includes(Number(id)) ? 'equipment' : 'item')),
+    ...Array.from({ length: 14 }, (_, index) => fullNeutralEntry(`base:monster/monster-${String(index + 1).padStart(2, '0')}`, `候選魔物 ${String(index + 1).padStart(2, '0')}`, 'monster')),
+    ...Array.from({ length: 11 }, (_, index) => fullNeutralEntry(`base:boss/boss-${String(index + 1).padStart(2, '0')}`, `候選魔王 ${String(index + 1).padStart(2, '0')}`, 'boss')),
+  ],
+};
+
 /** Neutral client-only copy for the provisional helper rotation slice. */
 export const provisionalHelpersPresentationPack: PresentationPack = {
   manifest: {

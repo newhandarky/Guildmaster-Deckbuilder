@@ -69,3 +69,4 @@ export function resolveE2EScenario(search: string): E2EScenario | undefined {
 export function getE2EScenarioPack(scenario: E2EScenario): ContentPack {
   return scenarioPacks[scenario];
 }
+export function getE2EScenarioBossCount(scenario: E2EScenario): number { return scenarioSetups[scenario].bossCopies; }

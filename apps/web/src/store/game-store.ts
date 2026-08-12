@@ -21,15 +21,27 @@ function setupForLoadedGame(): WebGameSetup {
 }
 let gameSetup: WebGameSetup = setupForLoadedGame();
 let session = new LocalGameSession(createWebRuleset(scenario, gameSetup));
+const cpuPreferenceKey = 'guildmaster-cpu-ui-preference-v1';
+function loadCpuPreference(): { paused: boolean; speed: CpuSpeed } {
+  try { const value = JSON.parse(localStorage.getItem(cpuPreferenceKey) ?? 'null') as { paused?: unknown; speed?: unknown } | null; return { paused: typeof value?.paused === 'boolean' ? value.paused : false, speed: ['slow', 'normal', 'fast', 'instant'].includes(String(value?.speed)) ? value!.speed as CpuSpeed : 'normal' }; }
+  catch { return { paused: false, speed: 'normal' }; }
+}
+const cpuPreference = loadCpuPreference();
 
-type GameStore = SessionUpdate & { replayReport: ReplayRunnerReport | undefined; submit: (command: GameCommand) => void; restart: (setup?: WebGameSetup) => void; loadCurrentReplay: () => string | undefined; runReplay: (source: string) => void; clearReplayReport: () => void };
+export type CpuSpeed = 'slow' | 'normal' | 'fast' | 'instant';
+type GameStore = SessionUpdate & { replayReport: ReplayRunnerReport | undefined; cpuPaused: boolean; cpuSpeed: CpuSpeed; submit: (command: GameCommand) => void; stepCpu: () => void; setCpuPaused: (paused: boolean) => void; setCpuSpeed: (speed: CpuSpeed) => void; restart: (setup?: WebGameSetup) => void; loadCurrentReplay: () => string | undefined; runReplay: (source: string) => void; clearReplayReport: () => void };
 
 function current(): SessionUpdate { return session.current(); }
 
 export const useGameStore = create<GameStore>((set) => ({
   ...current(),
   replayReport: undefined,
+  cpuPaused: cpuPreference.paused,
+  cpuSpeed: cpuPreference.speed,
   submit: (command) => set({ ...session.submit(command), replayReport: undefined }),
+  stepCpu: () => set({ ...session.stepCpu(), replayReport: undefined }),
+  setCpuPaused: (cpuPaused) => { try { localStorage.setItem(cpuPreferenceKey, JSON.stringify({ paused: cpuPaused, speed: useGameStore.getState().cpuSpeed })); } catch { /* preference persistence is optional */ } set({ cpuPaused }); },
+  setCpuSpeed: (cpuSpeed) => { try { localStorage.setItem(cpuPreferenceKey, JSON.stringify({ paused: useGameStore.getState().cpuPaused, speed: cpuSpeed })); } catch { /* preference persistence is optional */ } set({ cpuSpeed }); },
   restart: (setup = gameSetup) => {
     if (!scenario && JSON.stringify(setup) !== JSON.stringify(gameSetup)) {
       gameSetup = structuredClone(setup);

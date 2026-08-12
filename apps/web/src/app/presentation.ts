@@ -5,6 +5,7 @@ import {
   demoPresentationAssetManifest,
   demoPresentationPack,
   provisionalFoundationPresentationPack,
+  provisionalOriginalFullPresentationPack,
   provisionalHelpersPresentationPack,
 } from '@guildmaster/presentation-demo';
 
@@ -32,7 +33,7 @@ const resolveAsset = (assetKey: string) => {
 };
 
 export const presentationResolver = createPresentationResolver(
-  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalHelpersPresentationPack],
+  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalOriginalFullPresentationPack, provisionalHelpersPresentationPack],
   { resolveAsset },
 );
 

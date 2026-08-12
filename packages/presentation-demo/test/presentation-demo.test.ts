@@ -10,9 +10,16 @@ import {
   demoPresentationPack,
   provisionalFoundationPresentationPack,
   provisionalHelpersPresentationPack,
+  provisionalOriginalFullPresentationPack,
 } from '../src/index.js';
 
 describe('demo presentation package', () => {
+  it('covers every full provisional runtime definition with neutral copy', () => {
+    expect(validatePresentationPack(provisionalOriginalFullPresentationPack)).toEqual({ valid: true, errors: [] });
+    const covered = new Set([...provisionalFoundationPresentationPack.entries, ...provisionalOriginalFullPresentationPack.entries].map(({ definitionId }) => definitionId));
+    expect(covered.size).toBe(90);
+    expect(provisionalOriginalFullPresentationPack.entries.every(({ displayName, detailDisplayText }) => displayName.startsWith('候選') && detailDisplayText.includes('Provisional'))).toBe(true);
+  });
   it('provides a valid complete demo Presentation Pack with stable unique asset keys', () => {
     expect(validatePresentationPack(demoPresentationPack)).toEqual({ valid: true, errors: [] });
     expect(demoPresentationPack.entries).toHaveLength(18);

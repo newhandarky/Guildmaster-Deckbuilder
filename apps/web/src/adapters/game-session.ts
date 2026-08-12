@@ -20,7 +20,7 @@ export type SessionPersistenceStatus = {
 
 export type SessionEntrySummary = {
   schemaVersion: 3;
-  contentMode: 'demo' | 'provisional-playtest';
+  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
   advancedRules: { helpers: boolean };
   contentPackId: string;
   canContinue: boolean;
@@ -35,12 +35,19 @@ export type SessionEntrySummary = {
 export type SessionUpdate = {
   view: PlayerView;
   definitions: Readonly<Record<string, CardDefinition>>;
+  bondDefinitions: readonly { id: string; name: string; honor: number; requiredBosses: number }[];
   events: DomainEvent[];
   legalCommands: GameCommand[];
   actionPreviews: ActionPreviewSet;
   entrySummary: SessionEntrySummary;
   persistence: SessionPersistenceStatus;
   replayHistoryComplete: boolean;
+  cpu: {
+    profileId: string; profileVersion: string;
+    status: 'idle' | 'ready' | 'blocked';
+    diagnostic?: string;
+    decisions: readonly { revision: number; actorId: string; command: GameCommand; reasonCode: string; score: number }[];
+  };
   error?: EngineError | undefined;
   scoreboard?: ScoreRow[] | undefined;
 };

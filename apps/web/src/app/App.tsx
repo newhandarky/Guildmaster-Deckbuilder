@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
@@ -37,12 +37,13 @@ type CardInspection = {
 
 export function App() {
   const {
-    view, definitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport,
-    submit, restart, loadCurrentReplay, runReplay, clearReplayReport,
+    view, definitions, bondDefinitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport, cpu, cpuPaused, cpuSpeed,
+    submit, stepCpu, setCpuPaused, setCpuSpeed, restart, loadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
   const [inspection, setInspection] = useState<CardInspection>();
   const [hasEnteredGame, setHasEnteredGame] = useState(false);
+  const [selectedBondIds, setSelectedBondIds] = useState<string[]>([]);
   const appRootRef = useRef<HTMLElement>(null);
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -132,6 +133,14 @@ export function App() {
   />;
 
   useLifecycleFocus(hasEnteredGame && lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
+  const cpuActor = view.activePlayerId !== view.viewerId && view.opponents.find(({ id }) => id === view.activePlayerId)?.kind === 'ai';
+  useEffect(() => {
+    if (!hasEnteredGame || !cpuActor || cpuPaused || cpu.status === 'blocked' || view.status === 'finished') return undefined;
+    const delay = { slow: 1200, normal: 600, fast: 150, instant: 10 }[cpuSpeed];
+    const timer = window.setTimeout(stepCpu, delay);
+    return () => window.clearTimeout(timer);
+  }, [cpu.status, cpuActor, cpuPaused, cpuSpeed, hasEnteredGame, stepCpu, view.revision, view.status]);
+  useEffect(() => { setSelectedBondIds([]); }, [view.bondSetup?.offerId, view.bondSetup?.currentActorId]);
 
   if (!hasEnteredGame) {
     return <ExpeditionEntryScreen
@@ -208,6 +217,25 @@ export function App() {
       onInspect={inspectCard}
     />}
     interaction={<div className="interaction-rail" data-testid="interaction-rail">
+      {view.bondSetup?.offeredBondIds
+        ? <section className="bond-setup-panel" aria-labelledby="bond-setup-heading">
+            <h2 id="bond-setup-heading">從七張私人羈絆保留五張</h2>
+            <div className="bond-choice-grid">{view.bondSetup.offeredBondIds.map((bondId) => {
+              const bond = bondDefinitions.find(({ id }) => id === bondId);
+              const checked = selectedBondIds.includes(bondId);
+              return <label key={bondId}><input type="checkbox" checked={checked} disabled={!checked && selectedBondIds.length >= 5} onChange={() => setSelectedBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
+            })}</div>
+            <button className="primary" type="button" disabled={selectedBondIds.length !== 5} onClick={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}>確認保留五張</button>
+          </section>
+        : null}
+      {entrySummary.contentMode === 'provisional-original-full'
+        ? <section className="cpu-controls" aria-label="CPU 控制">
+            <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuActor || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
+              <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>
+            {cpu.diagnostic ? <p className="error" role="alert">CPU 已安全暫停：{cpu.diagnostic}</p> : null}
+            <details><summary>CPU 決策紀錄（{cpu.decisions.length}）</summary><ol>{cpu.decisions.slice(-12).map((decision, index) => <li key={`${decision.revision}-${decision.actorId}-${index}`}>r{decision.revision} · {decision.actorId} · {decision.command.type} · {decision.reasonCode} · {decision.score}</li>)}</ol></details>
+          </section>
+        : null}
       <LifecycleInteractionDock
         ref={lifecycleHeadingRef}
         model={lifecycleInteraction}

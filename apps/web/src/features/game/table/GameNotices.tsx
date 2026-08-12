@@ -4,7 +4,7 @@ import type { SessionPersistenceStatus } from '../../../adapters/game-session.js
 type Props = {
   status: GameStatus;
   persistence: SessionPersistenceStatus;
-  contentMode: 'demo' | 'provisional-playtest';
+  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
   helpersEnabled: boolean;
   error?: EngineError | undefined;
 };
@@ -13,6 +13,9 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
   return <>
     {contentMode === 'provisional-playtest'
       ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：已接入首批物資與十項卡牌效果；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。{helpersEnabled ? '協助者 08 效果已啟用，其餘協助者僅測試輪替。' : ''}</aside>
+      : null}
+    {contentMode === 'provisional-original-full'
+      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：完整候選 roster 使用非官方數位逐種類配比；未完成第二人覆核的效果保持停用，不代表官方完整卡表。</aside>
       : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">

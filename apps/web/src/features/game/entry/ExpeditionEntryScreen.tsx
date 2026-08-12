@@ -11,6 +11,7 @@ type Props = {
 };
 
 const statusCopy: Record<SessionEntrySummary['status'], string> = {
+  setup: '選擇私人羈絆',
   playing: '可繼續遊玩',
   finalRound: '最終輪進行中',
   pendingOfficialRuling: '等待規則裁定',
@@ -86,7 +87,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
             checked={selectedMode === mode}
             onChange={() => {
               setSelectedMode(mode);
-              if (mode === 'demo') setHelpersEnabled(false);
+              if (mode !== 'provisional-playtest') setHelpersEnabled(false);
             }}
           />
           <span><strong>{option.label}</strong><small>{option.description}</small>{option.warning ? <small className="content-mode-warning">{option.warning}</small> : null}</span>
