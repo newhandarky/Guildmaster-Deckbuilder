@@ -125,6 +125,10 @@ importers:
       '@guildmaster/game-protocol':
         specifier: workspace:*
         version: link:../game-protocol
+    devDependencies:
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(lightningcss@1.32.0)
 
   packages/game-engine:
     dependencies:

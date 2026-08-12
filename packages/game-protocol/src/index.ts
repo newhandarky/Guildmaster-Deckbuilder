@@ -14,6 +14,7 @@ export * from './dice.js';
 export * from './counter-consent.js';
 export * from './bond.js';
 export * from './commands.js';
+export * from './cpu.js';
 export * from './effects.js';
 export * from './lifecycle.js';
 export * from './rules-module.js';

@@ -10,6 +10,7 @@ export * from './effects/executor.js';
 export * from './effects/movement.js';
 export * from './effects/lifecycle-dispatcher.js';
 export * from './queries/legal-commands.js';
+export * from './queries/cpu-action-features.js';
 export * from './queries/player-view.js';
 export * from './queries/scoring.js';
 export * from './rules/base-rules.js';
