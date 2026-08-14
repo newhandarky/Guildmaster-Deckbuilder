@@ -57,8 +57,15 @@ describe('card visual model', () => {
     const action = commandAction('play', '加入隊伍', legalCommand);
     const model = buildCardVisualModel({ instance, definition: cardDefinition, presentation, interactionState: 'legal', action });
     expect(JSON.stringify({ cardDefinition, presentation, legalCommand })).toBe(before);
-    expect(model.tags).not.toBe(cardDefinition.tags);
+    expect(model.debugTags).not.toBe(cardDefinition.tags);
     expect(model.action).toEqual(action);
+  });
+
+  it('maps professions to player-facing labels and leaves raw tags in debug metadata', () => {
+    const cardDefinition = { ...definition(), tags: ['profession:tank', 'playtest:effects-disabled', 'project-policy:digital-copy-count', 'affinity:mage'] };
+    const model = buildCardVisualModel({ instance, definition: cardDefinition, presentation });
+    expect(model.publicTags).toEqual([{ label: '🛡 坦克', tone: 'tank' }]);
+    expect(model.debugTags).toEqual(cardDefinition.tags);
   });
 
   it('copies the exact authoritative preview into the presentation model', () => {

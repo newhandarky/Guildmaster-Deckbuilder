@@ -354,12 +354,13 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   box-shadow: -1rem 0 3rem rgb(0 0 0 / .42);
 }
 .card-details-dialog::backdrop { background: rgb(5 10 18 / .72); backdrop-filter: blur(3px); }
-.card-details { display: grid; grid-template-rows: repeat(5, max-content) minmax(0, 1fr) max-content; gap: 1rem; height: 100%; margin: 0; padding: 1.25rem; overflow-y: auto; }
-.card-details header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.card-details { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; margin: 0; overflow: hidden; }
+.card-details-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.25rem 1rem; border-bottom: 1px solid #405878; background: #142137; }
 .card-details h2 { margin: 0; font-size: 1.55rem; }
 .card-details-type { margin-bottom: .25rem; color: #9eb6d7; font-size: .75rem; letter-spacing: .08em; }
 .icon-button { width: 2.75rem; height: 2.75rem; flex: 0 0 auto; color: #fff; background: #2a3d5b; border: 0; border-radius: 50%; cursor: pointer; font-size: 1.5rem; }
 .restart-confirmation p { flex: 1 1 100%; margin: 0; color: #ffe1e6; }
+.card-details-body { display: grid; align-content: start; gap: 1rem; min-height: 0; padding: 1rem 1.25rem 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
 .card-details-art { position: relative; width: min(100%, 252px); aspect-ratio: 3 / 4; justify-self: center; overflow: hidden; border: 1px solid #526987; border-radius: 1rem; background: #263852; }
 .card-details-art img, .card-details-art .card-art-placeholder { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .card-details-copy { margin: 0; color: #e1e9f5; line-height: 1.6; }
@@ -381,9 +382,19 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .card-details-meta { display: grid; gap: .5rem; }
 .card-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
 .card-tags span, .card-details-state { width: fit-content; margin: 0; padding: .3rem .55rem; border: 1px solid #526987; border-radius: 999px; color: #dce7f6; background: #20314d; font-size: .78rem; }
+.card-tags .card-tag-melee { border-color: #d78f68; }
+.card-tags .card-tag-tank { border-color: #81b7d9; }
+.card-tags .card-tag-ranged { border-color: #d2b36f; }
+.card-tags .card-tag-mage { border-color: #ae91df; }
+.card-tags .card-tag-support { border-color: #69d5a0; }
 .card-details-state.state-legal, .card-details-state.state-target { border-color: #69d5a0; }
 .card-details-state.state-selected { border-color: #ffd27d; }
-.card-details footer { align-self: end; display: flex; flex-wrap: wrap; gap: .65rem; padding-top: .25rem; }
+.card-details-debug { color: #aebfd7; font-size: .8rem; }
+.card-details-debug summary { cursor: pointer; }
+.card-debug-tags { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.card-debug-tags code { padding: .25rem .4rem; border: 1px solid #405878; border-radius: .4rem; color: #dce7f6; background: #102039; overflow-wrap: anywhere; }
+.card-details-footer { display: flex; flex-wrap: wrap; gap: .65rem; padding: .9rem 1.25rem calc(.9rem + env(safe-area-inset-bottom)); border-top: 1px solid #405878; background: #142137; }
+.card-details-footer button { flex: 1 1 8rem; min-width: 0; min-height: 2.75rem; }
 
 @media (max-width: 767px) {
   :root { --card-width: 112px; }
@@ -402,16 +413,13 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .card-summary-band { padding: 1.1rem .42rem .4rem; }
   .card-summary-band > span { -webkit-line-clamp: 1; font-size: .58rem; }
   .card-details-dialog { inset: auto 0 0; width: 100%; height: min(78dvh, 700px); max-height: 78dvh; border-top: 1px solid #526987; border-left: 0; border-radius: 1.25rem 1.25rem 0 0; box-shadow: 0 -1rem 3rem rgb(0 0 0 / .45); }
-  .card-details { grid-template-columns: 7rem minmax(0, 1fr); grid-template-rows: repeat(5, max-content) minmax(0, 1fr) max-content; align-items: start; padding: 1rem; }
-  .card-details header, .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details footer { grid-column: 2; }
-  .card-details header { grid-row: 1; }
+  .card-details-header { padding: 1rem; }
+  .card-details-body { grid-template-columns: 7rem minmax(0, 1fr); align-items: start; padding: 1rem; }
   .card-details-art { grid-column: 1; grid-row: 1 / span 5; width: 7rem; }
-  .card-details-copy { grid-row: 2; }
-  .card-details-metrics { grid-row: 3; grid-template-columns: 1fr; }
-  .action-preview { grid-row: 4; }
+  .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details-debug { grid-column: 2; }
+  .card-details-metrics { grid-template-columns: 1fr; }
   .action-preview dl { grid-template-columns: 1fr; }
-  .card-details-meta { grid-row: 5; }
-  .card-details footer { grid-row: 7; }
+  .card-details-footer { padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom)); }
   .interaction-rail { bottom: .35rem; }
   .turn-control-dock, .lifecycle-dock { grid-template-columns: minmax(0, 1fr); }
   .turn-control-dock .controls { justify-content: stretch; }
@@ -422,8 +430,8 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 }
 
 @media (max-width: 359px) {
-  .card-details { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-  .card-details header, .card-details-art, .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details footer {
+  .card-details-body { grid-template-columns: minmax(0, 1fr); }
+  .card-details-art, .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details-debug {
     grid-column: 1;
     grid-row: auto;
   }
@@ -481,12 +489,9 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
     border-radius: 0;
     box-shadow: -1rem 0 3rem rgb(0 0 0 / .42);
   }
-  .card-details {
-    grid-template-columns: 7rem minmax(0, 1fr);
-    grid-template-rows: repeat(5, max-content) minmax(0, 1fr) max-content;
-  }
-  .card-details header, .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details footer { grid-column: 2; }
+  .card-details-body { grid-template-columns: 7rem minmax(0, 1fr); }
   .card-details-art { grid-column: 1; grid-row: 1 / span 5; width: 7rem; }
+  .card-details-copy, .card-details-metrics, .action-preview, .card-details-meta, .card-details-debug { grid-column: 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {

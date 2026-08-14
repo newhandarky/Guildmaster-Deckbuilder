@@ -586,10 +586,11 @@ test('art-first cards keep their desktop and mobile ratio without page overflow'
   const dialogBox = await page.getByRole('dialog').boundingBox();
   expect(dialogBox?.width).toBeLessThanOrEqual(390);
   expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(844, 0);
-  await expect(page.locator('.card-tags')).toContainText('e2e-layout-tag');
-  const tagsBox = await page.locator('.card-tags').boundingBox();
-  const stateBox = await page.locator('.card-details-state').boundingBox();
-  expect((tagsBox?.y ?? 0) + (tagsBox?.height ?? 0)).toBeLessThanOrEqual(stateBox?.y ?? 0);
+  const details = page.getByTestId('card-details');
+  await expect(details.locator('.card-tags')).toHaveCount(0);
+  await expect(details.locator('.card-details-debug')).not.toHaveAttribute('open', '');
+  await details.getByText('開發者資訊', { exact: true }).click();
+  await expect(details.locator('.card-debug-tags')).toContainText('e2e-layout-tag');
 });
 
 test('malformed local save is cleared and starts a playable new game', async ({ page }) => {

@@ -12,6 +12,11 @@ export type CardMetric = {
   value: number;
 };
 
+export type CardTag = {
+  label: string;
+  tone?: 'melee' | 'tank' | 'ranged' | 'mage' | 'support';
+};
+
 export type CardAction =
   | { kind: 'command'; id: string; label: string; command: GameCommand }
   | {
@@ -34,7 +39,9 @@ export type CardVisualViewModel = {
   detailDisplayText: string;
   metrics: readonly CardMetric[];
   detailMetrics: readonly CardMetric[];
-  tags: readonly string[];
+  /** Player-facing classification only; raw mechanics tags stay in debug details. */
+  publicTags: readonly CardTag[];
+  debugTags: readonly string[];
   interactionState: CardInteractionState;
   stateLabel: string;
   stateDescription: string;
@@ -84,6 +91,21 @@ const stateDescriptions: Readonly<Record<CardInteractionState, string>> = {
   unavailable: '目前不可執行',
 };
 
+const professionLabels: Readonly<Record<string, CardTag>> = {
+  melee: { label: '⚔ 近戰', tone: 'melee' },
+  tank: { label: '🛡 坦克', tone: 'tank' },
+  ranged: { label: '⌁ 遠程', tone: 'ranged' },
+  mage: { label: '✦ 法師', tone: 'mage' },
+  support: { label: '✚ 輔助', tone: 'support' },
+};
+
+function publicTagsFor(tags: readonly string[]): CardTag[] {
+  return tags.flatMap((tag) => {
+    const profession = tag.match(/^profession:(.+)$/)?.[1];
+    return profession && professionLabels[profession] ? [professionLabels[profession]] : [];
+  });
+}
+
 function metricsFor(definition: CardDefinition | undefined): CardMetric[] {
   if (!definition) return [];
   const metrics: CardMetric[] = [];
@@ -129,7 +151,8 @@ export function buildCardVisualModel({
     detailDisplayText: presentation?.detailDisplayText ?? fallback.detailDisplayText,
     metrics: detailMetrics.slice(0, 3),
     detailMetrics,
-    tags: [...(definition?.tags ?? [])],
+    publicTags: publicTagsFor(definition?.tags ?? []),
+    debugTags: [...(definition?.tags ?? [])],
     interactionState,
     stateLabel: stateLabels[interactionState],
     stateDescription: stateDescriptions[interactionState],

@@ -112,6 +112,52 @@ test('card details use a bottom sheet in portrait and a side sheet in landscape'
   expect(landscapeBox?.width).toBeLessThan(844);
 });
 
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 375, height: 667 },
+  { width: 768, height: 1024 },
+  { width: 1366, height: 768 },
+  { width: 844, height: 500 },
+]) {
+  test(`card details keep header, scrolling body, and footer separate at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openGame(page);
+    await page.getByTestId('hand').getByRole('button').first().click();
+
+    const dialog = page.getByRole('dialog');
+    const header = dialog.locator('.card-details-header');
+    const body = dialog.locator('.card-details-body');
+    const footer = dialog.locator('.card-details-footer');
+    const [dialogBox, headerBox, bodyBox, footerBox] = await Promise.all([
+      dialog.boundingBox(),
+      header.boundingBox(),
+      body.boundingBox(),
+      footer.boundingBox(),
+    ]);
+
+    expect(headerBox?.y).toBeGreaterThanOrEqual(dialogBox?.y ?? 0);
+    expect((headerBox?.y ?? 0) + (headerBox?.height ?? 0)).toBeLessThanOrEqual((bodyBox?.y ?? 0) + 1);
+    expect((bodyBox?.y ?? 0) + (bodyBox?.height ?? 0)).toBeLessThanOrEqual((footerBox?.y ?? 0) + 1);
+    expect((footerBox?.y ?? 0) + (footerBox?.height ?? 0)).toBeLessThanOrEqual((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0) + 1);
+    await expect(body).toHaveCSS('overflow-y', 'auto');
+
+    if (viewport.width < 768 && viewport.height >= 500) {
+      expect(dialogBox?.width).toBeCloseTo(viewport.width, 0);
+      expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(viewport.height, 0);
+    } else {
+      expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeCloseTo(viewport.width, 0);
+    }
+
+    for (const button of await footer.getByRole('button').all()) {
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox?.width).toBeGreaterThanOrEqual(44);
+      expect(buttonBox?.height).toBeGreaterThanOrEqual(44);
+      expect((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width + 1);
+    }
+    await expectNoDocumentOverflow(page);
+  });
+}
+
 test('low-height lifecycle interaction remains reachable without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 844, height: 390 });
   await openGame(page, '/?e2eScenario=lifecycle-choice');
