@@ -66,6 +66,11 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
           本機儲存目前不可用；仍可遊玩，但進度只會保留在此分頁。
         </aside>
       : null}
+    {persistence.recovery?.reasonCode === 'helper-rules-upgraded'
+      ? <aside className="warning" role="status" data-testid="helper-upgrade-recovery-notice">
+          協助者規則已更新，舊進度無法安全續玩，已建立新遠征。
+        </aside>
+      : null}
 
     <section className="expedition-entry-card" aria-labelledby="expedition-summary-heading">
       <div>
@@ -105,7 +110,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
               <input type="checkbox" checked={helpersEnabled} onChange={(event) => setHelpersEnabled(event.currentTarget.checked)} />
               <span>
                 <strong>協助者進階規則</strong>
-                <small>依本局種子抽選協助者；目前只有候選協助者 08 的隊伍上限效果已啟用。</small>
+                <small>依本局種子抽選協助者；目前已啟用候選協助者 01／06／07／08／09 的效果。</small>
               </span>
             </label>
           </fieldset>

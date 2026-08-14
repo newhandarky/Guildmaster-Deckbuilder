@@ -24,6 +24,7 @@ import { dispatchBondSetup } from './bond-setup.js';
 import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
 import { applyBondCompletion, checkEndConditions } from './bond-completion.js';
+import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
@@ -218,7 +219,9 @@ function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, comman
   const isItem = getZone(state, baseZoneIds.itemRow).cardIds.includes(command.cardId);
   if (!isAdventurer && !isItem) return { code: 'INVALID_COMMAND', message: '只能購買招募區或商店的公開卡。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
-  const cost = definition.cost ?? Number.POSITIVE_INFINITY;
+  const evaluation = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: player.id, cardId: command.cardId });
+  if (evaluation.status !== 'ready') return { code: 'INVALID_COMMAND', message: evaluation.error };
+  const cost = evaluation.evaluation.effectiveCost;
   if (getPurchasePower(state, ruleset, player.id) < cost) return { code: 'INVALID_COMMAND', message: '購買力不足。' };
   removeFrom(getZone(state, isAdventurer ? baseZoneIds.adventurerRow : baseZoneIds.itemRow).cardIds, command.cardId);
   player.turnPurchaseSpent += cost;

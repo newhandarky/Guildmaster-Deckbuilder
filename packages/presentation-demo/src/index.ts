@@ -238,24 +238,26 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
 export const provisionalHelpersPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-helpers-neutral',
-    version: '1.0.0',
+    version: '1.1.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
   entries: Array.from({ length: 12 }, (_, index) => {
     const sequence = String(index + 1).padStart(2, '0');
-    const enabled = sequence === '08';
+    const copy = {
+      '01': ['所有物資費用 −1，最低為 0。', '此協助者在場時，所有道具與裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+      '06': ['所有冒險者費用 −1，最低為 0。', '此協助者在場時，所有冒險者的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+      '07': ['休息結算時抽 6 張牌。', '此協助者在場時，主動玩家完成休息結算會抽取 6 張牌；離場或未啟用時恢復抽 5 張。'],
+      '08': ['所有玩家隊伍上限 +1；離場時棄置最右側的超額隊員。', '此協助者在場時，所有玩家的隊伍上限為 6。離場後若隊伍超過 5 人，立即將最右側隊員及其裝備放入該玩家棄牌堆。'],
+      '09': ['所有裝備費用 −1，最低為 0。', '此協助者在場時，所有裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+    }[sequence];
     return {
       definitionId: `base:helper/helper-${sequence}`,
       displayName: `候選協助者 ${sequence}`,
       portraitAssetKey: 'placeholder:provisional-helper',
       portraitAltText: `候選協助者 ${sequence} 的中性圖像 placeholder`,
-      shortDisplayText: enabled
-        ? '所有玩家隊伍上限 +1；離場時棄置最右側的超額隊員。'
-        : '目前僅測試揭示與輪替，卡牌效果尚未啟用。',
-      detailDisplayText: enabled
-        ? '此協助者在場時，所有玩家的隊伍上限為 6。離場後若隊伍超過 5 人，立即將最右側隊員及其裝備放入該玩家棄牌堆。'
-        : '此 provisional 協助者會參與本局抽選、揭示、離場與輪替；第一階段尚未啟用其個別卡牌效果。',
+      shortDisplayText: copy?.[0] ?? '目前僅測試揭示與輪替，卡牌效果尚未啟用。',
+      detailDisplayText: copy?.[1] ?? '此 provisional 協助者會參與本局抽選、揭示、離場與輪替；目前尚未啟用其個別卡牌效果。',
     };
   }),
 };

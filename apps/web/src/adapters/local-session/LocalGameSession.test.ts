@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base';
 import { CpuTurnRunner, baseBalancedCpuProfile } from '@guildmaster/game-ai';
 import { baseRulesModule, createGame, createRuleset, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
+import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import { LocalGameSession } from './LocalGameSession.js';
 import { createWebRuleset } from '../../app/ruleset.js';
@@ -546,11 +547,44 @@ describe('LocalGameSession transactional boundary', () => {
     expect(replaced.entrySummary).toMatchObject({ contentMode: 'provisional-playtest', canContinue: false });
   });
 
+  it('clears helper 0.1 progress with a structured one-time recovery reason', () => {
+    const oldPack = {
+      ...baseProvisionalHelpersContentPack,
+      manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' },
+    };
+    const oldModule = { ...baseHelpersRulesModule, version: '1.0.0' };
+    const oldRuleset = createRuleset(
+      [baseProvisionalFoundationContentPack, oldPack],
+      [baseRulesModule, oldModule],
+      { allowProvisionalPlaytest: true },
+    );
+    const oldState = createGame({ gameId: 'local-7', seed: 19, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, oldRuleset);
+    localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(oldState), events: [] }));
+    const currentRuleset = createRuleset(
+      [baseProvisionalFoundationContentPack, baseProvisionalHelpersContentPack],
+      [baseRulesModule, baseHelpersRulesModule],
+      { allowProvisionalPlaytest: true },
+    );
+    const session = new LocalGameSession(currentRuleset);
+    const recovered = session.current();
+    expect(recovered.view).toMatchObject({ gameId: 'local-8', revision: 0 });
+    expect(recovered.persistence).toEqual({
+      schemaVersion: 2,
+      state: 'fresh',
+      revision: 0,
+      replayHistoryComplete: true,
+      recovery: { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' },
+    });
+    expect(recovered.entrySummary).toMatchObject({ advancedRules: { helpers: true }, canContinue: false });
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(session.current().persistence.recovery).toBeUndefined();
+  });
+
   it('returns action previews tied to the current game, actor, revision, and legal commands', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
     const combat = session.submit({ type: 'END_PHASE', phase: 'action1' });
-    expect(combat.actionPreviews).toMatchObject({ schemaVersion: 1, gameId: combat.view.gameId, revision: combat.view.revision, actorId: 'human-1' });
+    expect(combat.actionPreviews).toMatchObject({ schemaVersion: 2, gameId: combat.view.gameId, revision: combat.view.revision, actorId: 'human-1' });
     expect(combat.actionPreviews.items.length).toBeGreaterThan(0);
     expect(combat.actionPreviews.items.every(({ command }) => combat.legalCommands.some((legal) => JSON.stringify(legal) === JSON.stringify(command)))).toBe(true);
   });

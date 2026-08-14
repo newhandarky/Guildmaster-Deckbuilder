@@ -39,7 +39,8 @@ export function applyPhaseTransition(state: GameState, ruleset: Ruleset, player:
         if (result.status === 'suspended') suspend(state, envelope, rollbackState, resolutionEnvelopes, events, factStart, 'complete-nonrest');
         return undefined;
       }
-      settleRest(state, ruleset, player, events, commandId);
+      const restError = settleRest(state, ruleset, player, events, commandId);
+      if (restError) return restError;
       const result = boundary(state, ruleset, 'turn-end', player.id, events);
       if (result.status === 'failed') return result.error;
       if (result.status === 'suspended') { suspend(state, envelope, rollbackState, resolutionEnvelopes, events, factStart, 'after-turn-end'); return undefined; }

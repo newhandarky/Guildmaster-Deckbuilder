@@ -18,6 +18,11 @@ export type SessionPersistenceStatus = {
   revision: number;
   replayHistoryComplete: boolean;
   recoveryReason?: 'INVALID_SAVE' | 'REGISTRY_MISMATCH' | 'REPLAY_DIVERGENCE' | 'CPU_PROFILE_MISMATCH';
+  recovery?: {
+    reasonCode: 'helper-rules-upgraded';
+    previousPackVersion: '0.1.0';
+    previousModuleVersion: '1.0.0';
+  } | undefined;
 };
 
 export type SessionEntrySummary = {

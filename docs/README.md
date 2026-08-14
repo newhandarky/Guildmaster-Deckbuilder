@@ -63,7 +63,7 @@
 - 離線網頁遊戲
 - 一位真人玩家對上一位 AI 對手
 - 基礎遊戲規則與完整基礎卡牌資料
-- 暫不啟用連線對戰、Vol.1、協助者與羈絆輪抽；AI 先採簡單可替換策略
+- 暫不啟用連線對戰、Vol.1 與羈絆輪抽；協助者為 opt-in provisional 規則，AI 先採簡單可替換策略
 - 使用佔位圖或自製／AI 生成素材，不使用官方卡圖
 
 MVP 會執行在完整架構的 `apps/web`、`packages/game-engine`、`packages/game-protocol` 與 `packages/content-base` 上，只是先使用 local session adapter，不建立線上伺服器。

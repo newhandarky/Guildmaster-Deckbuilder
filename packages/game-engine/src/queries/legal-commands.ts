@@ -13,6 +13,7 @@ import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { executeEffect } from '../effects/executor.js';
 import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
+import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -155,7 +156,9 @@ function purchaseIsLegalInAnyPreview(preview: CommandBeforePreviewResult, rulese
   if (preview.indeterminate) return true;
   return preview.states.some((state) => {
     const isPublicSupply = state.zones[baseZoneIds.adventurerRow]?.cardIds.includes(cardId) || state.zones[baseZoneIds.itemRow]?.cardIds.includes(cardId);
-    return Boolean(isPublicSupply) && (getDefinition(ruleset.registry, state, cardId).cost ?? Number.POSITIVE_INFINITY) <= getPurchasePower(state, ruleset, actorId);
+    if (!isPublicSupply) return false;
+    const cost = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId });
+    return cost.status === 'ready' && cost.evaluation.effectiveCost <= getPurchasePower(state, ruleset, actorId);
   });
 }
 
@@ -333,16 +336,18 @@ function attackPreviewItem(preview: CommandBeforePreviewResult, ruleset: Ruleset
 function purchasePreviewItem(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, command: Extract<GameCommand, { type: 'BUY_CARD' }>): Extract<ActionPreviewItem, { kind: 'purchase' }> {
   if (!preview.requiresLifecycle && !preview.indeterminate && preview.states.length === 1) {
     const previewState = preview.states[0]!;
-    const cost = getDefinition(ruleset.registry, previewState, command.cardId).cost;
+    const cost = evaluatePurchaseCost(previewState, ruleset, { schemaVersion: 1, playerId: actorId, cardId: command.cardId });
     const availablePurchasePower = getPurchasePower(previewState, ruleset, actorId);
-    if (cost !== undefined && cost <= availablePurchasePower) return {
+    if (cost.status === 'ready' && cost.evaluation.effectiveCost <= availablePurchasePower) return {
       kind: 'purchase',
       status: 'ready',
       command: structuredClone(command),
       cardId: command.cardId,
-      cost,
+      printedCost: cost.evaluation.printedCost,
+      effectiveCost: cost.evaluation.effectiveCost,
+      appliedModifiers: structuredClone(cost.evaluation.appliedModifiers),
       availablePurchasePower,
-      remainingPurchasePower: availablePurchasePower - cost,
+      remainingPurchasePower: availablePurchasePower - cost.evaluation.effectiveCost,
     };
   }
   return { kind: 'purchase', status: 'requires-lifecycle', command: structuredClone(command), cardId: command.cardId };
@@ -362,7 +367,7 @@ export function getActionPreviewSet(state: GameState, ruleset: Ruleset, actorId:
     const preview = previewCommandBefore(state, ruleset, actorId, 'BUY_CARD');
     items.push(...purchaseCommands.map((command) => purchasePreviewItem(preview, ruleset, actorId, command)));
   }
-  return ActionPreviewSetSchema.parse({ schemaVersion: 1, gameId: state.gameId, revision: state.revision, actorId, items });
+  return ActionPreviewSetSchema.parse({ schemaVersion: 2, gameId: state.gameId, revision: state.revision, actorId, items });
 }
 
 export function envelope(state: GameState, actorId: string, command: GameCommand, commandId = `legal-${state.revision + 1}`): CommandEnvelope {

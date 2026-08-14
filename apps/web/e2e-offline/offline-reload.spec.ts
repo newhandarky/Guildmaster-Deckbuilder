@@ -10,7 +10,7 @@ test('reloads and resumes the local session with the network disabled', async ({
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await context.setOffline(true);
   await page.reload();
-  expect(await page.locator('body').innerText()).toContain('繼續晨星遠征');
+  await expect(page.locator('body')).toContainText('繼續晨星遠征');
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
   await page.getByRole('button', { name: '繼續最近進度' }).click();
   await expect(page.getByTestId('game-app')).toBeVisible();
