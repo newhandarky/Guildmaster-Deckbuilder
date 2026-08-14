@@ -55,7 +55,7 @@ export function createContentRegistry(packs: readonly ContentPack[], options: Co
   if (basePacks.length !== 1) throw new Error('Exactly one base Content Pack is required.');
   const definitions: Record<string, ContentRegistry['definitions'][string]> = {};
   for (const pack of packs) for (const definition of pack.definitions) {
-    if (!definition.id.trim() || !definition.name.trim() || !definition.type.trim() || !definition.source.trim() || !Number.isFinite(definition.copies) || !Number.isInteger(definition.copies) || definition.copies < 0 || ['cost', 'combat', 'purchasePower', 'honor'].some((field) => { const value = definition[field as keyof typeof definition]; return value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0); })) throw new Error(`Invalid card definition: ${definition.id || '<empty>'}`);
+    if (!definition.id.trim() || !definition.name.trim() || !definition.type.trim() || !definition.source.trim() || !Number.isFinite(definition.copies) || !Number.isInteger(definition.copies) || definition.copies < 0 || ['cost', 'combat', 'purchasePower'].some((field) => { const value = definition[field as keyof typeof definition]; return value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0); }) || (definition.honor !== undefined && (typeof definition.honor !== 'number' || !Number.isFinite(definition.honor) || !Number.isInteger(definition.honor)))) throw new Error(`Invalid card definition: ${definition.id || '<empty>'}`);
     if (definition.useEffect) {
       const effectErrors = validateCardUseEffectDefinition(definition.useEffect);
       if (definition.type !== 'item') effectErrors.push('Only item definitions may declare useEffect.');
@@ -148,7 +148,10 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
 }
 export function getPartyLimit(ruleset: Ruleset, state: GameState, player: PlayerState): number { const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility); const base = ruleset.modules.reduce((limit, module) => module.getPartyLimit(state, player, limit), Number.MAX_SAFE_INTEGER); const continuous = evaluateContinuousEffects(state, ruleset); if (continuous.status !== 'ready') throw new Error(continuous.error); return Math.max(0, base + continuous.evaluation.active.filter((effect) => effect.target === 'team-capacity').reduce((sum, effect) => sum + effect.amount, 0)); }
 export function getEndCondition(ruleset: Ruleset, state: GameState): string | undefined {
+  return getEndConditions(ruleset, state)[0];
+}
+export function getEndConditions(ruleset: Ruleset, state: GameState): string[] {
   const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility);
-  return ruleset.modules.flatMap((module) => module.endConditions ?? []).sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)).find((condition) => condition.evaluate(state))?.id;
+  return ruleset.modules.flatMap((module) => module.endConditions ?? []).sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)).filter((condition) => condition.evaluate(state)).map(({ id }) => id);
 }
 export function handleSupplyDepleted(ruleset: Ruleset, state: GameState, supply: SupplyKind): void { const compatibility = validateRulesetStateCompatibility(state, ruleset); if (compatibility) throw new Error(compatibility); if (ruleset.modules.map((module) => module.onSupplyDepleted(state, supply)).includes('pendingOfficialRuling')) state.status = 'pendingOfficialRuling'; }

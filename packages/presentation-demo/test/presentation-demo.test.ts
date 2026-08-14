@@ -31,17 +31,56 @@ describe('demo presentation package', () => {
     expect(validatePresentationPack(provisionalFoundationPresentationPack)).toEqual({ valid: true, errors: [] });
     expect(provisionalFoundationPresentationPack.entries).toEqual([
       expect.objectContaining({ definitionId: 'base:resource/resource-01', shortDisplayText: expect.stringContaining('取回 1 張冒險者') }),
-      expect.objectContaining({ definitionId: 'base:resource/resource-02', shortDisplayText: expect.stringContaining('尚未啟用') }),
+      expect.objectContaining({ definitionId: 'base:resource/resource-02', shortDisplayText: expect.stringContaining('額外 +1') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-04', shortDisplayText: expect.stringContaining('棄 1 張魔王') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-05', shortDisplayText: expect.stringContaining('取回 1 張裝備') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-08', shortDisplayText: '使用：抽 2 張牌。' }),
       expect.objectContaining({ definitionId: 'base:resource/resource-10', shortDisplayText: expect.stringContaining('棄 1 張手牌') }),
-      expect.objectContaining({ definitionId: 'base:resource/resource-13', shortDisplayText: expect.stringContaining('非同名法師卡') }),
+      expect.objectContaining({ definitionId: 'base:resource/resource-13', shortDisplayText: expect.stringContaining('非同名道具卡') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-15', shortDisplayText: expect.stringContaining('手牌、隊伍或棄牌堆') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-17', shortDisplayText: expect.stringContaining('抽 3 張牌') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-18', shortDisplayText: expect.stringContaining('擊敗目標後抽 1 張牌') }),
       expect.objectContaining({ definitionId: 'base:resource/resource-27', shortDisplayText: expect.stringContaining('職業種類數') }),
     ]);
+  });
+
+  it('shows the confirmed profession-matched +1 copy in the full presentation', () => {
+    for (const id of ['03', '07', '25']) {
+      expect(provisionalOriginalFullPresentationPack.entries).toContainEqual(expect.objectContaining({
+        definitionId: `base:resource/resource-${id}`,
+        shortDisplayText: expect.stringContaining('額外 +1'),
+      }));
+    }
+  });
+
+  it('shows authoritative copy only for the enabled first monster reward batch', () => {
+    const monsters = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:monster/'));
+    expect(monsters).toHaveLength(14);
+    expect(monsters.filter(({ shortDisplayText }) => shortDisplayText.startsWith('擊敗獎勵')).map(({ definitionId }) => definitionId)).toEqual([
+      'base:monster/monster-01',
+      'base:monster/monster-02',
+      'base:monster/monster-03',
+      'base:monster/monster-06',
+      'base:monster/monster-09',
+      'base:monster/monster-10',
+      'base:monster/monster-11',
+      'base:monster/monster-14',
+    ]);
+    expect(monsters.filter(({ definitionId }) => !['01', '02', '03', '06', '09', '10', '11', '14'].some((id) => definitionId === `base:monster/monster-${id}`)).every(({ shortDisplayText }) => shortDisplayText.includes('尚未啟用'))).toBe(true);
+  });
+
+  it('shows the enabled adventurer equipment restriction instead of a placeholder', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-02')).toMatchObject({
+      shortDisplayText: expect.stringContaining('不能配戴裝備'),
+      detailDisplayText: expect.stringContaining('Legal Commands'),
+    });
+  });
+
+  it('shows adventurer 09 as a mandatory equipped passive rather than an optional action', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-09')).toMatchObject({
+      shortDisplayText: expect.stringContaining('配戴任一裝備時'),
+      detailDisplayText: expect.stringContaining('持續效果'),
+    });
   });
 
   it('allows an approved asset manifest to cover none or part of the presentation pack', () => {

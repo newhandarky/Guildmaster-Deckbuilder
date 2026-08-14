@@ -64,6 +64,21 @@ describe('four-player base authority', () => {
     expect(result.state.endState?.finalRoundEndPlayerId).toBe('p4');
   });
 
+  it('records both simultaneous final-round reasons while triggering only one final round', () => {
+    const pack = structuredClone(fourPlayerPack);
+    pack.manifest = { ...pack.manifest, id: 'test:four-player-dual-end', hash: 'dual-end' };
+    pack.bonds = [{ id: 'test:bond/a', name: 'Ready', honor: 1, requiredBosses: 0 }];
+    const ruleset = createRuleset([pack], [baseRulesModule]);
+    const state = createGame({ gameId: 'dual-end', seed: 10, players, startingPlayerId: 'p1' }, ruleset);
+    state.removedCards.push(...state.zones[baseZoneIds.bossDeck]!.cardIds.splice(0), ...state.zones[baseZoneIds.bossRow]!.cardIds.splice(0));
+    for (const target of Object.values(state.enemyTargets).filter(({ kind }) => kind === 'boss')) target.status = 'defeated';
+    const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a'] }));
+    expect(result.error).toBeUndefined();
+    expect(result.state.status).toBe('finalRound');
+    expect(result.state.endState?.conditionIds).toEqual(['base:all-bosses-defeated', 'base:all-bonds-completed']);
+    expect(result.events.filter(({ type }) => type === 'FINAL_ROUND_TRIGGERED')).toHaveLength(1);
+  });
+
   it('assigns shared competition ranks', () => {
     const ruleset = createRuleset([fourPlayerPack], [baseRulesModule]);
     const state = createGame({ gameId: 'rank', seed: 11, players }, ruleset);

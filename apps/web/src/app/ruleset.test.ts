@@ -110,8 +110,9 @@ describe('web content modes', () => {
     expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' })]);
     expect(Object.keys(ruleset.registry.definitions)).toHaveLength(90);
     expect(ruleset.registry.bonds).toHaveLength(30);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:provisional-original-full-rules']);
     expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
-    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules', 'base:provisional-original-full-rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
     expect(() => createWebRuleset(undefined, { contentMode: 'provisional-original-full', advancedRules: { helpers: true } })).toThrow(/does not enable helpers/);
   });
 
@@ -273,7 +274,7 @@ describe('web content modes', () => {
     expect(getLegalCommands(state, ruleset, 'human-1')).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
   });
 
-  it('recovers a mage-affinity card while excluding non-mage cards and every resource-13 copy', () => {
+  it('recovers a non-identical item while excluding adventurers, equipment, and every resource-13 copy', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-playtest');
     const state = createGame({
       gameId: 'foundation-resource-13',
@@ -284,26 +285,27 @@ describe('web content modes', () => {
     const stones = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'base:resource/resource-13');
     const itemId = stones[0]!.id;
     const excludedStoneId = stones[1]!.id;
-    const mageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-03')!.id;
-    const nonMageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-02')!.id;
+    const recoverableItemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-08')!.id;
+    const mageAdventurerId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-03')!.id;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-02')!.id;
     for (const zone of Object.values(state.zones)) {
-      zone.cardIds = zone.cardIds.filter((id) => ![itemId, excludedStoneId, mageId, nonMageId].includes(id));
+      zone.cardIds = zone.cardIds.filter((id) => ![itemId, excludedStoneId, recoverableItemId, mageAdventurerId, equipmentId].includes(id));
     }
     const player = state.players[0]!;
     player.hand.push(itemId);
-    player.discardPile.push(nonMageId, excludedStoneId, mageId);
+    player.discardPile.push(mageAdventurerId, equipmentId, excludedStoneId, recoverableItemId);
 
     expect(getLegalCommands(state, ruleset, player.id)).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
     const suspended = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'foundation-use-resource-13'));
     expect(suspended.error).toBeUndefined();
-    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([mageId]);
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([recoverableItemId]);
 
     const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
-    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === mageId)!;
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === recoverableItemId)!;
     const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, 'foundation-resolve-resource-13'));
     expect(completed.error).toBeUndefined();
-    expect(completed.state.players[0]!.hand).toContain(mageId);
-    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining([nonMageId, excludedStoneId]));
+    expect(completed.state.players[0]!.hand).toContain(recoverableItemId);
+    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining([mageAdventurerId, equipmentId, excludedStoneId]));
     expect(completed.state.players[0]!.playArea).toContain(itemId);
     expect(completed.state.revision).toBe(1);
     expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);

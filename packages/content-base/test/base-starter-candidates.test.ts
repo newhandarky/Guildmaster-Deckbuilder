@@ -20,7 +20,8 @@ describe('base starter candidates', () => {
     expect(valueFor('base:starter/adventurer-01', 'combat')).toMatchObject({ candidateValue: 1, status: 'needs-human-confirmation', requiresContentOwnerConfirmation: true });
     expect(valueFor('base:starter/adventurer-02', 'combat')).toMatchObject({ candidateValue: 2, status: 'needs-human-confirmation', requiresContentOwnerConfirmation: true });
     expect(valueFor('base:starter/summoning-stone', 'purchasePower')).toMatchObject({ candidateValue: 1, status: 'needs-human-confirmation' });
-    expect(valueFor('base:starter/spirit-crystal', 'honor')).toMatchObject({ candidateValue: 1, status: 'needs-human-confirmation' });
+    expect(valueFor('base:starter/spirit-crystal', 'cardType')).toMatchObject({ candidateValue: '裝備', status: 'needs-human-confirmation' });
+    expect(valueFor('base:starter/spirit-crystal', 'combat')).toMatchObject({ candidateValue: 1, status: 'needs-human-confirmation' });
     expect(valueFor('base:starter/adventurer-01', 'effect')).toMatchObject({ status: 'todo', requiresContentOwnerConfirmation: false });
   });
   it('rejects an attempt to load a candidate into runtime', () => {

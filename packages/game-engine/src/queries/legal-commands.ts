@@ -12,6 +12,7 @@ import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluat
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { executeEffect } from '../effects/executor.js';
 import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
+import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -173,6 +174,7 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 
 function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, cardId: string): boolean {
   const definition = getDefinition(ruleset.registry, state, cardId);
+  if (definition.tags?.includes('playtest:effects-disabled')) return false;
   if (!definition.useEffect) return true;
   const preview = structuredClone(state); const player = getPlayer(preview, actorId);
   const index = player.hand.indexOf(cardId);
@@ -224,6 +226,11 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   if (state.activePlayerId !== actorId) return [];
   const player = getPlayer(state, actorId);
   const commands: GameCommand[] = [];
+  const completableBondIds = player.bonds.filter(({ completed }) => !completed).flatMap(({ bondId }) => {
+    const evaluation = evaluateBondCondition(state, ruleset, actorId, bondId);
+    return evaluation.status === 'ready' && evaluation.evaluation.satisfied ? [bondId] : [];
+  });
+  commands.push(...nonEmptySubsets(completableBondIds).map((bondIds) => ({ type: 'COMPLETE_BONDS' as const, bondIds })));
   if (state.phase === 'action1' || state.phase === 'action2') {
     for (const cardId of player.hand) {
       const definition = getDefinition(ruleset.registry, state, cardId);

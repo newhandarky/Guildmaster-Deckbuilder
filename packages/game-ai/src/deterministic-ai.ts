@@ -4,7 +4,7 @@ export type CpuReasonCode =
   | 'KEEP_HIGHEST_BOND_VALUE' | 'ATTACK_BEST_NET_VALUE' | 'PLAY_FOR_PARTY_POWER'
   | 'EQUIP_FOR_COMBAT_GAIN' | 'USE_ITEM_FOR_IMMEDIATE_VALUE' | 'BUY_HIGHEST_UTILITY'
   | 'REFRESH_LOW_VALUE_MARKET' | 'DISCARD_LOWEST_UTILITY' | 'END_NO_POSITIVE_ACTION'
-  | 'RESOLVE_HIGHEST_UTILITY_CHOICE' | 'RESPOND_REQUIRED_CONSENT' | 'BLOCKED_UNSUPPORTED_DECISION';
+  | 'RESOLVE_HIGHEST_UTILITY_CHOICE' | 'RESPOND_REQUIRED_CONSENT' | 'COMPLETE_ELIGIBLE_BONDS' | 'BLOCKED_UNSUPPORTED_DECISION';
 
 export type CpuScoringWeights = {
   honor: number; bondHonor: number; bossProgress: number; monsterDefeat: number;
@@ -12,7 +12,7 @@ export type CpuScoringWeights = {
   immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; overflowLoss: number;
 };
 export type CpuProfile = {
-  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.1.0';
+  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.2.0';
   commandPriority: readonly GameCommand['type'][]; weights: CpuScoringWeights;
   maxActionsPerTurn: 128; maxAutonomousSteps: 512; repeatedVisibleStateLimit: 3;
 };
@@ -27,8 +27,8 @@ export type CpuDecisionResult =
   | { status: 'blocked'; reasonCode: 'UNSUPPORTED_DECISION_KIND' | 'NO_LEGAL_COMMAND' | 'MISSING_ACTION_FEATURE' | 'REPEATED_VISIBLE_STATE' | 'MAX_ACTIONS_EXCEEDED'; diagnostic: string };
 
 export const baseBalancedCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
-  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.1.0',
-  commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESPOND_COUNTER_CONSENT', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
+  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.2.0',
+  commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
   weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, overflowLoss: -1 },
   maxActionsPerTurn: 128, maxAutonomousSteps: 512, repeatedVisibleStateLimit: 3,
 });
@@ -45,6 +45,7 @@ export function cpuContextFingerprint(context: CpuDecisionContext): string {
 
 function reason(command: GameCommand): CpuReasonCode {
   if (command.type === 'SELECT_BONDS') return 'KEEP_HIGHEST_BOND_VALUE';
+  if (command.type === 'COMPLETE_BONDS') return 'COMPLETE_ELIGIBLE_BONDS';
   if (command.type === 'ATTACK_TARGET') return 'ATTACK_BEST_NET_VALUE';
   if (command.type === 'PLAY_ADVENTURER') return 'PLAY_FOR_PARTY_POWER';
   if (command.type === 'EQUIP_ITEM') return 'EQUIP_FOR_COMBAT_GAIN';

@@ -36,7 +36,7 @@ describe('base provisional content catalog', () => {
     expect(value('base:starter/adventurer-03', 'profession')).toMatchObject({ candidateValue: 'mage', sourceLocation: expect.stringContaining('第 2 張') });
     expect(value('base:starter/adventurer-04', 'profession')).toMatchObject({ candidateValue: 'tank', sourceLocation: expect.stringContaining('第 3 張') });
     expect(value('base:starter/adventurer-05', 'profession')).toMatchObject({ candidateValue: 'ranged', sourceLocation: expect.stringContaining('第 4 張') });
-    expect(find('base:resource/resource-13').mechanicsTags).toEqual(['affinity:mage']);
+    expect(find('base:resource/resource-13').mechanicsTags).toBeUndefined();
     expect(find('base:resource/resource-19').mechanicsTags).toEqual(['affinity:mage', 'affinity:support']);
     for (const id of ['adventurer-06', 'adventurer-09', 'adventurer-19', 'adventurer-22', 'adventurer-26', 'adventurer-29']) {
       expect(value(`base:adventurer/${id}`, 'effect')).toMatchObject({ status: 'provisional', confidence: 'medium' });
@@ -51,13 +51,29 @@ describe('base provisional content catalog', () => {
     expect(baseProvisionalContentCatalog.evidence.find(({ sourceId }) => sourceId === 'project-policy:base-supply-continuity-2026-07-31')).toMatchObject({ evidenceKind: 'project-policy' });
   });
 
-  it('keeps resource 02 disabled until its exact combat-power amount has evidence', () => {
-    const resource = baseProvisionalContentCatalog.candidates.find(({ definitionId }) => definitionId === 'base:resource/resource-02')!;
-    expect(resource.fields.find(({ field }) => field === 'effect')).toMatchObject({
-      status: 'exception',
-      confidence: 'medium',
-      exceptionReason: expect.stringContaining('exact additional combat-power amount'),
-    });
+  it('records the four profession-matched equipment bonuses as confirmed +1 values', () => {
+    for (const id of ['02', '03', '07', '25']) {
+      const resource = baseProvisionalContentCatalog.candidates.find(({ definitionId }) => definitionId === `base:resource/resource-${id}`)!;
+      expect(resource.fields.find(({ field }) => field === 'effect')).toMatchObject({
+        status: 'provisional',
+        confidence: 'high',
+        candidateValue: expect.stringContaining('戰力 1'),
+      });
+    }
+  });
+
+  it('keeps corrected card-kind icons and resource 19/20 text from regressing', () => {
+    const effect = (id: string) => baseProvisionalContentCatalog.candidates.find(({ definitionId }) => definitionId === id)!.fields.find(({ field }) => field === 'effect')!.candidateValue;
+    expect(effect('base:resource/resource-19')).toContain('討伐階段結束時');
+    expect(effect('base:resource/resource-19')).toContain('抽 2 張牌');
+    expect(effect('base:resource/resource-20')).toContain('棄置任意數量手牌');
+    expect(effect('base:adventurer/adventurer-16')).toContain('查看牌庫頂');
+    expect(effect('base:adventurer/adventurer-16')).toContain('公開該牌以確認類型');
+    expect(effect('base:bond/bond-06')).toContain('道具或裝備');
+    expect(effect('base:bond/bond-13')).toContain('3 張以上道具');
+    expect(effect('base:bond/bond-25')).toContain('3 張以上魔物');
+    expect(effect('base:monster/monster-07')).toContain('道具或裝備');
+    expect(effect('base:boss/boss-11')).toContain('道具');
   });
 
   it('rejects non-finite, fractional, negative, and duplicate mechanics fields', () => {
@@ -66,7 +82,7 @@ describe('base provisional content catalog', () => {
     copies.candidateValue = Number.POSITIVE_INFINITY;
     candidate.fields = [...candidate.fields, { ...copies }];
     const errors = validateProvisionalBaseContentCatalog(invalid);
-    expect(errors.some((error) => error.includes('finite non-negative integer'))).toBe(true);
+    expect(errors.some((error) => error.includes('finite integer'))).toBe(true);
     expect(errors.some((error) => error.includes('Duplicate field'))).toBe(true);
   });
 });

@@ -32,7 +32,7 @@ export function assembleProvisionalPlaytestPack(catalog: ProvisionalBaseContentC
     if (field.status === 'exception') failures.push({ definitionId: candidate.definitionId, field: field.field, reason: field.exceptionReason ?? 'Unresolved exception.' });
     if (field.status === 'disabled') failures.push({ definitionId: candidate.definitionId, field: field.field, reason: 'Disabled fields cannot be assembled.' });
     if (!supportedFields.has(field.field) && field.candidateValue !== undefined) failures.push({ definitionId: candidate.definitionId, field: field.field, reason: 'Unsupported mechanics: the current playtest adapter cannot silently discard this field.' });
-    if (field.field === 'cardType' && field.candidateValue !== undefined && (typeof field.candidateValue !== 'string' || (candidate.category === 'starter' ? !['adventurer', 'starter-resource'].includes(field.candidateValue) : !definitionTypes.has(field.candidateValue)))) failures.push({ definitionId: candidate.definitionId, field: field.field, reason: 'Card type must be a supported string value.' });
+    if (field.field === 'cardType' && field.candidateValue !== undefined && (typeof field.candidateValue !== 'string' || (candidate.category === 'starter' ? !['adventurer', 'starter-resource', 'equipment'].includes(field.candidateValue) : !definitionTypes.has(field.candidateValue)))) failures.push({ definitionId: candidate.definitionId, field: field.field, reason: 'Card type must be a supported string value.' });
     if (['copies', 'cost', 'combat', 'purchasePower', 'honor'].includes(field.field) && field.candidateValue !== undefined && (typeof field.candidateValue !== 'number' || !Number.isFinite(field.candidateValue) || !Number.isInteger(field.candidateValue) || field.candidateValue < 0 || (field.field === 'copies' && field.candidateValue < 1))) failures.push({ definitionId: candidate.definitionId, field: field.field, reason: 'Numeric mechanics must be finite non-negative integers; copies must be positive.' });
   }
   for (const candidate of selected) for (const fieldName of requiredByCategory[candidate.category]) {
@@ -42,7 +42,7 @@ export function assembleProvisionalPlaytestPack(catalog: ProvisionalBaseContentC
   if (failures.length > 0) return { ok: false, failures };
   const definitions: CardDefinition[] = selected.map((candidate) => {
     const fields = Object.fromEntries(candidate.fields.filter(isRelevant).map((field) => [field.field, field.candidateValue]));
-    const type = candidate.category === 'starter' ? 'starter' : fields.cardType;
+    const type = candidate.category === 'starter' ? (fields.cardType === 'equipment' ? 'equipment' : 'starter') : fields.cardType;
     if (typeof type !== 'string' || !definitionTypes.has(type)) return undefined;
     const tags = [...(candidate.mechanicsTags ?? []), ...(typeof fields.profession === 'string' ? [`profession:${fields.profession}`] : [])];
     const definition: CardDefinition = { id: candidate.definitionId, name: placeholderName(candidate.definitionId), type, copies: typeof fields.copies === 'number' ? fields.copies : 0, source: 'provisional-playtest', ...(tags.length ? { tags: [...new Set(tags)] } : {}) };

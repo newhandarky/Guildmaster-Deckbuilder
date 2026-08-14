@@ -77,10 +77,14 @@ export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameStat
   if (config.players.length > 4) throw new Error('Base games support two to four players.');
   const state = createEmptyState(config, ruleset); const events: DomainEvent[] = [];
   const groups = { adventurer: [] as string[], equipment: [] as string[], item: [] as string[], monster: [] as string[] }; const cycleAnchors: string[] = []; const bossDefinitionIds: string[] = [];
+  const starter = ruleset.registry.starter;
+  const starterDefinitionIds = new Set('partyDefinitionIds' in starter
+    ? [...starter.partyDefinitionIds, starter.summonStoneDefinitionId, starter.crystalDefinitionId]
+    : [starter.adventurerDefinitionId, starter.summonStoneDefinitionId, starter.crystalDefinitionId]);
   const setupDefinitionTypes = new Set(ruleset.modules.flatMap((module) => module.setupContributions ?? []).map(({ selector }) => selector.value));
   const monsterContinuity = supplyContinuityPolicyFor(ruleset, 'monster');
   if (monsterContinuity.status !== 'ready' || monsterContinuity.policy.mode !== 'require-full-cycle') throw new Error(monsterContinuity.status === 'failed' ? monsterContinuity.error : 'Base monster supply requires a full-cycle continuity policy.');
-  for (const definition of Object.values(ruleset.registry.definitions)) { if (definition.type === 'starter' || definition.type === 'bond' || setupDefinitionTypes.has(definition.type)) continue; for (let copy = 0; copy < definition.copies; copy += 1) { if (definition.type === 'boss') { bossDefinitionIds.push(definition.id); continue; } const card = createCard(state, definition.id); if (definition.type === 'adventurer') groups.adventurer.push(card.id); if (definition.type === 'equipment') groups.equipment.push(card.id); if (definition.type === 'item') groups.item.push(card.id); if (definition.type === 'monster') { if (definition.tags?.includes(monsterContinuity.policy.cycleAnchorTag)) cycleAnchors.push(card.id); else groups.monster.push(card.id); } } }
+  for (const definition of Object.values(ruleset.registry.definitions)) { if (starterDefinitionIds.has(definition.id) || definition.type === 'starter' || definition.type === 'bond' || setupDefinitionTypes.has(definition.type)) continue; for (let copy = 0; copy < definition.copies; copy += 1) { if (definition.type === 'boss') { bossDefinitionIds.push(definition.id); continue; } const card = createCard(state, definition.id); if (definition.type === 'adventurer') groups.adventurer.push(card.id); if (definition.type === 'equipment') groups.equipment.push(card.id); if (definition.type === 'item') groups.item.push(card.id); if (definition.type === 'monster') { if (definition.tags?.includes(monsterContinuity.policy.cycleAnchorTag)) cycleAnchors.push(card.id); else groups.monster.push(card.id); } } }
   const hasExplicitBossSetupPolicy = ruleset.modules.some((module) => module.getBossSetupCount);
   const defaultBossCount = config.players.length === 4 ? config.players.length + 2 : bossDefinitionIds.length;
   const bossCount = ruleset.modules.reduce((count, module) => module.getBossSetupCount?.(config.players.length, count) ?? count, defaultBossCount);
@@ -89,7 +93,6 @@ export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameStat
   state.zones[baseZoneIds.adventurerDeck]!.cardIds = shuffle(state, groups.adventurer); state.zones[baseZoneIds.itemDeck]!.cardIds = shuffle(state, [...groups.equipment, ...groups.item]); state.zones[baseZoneIds.monsterDeck]!.cardIds = [...cycleAnchors, ...shuffle(state, groups.monster)]; state.zones[baseZoneIds.bossDeck]!.cardIds = shuffle(state, bossDefinitionIds).slice(0, bossCount).map((definitionId) => createCard(state, definitionId).id);
   executeSetupContributions(state, ruleset);
   setupPrivateBonds(state, ruleset);
-  const starter = ruleset.registry.starter;
   let partyDefinitionIds: readonly string[];
   if ('partyDefinitionIds' in starter) partyDefinitionIds = starter.partyDefinitionIds;
   else partyDefinitionIds = Array.from({ length: 5 }, () => starter.adventurerDefinitionId);

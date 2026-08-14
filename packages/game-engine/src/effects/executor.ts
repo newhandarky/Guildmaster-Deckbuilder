@@ -197,9 +197,14 @@ export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster
     if (!pending.options.length || new Set(pending.options.map(({ id }) => id)).size !== pending.options.length) return 'Dynamic card choice options must be non-empty and unique.';
     if (!state || !ruleset) return 'Dynamic card choice validation requires the active state and ruleset.';
     const resolved = dynamicCardChoiceCandidates(state, ruleset, node, pending.context);
-    if (resolved.status !== 'ready' || JSON.stringify(resolved.candidates.map(({ cardId }) => cardId)) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone and predicate.';
+    const expectedOptionIds = [...(resolved.status === 'ready' ? resolved.candidates.map(({ cardId }) => cardId) : []), ...(node.skipOptionId ? [node.skipOptionId] : [])];
+    if (resolved.status !== 'ready' || JSON.stringify(expectedOptionIds) !== JSON.stringify(pending.options.map(({ id }) => id))) return 'Dynamic card choice candidates do not match the current source zone and predicate.';
     const candidateLocations = new Map(resolved.candidates.map(({ cardId, location }) => [cardId, location]));
     const valid = pending.options.every((option) => {
+      if (node.skipOptionId && option.id === node.skipOptionId) {
+        return JSON.stringify(option.effect) === JSON.stringify({ kind: 'conditional', condition: { kind: 'always', value: false }, whenTrue: node.effect })
+          && JSON.stringify(option.context) === JSON.stringify(pending.context);
+      }
       const selectedLocation = candidateLocations.get(option.id);
       const expectedContext: EffectContext = {
         ...pending.context,
@@ -238,8 +243,9 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
       const resolved = dynamicCardChoiceCandidates(state, ruleset, node, context);
       if (resolved.status !== 'ready') return { status: 'failed', events, error: resolved.error };
       const { actorId, source: visibleSource, candidates } = resolved;
-      if (!candidates.length) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
-      const options = candidates.map(({ cardId, location }) => ({
+      if (!candidates.length && !node.skipOptionId) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
+      if (node.skipOptionId && candidates.some(({ cardId }) => cardId === node.skipOptionId)) return { status: 'failed', events, error: 'Dynamic card choice skip option collides with a candidate card ID.' };
+      const options: { id: string; effect: EffectNode; context?: EffectContext }[] = candidates.map(({ cardId, location }) => ({
         id: cardId,
         effect: structuredClone(node.effect),
         context: {
@@ -248,6 +254,11 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
           ...(node.selectedLocationKey ? { locationRefs: { ...(context.locationRefs ?? {}), [node.selectedLocationKey]: structuredClone(location) } } : {}),
         },
       }));
+      if (node.skipOptionId) options.push({
+        id: node.skipOptionId,
+        effect: { kind: 'conditional', condition: { kind: 'always', value: false }, whenTrue: structuredClone(node.effect) },
+        context: structuredClone(context),
+      });
       state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId: node.choiceId, ...(node.decisionKind ? { decisionKind: node.decisionKind } : {}), actorId, options, remaining: nodes.slice(index + 1), context: structuredClone(context), source: visibleSource };
       domainEvent(state, events, 'EFFECT_SUSPENDED', 'Effect requires an explicit card choice.');
       return { status: 'suspended', events };

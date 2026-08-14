@@ -78,4 +78,32 @@ describe('public CPU action features', () => {
     const attack = getCpuActionFeatures(state, ruleset, player.id).find(({ command }) => command.type === 'ATTACK_TARGET' && command.targetId === monster.targetId);
     expect(attack).toMatchObject({ partyCombatLoss: 4, equipmentLoss: 1 });
   });
+
+  it('accounts for the printed power and modifier lost when replacing equipment', () => {
+    const ruleset = equipmentModifierRuleset();
+    const state = makeGame(ruleset);
+    const player = state.players[0]!;
+    const slot = player.party[0]!;
+    const [equippedId, replacementId] = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'test:item/spear').map(({ id }) => id).slice(0, 2);
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== equippedId && cardId !== replacementId);
+    slot.equipmentId = equippedId!;
+    player.hand.push(replacementId!);
+    state.phase = 'action1';
+
+    const replacement = getCpuActionFeatures(state, ruleset, player.id).find(({ command }) => command.type === 'EQUIP_ITEM' && command.cardId === replacementId && command.adventurerId === slot.adventurerId);
+    expect(replacement).toMatchObject({ partyCombatGain: 3, partyCombatLoss: 3, equipmentLoss: 1 });
+  });
+
+  it('derives voluntary bond completion value only from public bond definitions and legal commands', () => {
+    const pack = structuredClone(testPack);
+    pack.manifest = { ...pack.manifest, id: 'test:cpu-bonds', hash: 'cpu-bonds' };
+    pack.bonds = [
+      { id: 'test:bond/a', name: 'A', honor: 2, requiredBosses: 0 },
+      { id: 'test:bond/b', name: 'B', honor: 4, requiredBosses: 0 },
+    ];
+    const ruleset = createRuleset([pack], [baseRulesModule]);
+    const state = makeGame(ruleset);
+    const feature = getCpuActionFeatures(state, ruleset, 'p1').find(({ command }) => command.type === 'COMPLETE_BONDS' && command.bondIds.length === 2);
+    expect(feature).toMatchObject({ command: { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a', 'test:bond/b'] }, bondHonorGain: 6 });
+  });
 });

@@ -14,11 +14,11 @@ const adventurer = (id: string, name: string, combat: number, cardRegion: string
   notShown('cost', cardRegion), notShown('purchasePower', cardRegion), notShown('honor', cardRegion), notShown('effect', cardRegion), notShown('effectTiming', cardRegion), notShown('equipmentEligibility', cardRegion), notShown('restrictions', cardRegion)
 ] });
 
-const starterResource = (id: string, name: string, copies: number, statField: 'purchasePower' | 'honor', statValue: number, cardRegion: string) => ({ candidateId: id, category: 'starter-resource' as const, activation: 'disabled' as const, runtimeLoadable: false as const, fields: [
+const starterResource = (id: string, name: string, copies: number, statField: 'purchasePower' | 'combat', statValue: number, cardRegion: string, cardType?: string) => ({ candidateId: id, category: 'starter-resource' as const, activation: 'disabled' as const, runtimeLoadable: false as const, fields: [
   candidate('name', name, 'cards', `card-07.jpg；${cardRegion}`),
-  todo('cardType', `card-07.jpg；${cardRegion}`, '卡表頁顯示名稱與數值，但未以文字明示卡牌種類；不可由圖示或起始手牌位置推論正式種類。'),
+  cardType ? candidate('cardType', cardType, 'cards', `card-07.jpg；${cardRegion}；左上卡種圖示`) : todo('cardType', `card-07.jpg；${cardRegion}`, '卡表頁未以文字或已建立圖例的圖示明示卡牌種類。'),
   candidate('copies', copies, 'setup', 'page-05.jpg；印刷頁 3；〈玩家設置〉第 1、4 點'),
-  candidate(statField, statValue, 'cards', `card-07.jpg；${cardRegion}；卡底${statField === 'purchasePower' ? '購買力' : '榮譽'}圖示與數值`),
+  candidate(statField, statValue, 'cards', `card-07.jpg；${cardRegion}；卡底${statField === 'purchasePower' ? '購買力' : '戰力'}圖示與數值`),
   ...(['cost', 'combat', 'purchasePower', 'honor'] as const).filter((field) => field !== statField).map((field) => notShown(field, cardRegion)),
   notShown('effect', cardRegion), notShown('effectTiming', cardRegion), notShown('equipmentEligibility', cardRegion), notShown('restrictions', cardRegion)
 ] });
@@ -36,6 +36,6 @@ export const baseStarterCandidateCatalog: BaseStarterCandidateCatalog = {
     adventurer('base:starter/adventurer-04', '修爾蒂', 1, '上排第 3 張'),
     adventurer('base:starter/adventurer-05', '辛芙妮', 1, '上排第 4 張'),
     starterResource('base:starter/summoning-stone', '召喚石', 4, 'purchasePower', 1, '下排中央'),
-    starterResource('base:starter/spirit-crystal', '精靈結晶', 1, 'honor', 1, '下排右側')
+    starterResource('base:starter/spirit-crystal', '精靈結晶', 1, 'combat', 1, '下排右側', '裝備')
   ]
 };

@@ -26,6 +26,15 @@ const drawItemPack: ContentPack = {
 
 const drawItemRuleset = createRuleset([drawItemPack], [baseRulesModule]);
 
+const disabledItemPack: ContentPack = {
+  ...testPack,
+  manifest: { ...testPack.manifest, id: 'test:disabled-item', hash: 'disabled-item' },
+  definitions: testPack.definitions.map((definition) => definition.id === 'test:item/ration'
+    ? { ...definition, tags: [...(definition.tags ?? []), 'playtest:effects-disabled'] }
+    : definition),
+};
+const disabledItemRuleset = createRuleset([disabledItemPack], [baseRulesModule]);
+
 const discardThenDrawPack: ContentPack = {
   ...drawItemPack,
   manifest: { ...drawItemPack.manifest, id: 'test:card-use-choice', version: '3', hash: 'card-use-choice-v3' },
@@ -174,6 +183,22 @@ const postCommandChoiceHook: LifecycleHook = {
 const postCommandChoiceModule: RulesModule = { id: 'test:card-use-post-command', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', lifecycleHooks: [postCommandChoiceHook] };
 
 describe('data-driven card use effects', () => {
+  it('never exposes or accepts an effects-disabled item as a blank use action', () => {
+    const state = createGame({ gameId: 'disabled-item', seed: 7, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, disabledItemRuleset);
+    const player = state.players[0]!;
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/ration')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== itemId);
+    player.drawPile = player.drawPile.filter((cardId) => cardId !== itemId);
+    player.discardPile = player.discardPile.filter((cardId) => cardId !== itemId);
+    player.hand.push(itemId);
+    state.cards[itemId]!.ownerId = player.id;
+    expect(getLegalCommands(state, disabledItemRuleset, player.id)).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    const before = structuredClone(state);
+    const result = dispatch(state, disabledItemRuleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }));
+    expect(result.error?.code).toBe('INVALID_COMMAND');
+    expect(result.state).toEqual(before);
+  });
+
   it('accepts versioned suspension effects and rejects mixed legacy/new item effect contracts', () => {
     expect(createContentRegistry([discardThenDrawPack]).definitions['test:item/ration']?.useEffect?.body.kind).toBe('sequence');
     expect(() => createContentRegistry([{

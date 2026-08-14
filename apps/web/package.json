@@ -14,6 +14,7 @@
   "dependencies": {
     "@guildmaster/content-base": "workspace:*",
     "@guildmaster/content-base-helpers": "workspace:*",
+    "@guildmaster/content-base-rules": "workspace:*",
     "@guildmaster/game-ai": "workspace:*",
     "@guildmaster/game-engine": "workspace:*",
     "@guildmaster/game-protocol": "workspace:*",

@@ -1,5 +1,6 @@
 import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base/runtime';
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
+import { baseProvisionalOriginalFullRulesModule } from '@guildmaster/content-base-rules';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
 import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
@@ -99,8 +100,8 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   },
   'provisional-original-full': {
     label: '基礎版原作衍生 Provisional 測試',
-    description: '固定一名真人與三名 CPU，載入完整候選 roster 與非官方數位張數配置。',
-    warning: '內部測試模式：未完成第二人覆核的卡牌只載入數值，效果保持停用；不得視為官方完整基礎版。',
+    description: '固定一名真人與三名 CPU，載入完整候選 roster、起始裝備與已驗證的首批卡牌效果。',
+    warning: '內部測試模式：候選冒險者 02／09、魔物 01／02／03／06／09／10／11／14 與既有十四項物資效果已啟用；其餘未覆核效果保持停用，不得視為官方完整基礎版。',
   },
 };
 
@@ -156,7 +157,12 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
       : [baseDemoContentPack];
   return createRuleset(
     packs,
-    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
+    [
+      baseRulesModule,
+      ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule] : []),
+      ...(scenarioModule ? [scenarioModule] : []),
+      ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : []),
+    ],
     { allowProvisionalPlaytest: !scenario && setup.contentMode !== 'demo' },
   );
 }

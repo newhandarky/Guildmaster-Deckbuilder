@@ -1,7 +1,7 @@
 import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type EngineError, type EngineResult, type GameCommand, type GameState, type PendingCommandContinuation, type Phase, type PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
-import { getEndCondition, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
+import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { attachTargets } from './create-game.js';
 import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
@@ -11,7 +11,6 @@ import { beginPostCommandPipeline, resumePostCommandPipeline, resumePostCommandC
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
-import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { applyEnemyTargetDamageEvaluation, defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
@@ -20,11 +19,11 @@ import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
 import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
-import { previousSeat } from '../model/seats.js';
 import { createTurnFactLedger } from './create-game.js';
 import { dispatchBondSetup } from './bond-setup.js';
 import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
+import { applyBondCompletion, checkEndConditions } from './bond-completion.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
@@ -39,20 +38,6 @@ function combinations(ids: readonly string[], count: number, limit = 257): strin
 
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined { return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` }; }
 function resolveItem(player: PlayerState, effect: string | undefined): void { if (effect === 'purchase+2') player.turnPurchaseBonus += 2; if (effect === 'combat+2') player.turnCombatBonus += 2; }
-
-function maybeCompleteBonds(state: GameState, player: PlayerState, ruleset: Ruleset, events: DomainEvent[], commandId: string): EngineError | undefined {
-  for (const bond of player.bonds) {
-    if (bond.completed) continue;
-    const definition = ruleset.registry.bonds.find((candidate) => candidate.id === bond.bondId);
-    const evaluation = evaluateBondCondition(state, ruleset, player.id, bond.bondId);
-    if (evaluation.status !== 'ready') return { code: 'INVALID_COMMAND', message: evaluation.error };
-    if (definition && evaluation.evaluation.satisfied) {
-      bond.completed = true;
-      event(state, events, 'BOND_COMPLETED', `${player.name} 完成羈絆：${definition.name}。`, commandId);
-    }
-  }
-  return undefined;
-}
 
 function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined { const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload; return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined; }
 function fixedAttackResolution(events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined { const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload; return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined; }
@@ -119,18 +104,7 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   if (target.kind === 'boss') facts(state, player.id).bossesDefeated += 1;
   else facts(state, player.id).monstersDefeated += 1;
   facts(state, player.id).combatResolved = true;
-  const bondError = maybeCompleteBonds(state, player, ruleset, events, envelope.commandId); if (bondError) return bondError;
-  event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEnd(state, ruleset, events, envelope.commandId); return undefined;
-}
-
-function checkEnd(state: GameState, ruleset: Ruleset, events: DomainEvent[], commandId: string): void {
-  if (state.status !== 'playing') return;
-  const conditionId = getEndCondition(ruleset, state);
-  if (!conditionId) return;
-  const finalRoundEndPlayerId = previousSeat(state.players, state.startingPlayerId).id;
-  state.status = 'finalRound';
-  state.endState = { conditionId, finalRoundEndPlayerId, triggeredAtRevision: state.revision + 1 };
-  event(state, events, 'FINAL_ROUND_TRIGGERED', '已觸發遊戲結束，將完成目前輪次。', commandId);
+  event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEndConditions(state, ruleset, events, envelope.commandId); return undefined;
 }
 
 function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'PLAY_ADVENTURER' }>, events: DomainEvent[], commandId: string, fixedCandidates?: readonly string[]): EngineError | undefined {
@@ -182,6 +156,7 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, enve
   if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該物資不在手牌中。' };
   const definition = getDefinition(ruleset.registry, state, command.cardId);
   if (definition.type !== 'item') return { code: 'INVALID_COMMAND', message: '只有道具可使用。' };
+  if (definition.tags?.includes('playtest:effects-disabled')) return { code: 'INVALID_COMMAND', message: '此卡效果尚未啟用，不能作為空白道具使用。' };
   player.playArea.push(command.cardId);
   facts(state, player.id).itemsUsed += 1;
   resolveItem(player, definition.itemEffect);
@@ -266,7 +241,8 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'REFRESH_MARKET': { const message = applyMarketRefresh(state, ruleset, player, envelope.command, events, envelope.commandId); if (!message) facts(state, player.id).marketRefreshed = true; return message ? { code: 'INVALID_COMMAND', message } : undefined; }
     case 'SELECT_BONDS': return { code: 'INVALID_COMMAND', message: 'Bond setup commands are only valid during setup.' };
-    case 'END_PHASE': return applyPhaseTransition(state, ruleset, player, envelope.command.phase, events, envelope, rollbackState, factStart, (candidate, activeRuleset, activePlayer, activeEvents, commandId) => maybeCompleteBonds(candidate, activePlayer, activeRuleset, activeEvents, commandId), (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEnd(candidate, activeRuleset, activeEvents, commandId); return undefined; }, 'phase-end', resolutionEnvelopes);
+    case 'COMPLETE_BONDS': return applyBondCompletion(state, player, ruleset, envelope.command, events, envelope.commandId);
+    case 'END_PHASE': return applyPhaseTransition(state, ruleset, player, envelope.command.phase, events, envelope, rollbackState, factStart, () => undefined, (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEndConditions(candidate, activeRuleset, activeEvents, commandId); return undefined; }, 'phase-end', resolutionEnvelopes);
     case 'RESOLVE_EFFECT_CHOICE': return { code: 'INVALID_COMMAND', message: 'A choice command cannot be used as an original command continuation.' };
     case 'RESPOND_COUNTER_CONSENT':
     case 'CANCEL_COUNTER_CONSENT':
@@ -312,7 +288,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   }
   const nextState = structuredClone(state);
   if ((envelope.command.type === 'RESOLVE_EFFECT_CHOICE' || isCounterConsentCommand(envelope.command)) && nextState.effectState.pendingCommand?.kind === 'combat-reward') {
-    const pending = nextState.effectState.pendingCommand; const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumeCombatRewardPipeline(nextState, ruleset, envelope.actorId, envelope.command.executionId, envelope.command.choiceId, envelope.command.optionId) : resumeCombatRewardCounterConsent(nextState, ruleset, envelope.actorId, envelope.command.requestId, counterConsentAction(envelope.command));
+    const pending = nextState.effectState.pendingCommand; const resumed = envelope.command.type === 'RESOLVE_EFFECT_CHOICE' ? resumeCombatRewardPipeline(nextState, ruleset, envelope) : resumeCombatRewardCounterConsent(nextState, ruleset, envelope, counterConsentAction(envelope.command));
     if (resumed.status === 'failed' || resumed.status === 'unsupported') return { state: structuredClone(pending.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: resumed.error ?? 'Combat reward choice failed.' } };
     if (resumed.status === 'suspended') return { state: nextState, events: resumed.events };
     const tail = finishAttackAfterRewards(nextState, ruleset, pending.envelope, resumed.events); if (tail) return { state: structuredClone(pending.rollbackState), events: [], error: tail };
@@ -356,7 +332,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     delete nextState.effectState.pendingCommand;
     const player = getPlayer(nextState, continuation.envelope.actorId);
     const resolutionEnvelopes = [...continuation.resolutionEnvelopes, structuredClone(envelope)];
-    const transitionError = applyPhaseTransition(nextState, ruleset, player, continuation.envelope.command.phase, events, continuation.envelope, continuation.rollbackState, continuation.factStart, (candidate, activeRuleset, activePlayer, activeEvents, commandId) => maybeCompleteBonds(candidate, activePlayer, activeRuleset, activeEvents, commandId), (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEnd(candidate, activeRuleset, activeEvents, commandId); return undefined; }, continuation.cursor, resolutionEnvelopes);
+    const transitionError = applyPhaseTransition(nextState, ruleset, player, continuation.envelope.command.phase, events, continuation.envelope, continuation.rollbackState, continuation.factStart, () => undefined, (candidate, activeRuleset, _activePlayer, activeEvents, commandId) => { checkEndConditions(candidate, activeRuleset, activeEvents, commandId); return undefined; }, continuation.cursor, resolutionEnvelopes);
     if (transitionError) return { state: structuredClone(continuation.rollbackState), events: [], error: transitionError };
     const pending = nextState.effectState.pendingCommand as PendingCommandContinuation | undefined;
     if (pending?.kind === 'phase-transition') {

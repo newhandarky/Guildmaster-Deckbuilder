@@ -58,10 +58,13 @@ for (const viewport of [
     const activityBox = await page.getByTestId('activity-rail').boundingBox();
     const encounterBox = await page.getByTestId('encounter-area').boundingBox();
     const tavernBox = await page.getByTestId('tavern-area').boundingBox();
+    const monsterRow = page.locator('[data-zone-id="base:monster-row"] .card-row');
 
     expect(utilityBox?.width).toBeCloseTo(320, 0);
     expect(utilityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
     expect(tavernBox?.x).toBeGreaterThan((encounterBox?.x ?? 0) + (encounterBox?.width ?? 0));
+    expect(encounterBox?.width).toBeCloseTo(tavernBox?.width ?? 0, 0);
+    expect(await monsterRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
     expect(rectanglesOverlap(interactionBox, activityBox)).toBe(false);
 
     for (const row of await page.locator('.card-row').all()) {

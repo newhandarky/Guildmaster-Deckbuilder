@@ -8,7 +8,7 @@ CPU 僅能使用該玩家的 `PlayerView`、同 revision 的 Legal Commands、�
 
 ## 內容與數位張數 policy
 
-完整測試 pack 必須與 `base:provisional-foundation` 分離，使用 `base:provisional-original-full@0.2.0` identity。候選 roster 為 30 種冒險者、28 種物資、14 種魔物、11 名魔王與 30 張羈絆；協助者不是 baseline。
+完整測試 pack 必須與 `base:provisional-foundation` 分離，使用 `base:provisional-original-full@0.4.0` identity。候選 roster 為 30 種冒險者、28 種物資、14 種魔物、11 名魔王與 30 張羈絆；協助者不是 baseline。
 
 以下逐種類張數是 project policy，不是官方實體配置：
 
@@ -17,7 +17,7 @@ CPU 僅能使用該玩家的 `PlayerView`、同 revision 的 Legal Commands、�
 - 魔物 01 為 3 張；02／03／04 各 3 張；05–14 各 2 張，共 32 張。
 - 魔王與羈絆每種 1 張。
 
-Runtime 與 UI 只使用中性候選名稱。視覺盤點仍未完成第二人覆核的文字只能作 evidence，不能成為 enabled effect。
+Runtime 與 UI 只使用中性候選名稱。已由清楚卡面、既有通用能力與 focused tests 封口的 enabled effect 包含：候選冒險者 02 的配戴限制、09 的配戴中戰力 +1，候選物資 01／02／03／04／05／07／08／10／13／15／17／18／25／27，以及候選魔物 01／02／03／06／09／10／11／14 的擊敗獎勵。其餘未完成語意或 Engine 能力封口的文字只作 evidence，繼續帶 `playtest:effects-disabled`。決策來源以 [基礎版卡牌規則待確認問卷](./30-基礎版卡牌規則待確認問卷.md) 為準；能力批次見 [基礎版卡牌效果實作批次](./31-基礎版卡牌效果實作批次.md)。
 
 ## Machine-checkable gate
 
@@ -30,6 +30,7 @@ Runtime 與 UI 只使用中性候選名稱。視覺盤點仍未完成第二人�
 - 四人建局必須選足 6 名魔王，不得靜默縮短。
 - 所有公共 ordered decks 必須是 hidden；只有公開列進入 Player View。
 - final round 在起始玩家前一 seat 的 rest 完成後結束。
+- 羈絆條件成立只產生可選 `COMPLETE_BONDS` Legal Commands；玩家可完成任意非空子集合或完全不送出。Engine 不得在討伐或休息邊界自動完成羈絆。
 - 同分使用 competition ranking，例如 `1,1,3`。
 - 完整 pack 使用羈絆抽 7 選 5 setup；每位玩家只看自己的 offer。
 - 市場刷新、turn/phase lifecycle、turn facts、敵人報酬與所有 enabled mandatory choice 必須有權威 Command 路徑。

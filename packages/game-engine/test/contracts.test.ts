@@ -88,6 +88,21 @@ describe('core abstraction contracts', () => {
     expect(state.players[1]!.party.map((slot) => state.cards[slot.adventurerId]!.definitionId).sort()).toEqual([...ids].sort());
   });
 
+  it('allows a typed starter equipment without adding extra copies to the public supply', () => {
+    const equipmentStarter: ContentPack = {
+      ...testPack,
+      manifest: { ...testPack.manifest, id: 'test:equipment-starter' },
+      definitions: testPack.definitions.map((definition) => definition.id === 'test:starter/crystal'
+        ? { id: definition.id, name: definition.name, type: 'equipment', copies: 1, combat: 1, source: definition.source }
+        : definition),
+    };
+    const activeRuleset = createRuleset([equipmentStarter], [baseRulesModule]);
+    const state = createGame({ gameId: 'equipment-starter', seed: 5, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, activeRuleset);
+    const publicSupplyIds = [...state.zones[baseZoneIds.itemDeck]!.cardIds, ...state.zones[baseZoneIds.itemRow]!.cardIds];
+    expect(publicSupplyIds.some((cardId) => state.cards[cardId]!.definitionId === 'test:starter/crystal')).toBe(false);
+    expect(state.players.every((player) => player.hand.some((cardId) => state.cards[cardId]!.definitionId === 'test:starter/crystal'))).toBe(true);
+  });
+
   it('does not mutate state for stale or illegal commands', () => {
     const state = makeGame();
     const stale = dispatch(state, testRuleset, { ...envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' }), expectedRevision: 1 });

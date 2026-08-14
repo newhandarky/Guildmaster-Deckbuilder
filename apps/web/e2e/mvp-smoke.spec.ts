@@ -699,16 +699,16 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(page.getByTestId('game-app')).toBeVisible();
   await finishTriggeredFinalRound(page);
   await expect(page.getByText('base:all-bosses-defeated')).toBeVisible();
-  await expect(page.getByTestId('viewer-outcome')).toContainText('你的結果：勝利');
+  await expect(page.getByTestId('viewer-outcome')).toContainText('你的結果：失敗（第 2 名）');
 
   const rows = page.locator('.scoreboard .score-row');
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0)).toContainText('#1 你');
-  await expect(rows.nth(0)).toContainText('5 榮譽');
-  await expect(rows.nth(0)).toContainText('魔王 1／魔物 0');
-  await expect(rows.nth(1)).toContainText('#2');
-  await expect(rows.nth(1)).toContainText(/\d+ 榮譽/);
-  await expect(rows.nth(1)).toContainText('魔王 0');
+  await expect(rows.nth(0)).toContainText('#1');
+  await expect(rows.nth(0)).toContainText(/\d+ 榮譽/);
+  await expect(rows.nth(0)).toContainText('魔王 0');
+  await expect(rows.nth(1)).toContainText('#2 你');
+  await expect(rows.nth(1)).toContainText('3 榮譽');
+  await expect(rows.nth(1)).toContainText('魔王 1／魔物 0');
 
   await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
@@ -749,6 +749,10 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await expect(legalBoss).toBeEnabled();
   await runCardAction(page, legalBoss, '討伐');
 
+  await expect(page.getByRole('heading', { name: '羈絆條件已成立' })).toBeVisible();
+  await expect(page.getByTestId('final-round-notice')).toHaveCount(0);
+  await page.getByRole('checkbox', { name: '終局驗證 · 2 榮譽' }).check();
+  await page.getByRole('button', { name: '完成所選羈絆' }).click();
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await finishTriggeredFinalRound(page);
   await expect(page.getByText('base:all-bonds-completed')).toBeVisible();

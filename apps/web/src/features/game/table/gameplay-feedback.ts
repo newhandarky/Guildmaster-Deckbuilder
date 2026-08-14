@@ -41,6 +41,7 @@ export function buildLegalActionSummary(commands: readonly GameCommand[]): strin
     [uniqueCommandCount(commands.flatMap((command) => command.type === 'EQUIP_ITEM' ? [command.cardId] : [])), '張裝備可選擇配戴對象'],
     [commands.filter((command) => command.type === 'ATTACK_TARGET').length, '個目標可討伐'],
     [commands.filter((command) => command.type === 'BUY_CARD').length, '張卡牌可購買'],
+    [uniqueCommandCount(commands.flatMap((command) => command.type === 'COMPLETE_BONDS' ? command.bondIds : [])), '張羈絆條件成立，可自行選擇完成'],
   ] as const;
   const available = summaries
     .filter(([count]) => count > 0)

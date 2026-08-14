@@ -1,0 +1,20 @@
+{
+  "name": "@guildmaster/content-base-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@guildmaster/game-engine": "workspace:*",
+    "@guildmaster/game-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@guildmaster/content-base": "workspace:*",
+    "vitest": "^2.1.9"
+  }
+}

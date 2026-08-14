@@ -44,6 +44,7 @@ export function App() {
   const [inspection, setInspection] = useState<CardInspection>();
   const [hasEnteredGame, setHasEnteredGame] = useState(false);
   const [selectedBondIds, setSelectedBondIds] = useState<string[]>([]);
+  const [selectedCompletionBondIds, setSelectedCompletionBondIds] = useState<string[]>([]);
   const appRootRef = useRef<HTMLElement>(null);
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -74,6 +75,14 @@ export function App() {
   const endPhaseCommand = legalCommands.find(
     (command): command is Extract<GameCommand, { type: 'END_PHASE' }> =>
       command.type === 'END_PHASE' && command.phase === view.phase,
+  );
+  const completeBondCommands = legalCommands.filter(
+    (command): command is Extract<GameCommand, { type: 'COMPLETE_BONDS' }> => command.type === 'COMPLETE_BONDS',
+  );
+  const completableBondIds = [...new Set(completeBondCommands.flatMap(({ bondIds }) => bondIds))];
+  const selectedCompleteBondCommand = completeBondCommands.find(({ bondIds }) =>
+    bondIds.length === selectedCompletionBondIds.length
+    && bondIds.every((bondId) => selectedCompletionBondIds.includes(bondId)),
   );
   const currentInspection = inspection?.gameId === view.gameId
     && inspection.revision === view.revision
@@ -141,6 +150,7 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [cpu.stepKey, cpuNeedsStep, cpuPaused, cpuSpeed, hasEnteredGame, stepCpu, view.status]);
   useEffect(() => { setSelectedBondIds([]); }, [view.bondSetup?.offerId, view.bondSetup?.currentActorId]);
+  useEffect(() => { setSelectedCompletionBondIds([]); }, [view.gameId, view.revision, view.activePlayerId]);
 
   if (!hasEnteredGame) {
     return <ExpeditionEntryScreen
@@ -227,6 +237,18 @@ export function App() {
               return <label key={bondId}><input type="checkbox" checked={checked} disabled={!checked && selectedBondIds.length >= 5} onChange={() => setSelectedBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
             })}</div>
             <button className="primary" type="button" disabled={selectedBondIds.length !== 5} onClick={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}>確認保留五張</button>
+          </section>
+        : null}
+      {completableBondIds.length > 0
+        ? <section className="bond-setup-panel" aria-labelledby="bond-completion-heading">
+            <h2 id="bond-completion-heading">羈絆條件已成立</h2>
+            <p>可以完成任意子集合，也可以暫不完成；暫不完成不會保存資格。</p>
+            <div className="bond-choice-grid">{completableBondIds.map((bondId) => {
+              const bond = bondDefinitions.find(({ id }) => id === bondId);
+              const checked = selectedCompletionBondIds.includes(bondId);
+              return <label key={bondId}><input type="checkbox" checked={checked} onChange={() => setSelectedCompletionBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
+            })}</div>
+            <button className="primary" type="button" disabled={!selectedCompleteBondCommand} onClick={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}>完成所選羈絆</button>
           </section>
         : null}
       {entrySummary.contentMode === 'provisional-original-full'

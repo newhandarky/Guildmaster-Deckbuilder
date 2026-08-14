@@ -21,14 +21,14 @@ describe('provisional foundation Content Pack', () => {
       expect.objectContaining({ id: 'base:resource/resource-05', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: { kind: 'definition-type-in', values: ['equipment'] } }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-08', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: 2 } }) }),
       expect.objectContaining({ id: 'base:resource/resource-10', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
-      expect.objectContaining({ id: 'base:resource/resource-13', type: 'item', copies: 2, tags: expect.arrayContaining(['affinity:mage']), useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', predicate: expect.objectContaining({ kind: 'all' }) }) }) }),
+      expect.objectContaining({ id: 'base:resource/resource-13', type: 'item', copies: 2, tags: ['playtest:effect-enabled'], useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', choiceId: 'base:resource/resource-13-recover-item-card', predicate: { kind: 'all', predicates: [{ kind: 'definition-type-in', values: ['item'] }, { kind: 'not', predicate: { kind: 'definition-id-in', values: ['base:resource/resource-13'] } }] } }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-15', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'choose-card', from: expect.objectContaining({ kind: 'one-of' }) }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-17', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: expect.objectContaining({ kind: 'sequence' }) }) }),
       expect.objectContaining({ id: 'base:resource/resource-18', type: 'equipment', copies: 2, equipmentEventTriggers: [expect.objectContaining({ eventType: 'ENEMY_DEFEATED', effect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: 1 } }) })] }),
       expect.objectContaining({ id: 'base:resource/resource-27', type: 'item', copies: 2, useEffect: expect.objectContaining({ body: { kind: 'draw', player: { kind: 'controller' }, count: { kind: 'party-distinct-tag-count', player: { kind: 'controller' }, tagPrefix: 'profession:' } } }) }),
     ]);
     expect(baseProvisionalFoundationContentPack.definitions
-      .filter((definition) => definition.type !== 'starter' && !enabled.some(({ id }) => id === definition.id))
+      .filter((definition) => !definition.id.startsWith('base:starter/') && !enabled.some(({ id }) => id === definition.id))
       .every(({ tags }) => tags?.includes('playtest:effects-disabled'))).toBe(true);
   });
 
@@ -59,7 +59,7 @@ describe('provisional foundation Content Pack', () => {
   });
 
   it('keeps provisional resource multiplicities explicitly owned by the digital pack', () => {
-    expect(baseProvisionalFoundationContentPack.definitions.filter(({ type }) => type === 'item' || type === 'equipment'))
+    expect(baseProvisionalFoundationContentPack.definitions.filter(({ id }) => id.startsWith('base:resource/')))
       .toEqual([
         expect.objectContaining({ id: 'base:resource/resource-01', copies: 2, cost: 3 }),
         expect.objectContaining({ id: 'base:resource/resource-02', copies: 2, cost: 3 }),

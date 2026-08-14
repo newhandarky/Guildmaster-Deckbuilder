@@ -432,6 +432,8 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 
 @media (min-width: 900px) {
   .public-table-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .public-table-grid .card-row { overflow-x: visible; scrollbar-gutter: auto; }
+  .public-table-grid .card { flex: 1 1 0; width: auto; max-width: var(--card-width); }
   .results-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
 }
 
@@ -453,7 +455,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
-  .public-table-grid { grid-template-columns: minmax(0, 9fr) minmax(0, 11fr); }
+  .public-table-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .interaction-rail { position: static; }
   .card-state-legend { display: block; }
   .turn-control-dock { grid-template-columns: minmax(0, 1fr); }

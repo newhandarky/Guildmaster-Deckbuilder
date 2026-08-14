@@ -160,8 +160,19 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (command.kind === 'combat-reward') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) }; const evaluation = command.evaluation;
       if (Boolean(choice) === Boolean(consent) || pending || state.effectState.pendingPostCommand || command.continuationId !== `combat-reward:${command.envelope.commandId}` || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || JSON.stringify(evaluation.registry) !== JSON.stringify(registry) || evaluation.input.playerId !== command.envelope.actorId || evaluation.input.targetId !== command.envelope.command.targetId || command.policyIndex >= evaluation.matchedPolicies.length || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid combat reward continuation.');
-      if (ruleset) { const rewardError = validatePendingCombatRewardContinuation(state, ruleset); if (rewardError) throw new Error(rewardError); }
-      command.rollbackState = structuredClone(rollbackState); return state;
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending combat reward Snapshot requires the active ruleset for canonical restore.');
+      const rewardError = validatePendingCombatRewardContinuation(state, ruleset); if (rewardError) throw new Error(rewardError);
+      let canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error) throw new Error(`Combat reward canonical replay failed at the root command: ${canonical.error.message}`);
+      for (const resolutionEnvelope of command.resolutionEnvelopes) {
+        canonical = dispatch(canonical.state, ruleset, structuredClone(resolutionEnvelope));
+        if (canonical.error) throw new Error(`Combat reward canonical replay failed at a resolution command: ${canonical.error.message}`);
+      }
+      if (canonical.state.effectState.pendingCommand?.kind !== 'combat-reward') throw new Error('Combat reward canonical replay did not suspend at the expected effect boundary.');
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Combat reward suspended state does not match canonical replay at ${difference}.`);
+      return state;
     }
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
     const suspension = choice ?? consent;

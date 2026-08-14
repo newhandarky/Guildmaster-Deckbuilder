@@ -35,6 +35,8 @@
 29. [基礎版 Provisional 例外清單](./26-基礎版Provisional例外清單.md)
 30. [基礎版 Provisional 效果能力矩陣](./27-基礎版Provisional效果能力矩陣.md)
 31. [卡牌視覺與 AI 素材規格](./28-卡牌視覺與AI素材規格.md)
+32. [四人離線 Provisional 能力門檻](./29-四人離線Provisional能力門檻.md)
+33. [基礎版卡牌規則待確認問卷](./30-基礎版卡牌規則待確認問卷.md)
 
 ## 文件適用範圍
 

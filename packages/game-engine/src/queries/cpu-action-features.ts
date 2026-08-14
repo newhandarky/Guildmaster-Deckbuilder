@@ -17,6 +17,12 @@ function attachedSlotCombat(state: GameState, ruleset: Ruleset, playerId: string
   return (getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0) + equipmentPower + (modifiers?.evaluation.powerBonus ?? 0);
 }
 
+function equipmentCombat(state: GameState, ruleset: Ruleset, playerId: string, adventurerId: string, equipmentId: string): number {
+  const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId, equipmentCardId: equipmentId, adventurerId });
+  if (modifiers.status !== 'ready') throw new Error(`CPU action features require valid equipment combat modifiers: ${modifiers.error}`);
+  return (getDefinition(ruleset.registry, state, equipmentId).combat ?? 0) + modifiers.evaluation.powerBonus;
+}
+
 /** Public, deterministic features for a legal command; this query never mutates state or advances RNG. */
 export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId: string): CpuActionFeature[] {
   return getLegalCommands(state, ruleset, actorId).map((command) => {
@@ -56,10 +62,13 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
       const previewState = structuredClone(state);
       const previewSlot = previewState.players.find(({ id }) => id === actorId)?.party.find(({ adventurerId }) => adventurerId === command.adventurerId);
       if (!previewSlot) throw new Error(`CPU action features require an existing equipment target ${command.adventurerId}.`);
+      const replacedEquipmentId = previewSlot.equipmentId;
+      if (replacedEquipmentId) {
+        feature.partyCombatLoss = equipmentCombat(state, ruleset, actorId, command.adventurerId, replacedEquipmentId);
+        feature.equipmentLoss = 1;
+      }
       previewSlot.equipmentId = command.cardId;
-      const modifiers = evaluateEquipmentCombatModifiers(previewState, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: command.cardId, adventurerId: command.adventurerId });
-      if (modifiers.status !== 'ready') throw new Error(`CPU action features require valid equipment combat modifiers: ${modifiers.error}`);
-      feature.partyCombatGain = (getDefinition(ruleset.registry, state, command.cardId).combat ?? 0) + modifiers.evaluation.powerBonus;
+      feature.partyCombatGain = equipmentCombat(previewState, ruleset, actorId, command.adventurerId, command.cardId);
     }
     if (command.type === 'USE_ITEM') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);
@@ -72,6 +81,9 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
       feature.permanentPurchasePower = definition.purchasePower ?? 0;
       feature.partyCombatGain = definition.combat ?? 0;
       feature.purchaseCost = definition.cost ?? 0;
+    }
+    if (command.type === 'COMPLETE_BONDS') {
+      feature.bondHonorGain = command.bondIds.reduce((sum, bondId) => sum + (ruleset.registry.bonds.find(({ id }) => id === bondId)?.honor ?? 0), 0);
     }
     return feature;
   });

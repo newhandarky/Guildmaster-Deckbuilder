@@ -23,10 +23,26 @@ describe('deterministic CPU strategy', () => {
     expect(result).toMatchObject({ status: 'ready', command: high, reasonCode: 'KEEP_HIGHEST_BOND_VALUE' });
   });
 
+  it('completes the eligible bond subset with the greatest public honor value', () => {
+    const one = { type: 'COMPLETE_BONDS' as const, bondIds: ['b1'] };
+    const both = { type: 'COMPLETE_BONDS' as const, bondIds: ['b1', 'b2'] };
+    const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
+    const result = decideCpuAction(context([one, both, end], [feature(one, { bondHonorGain: 2 }), feature(both, { bondHonorGain: 7 })]));
+    expect(result).toMatchObject({ status: 'ready', command: both, reasonCode: 'COMPLETE_ELIGIBLE_BONDS', score: 700 });
+  });
+
   it('ends a phase when every optional action has no positive utility', () => {
     const refresh = { type: 'REFRESH_MARKET' as const, row: 'item' as const, discardCardId: 'hand', refreshCardIds: ['row'] };
     const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
     expect(decideCpuAction(context([refresh, end], [feature(refresh)]))).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
+  });
+
+  it('does not replace stronger equipment when the public feature reports a negative net change', () => {
+    const equip = { type: 'EQUIP_ITEM' as const, cardId: 'weak-equipment', adventurerId: 'member' };
+    const end = { type: 'END_PHASE' as const, phase: 'action1' as const };
+    const actionView = { ...view(), phase: 'action1' } as PlayerView;
+    const result = decideCpuAction({ ...context([equip, end], [feature(equip, { partyCombatGain: 2, partyCombatLoss: 4, equipmentLoss: 1 })]), view: actionView });
+    expect(result).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
   });
 
   it('preserves its party when a public boss is available but not yet legally attackable', () => {
