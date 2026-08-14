@@ -34,6 +34,7 @@ describe('core abstraction contracts', () => {
 
   it('round-trips dynamic zones, multi-target encounters, and module state', () => {
     const state = makeGame();
+    for (const zone of Object.values(state.zones)) if (zone.visibility === 'hidden') zone.visibility = 'public';
     state.zones['vol1:arena'] = { zoneId: 'vol1:arena', kind: 'moduleArea', cardIds: [], visibility: 'public', rulesModuleId: 'vol1:rules', metadata: { round: 1 } };
     state.enemyEncounters.push({ encounterId: 'vol1:demon', kind: 'vol1:ultimate-demon', status: 'active', rulesModuleId: 'vol1:rules', targetIds: ['vol1:left', 'vol1:right'], state: { phase: 'awakening' } });
     const leftCard = state.players[0]!.hand.pop()!; const rightCard = state.players[1]!.hand.pop()!;
@@ -83,7 +84,23 @@ describe('core abstraction contracts', () => {
     const ids = ['test:starter/adventurer', 'test:starter/adventurer-02', 'test:starter/adventurer-03', 'test:starter/adventurer-04', 'test:starter/adventurer-05'];
     const explicit: ContentPack = { ...testPack, manifest: { ...testPack.manifest, id: 'test:distinct-starters' }, definitions: [...testPack.definitions, ...ids.slice(1).map((id) => ({ id, name: id, type: 'starter', copies: 0, combat: 1, source: 'test' }))], starter: { partyDefinitionIds: ids, summonStoneDefinitionId: 'test:starter/stone', crystalDefinitionId: 'test:starter/crystal' } };
     const state = createGame({ gameId: 'distinct', seed: 4, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, createRuleset([explicit], [baseRulesModule]));
-    expect(state.players[0]!.party.map((slot) => state.cards[slot.adventurerId]!.definitionId)).toEqual(ids);
+    expect(state.players[0]!.party.map((slot) => state.cards[slot.adventurerId]!.definitionId).sort()).toEqual([...ids].sort());
+    expect(state.players[1]!.party.map((slot) => state.cards[slot.adventurerId]!.definitionId).sort()).toEqual([...ids].sort());
+  });
+
+  it('allows a typed starter equipment without adding extra copies to the public supply', () => {
+    const equipmentStarter: ContentPack = {
+      ...testPack,
+      manifest: { ...testPack.manifest, id: 'test:equipment-starter' },
+      definitions: testPack.definitions.map((definition) => definition.id === 'test:starter/crystal'
+        ? { id: definition.id, name: definition.name, type: 'equipment', copies: 1, combat: 1, source: definition.source }
+        : definition),
+    };
+    const activeRuleset = createRuleset([equipmentStarter], [baseRulesModule]);
+    const state = createGame({ gameId: 'equipment-starter', seed: 5, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, activeRuleset);
+    const publicSupplyIds = [...state.zones[baseZoneIds.itemDeck]!.cardIds, ...state.zones[baseZoneIds.itemRow]!.cardIds];
+    expect(publicSupplyIds.some((cardId) => state.cards[cardId]!.definitionId === 'test:starter/crystal')).toBe(false);
+    expect(state.players.every((player) => player.hand.some((cardId) => state.cards[cardId]!.definitionId === 'test:starter/crystal'))).toBe(true);
   });
 
   it('does not mutate state for stale or illegal commands', () => {

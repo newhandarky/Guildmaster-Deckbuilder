@@ -1,10 +1,34 @@
 import { expect, test } from '@playwright/test';
-import { createGame, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
+import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
+import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
+import { baseRulesModule, createGame, createRuleset, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
 import { enterGame, openGame } from './game-entry.js';
 
 const localSaveKey = 'guildmaster-mvp-save-v2';
+
+test('production persistence writes the complete session atomically to IndexedDB', async ({ page }) => {
+  await page.addInitScript(() => { (globalThis as { __GUILDMASTER_FORCE_INDEXED_DB__?: boolean }).__GUILDMASTER_FORCE_INDEXED_DB__ = true; });
+  await openGame(page);
+  await page.getByTestId('end-phase').click();
+  await expect(page.getByTestId('save-status')).toContainText('已保存');
+  expect(await page.evaluate((key) => localStorage.getItem(key), localSaveKey)).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-entry-summary-v1'))).not.toBeNull();
+  const storedRevision = await page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open('guildmaster-offline', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const read = database.transaction('sessions', 'readonly').objectStore('sessions').get('active');
+      read.onerror = () => reject(read.error);
+      read.onsuccess = () => { resolve((read.result as { snapshot: { state: { revision: number } } }).snapshot.state.revision); database.close(); };
+    };
+  }));
+  expect(storedRevision).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
+});
 
 function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
   const ruleset = createWebRuleset('lifecycle-consent');
@@ -15,6 +39,7 @@ function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
     startingPlayerId: 'human-1',
   }, ruleset);
   state.activePlayerId = requesterId;
+  state.turnFacts!.playerId = requesterId;
   state.phase = requesterId === 'ai-1' ? 'rest' : 'action1';
   state.players.find(({ id }) => id === requesterId)!.counters.push({
     resourceId: 'e2e:private-counter',
@@ -30,7 +55,7 @@ function pendingConsentSave(requesterId: 'human-1' | 'ai-1'): string {
     command: { type: 'END_PHASE', phase: state.phase },
   };
   const suspended = dispatch(state, ruleset, envelope);
-  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error('Failed to create pending E2E consent state.');
+  if (suspended.error || !suspended.state.effectState.pendingCounterConsent) throw new Error(`Failed to create pending E2E consent state: ${suspended.error?.message ?? 'missing pending consent'}.`);
   return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(suspended.state), events: [] });
 }
 
@@ -133,6 +158,17 @@ async function installPendingFoundationMultiSourceChoice(page: import('@playwrig
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: save });
 }
 
+function oldHelperSave(): string {
+  const oldPack = { ...baseProvisionalHelpersContentPack, manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' } };
+  const oldRuleset = createRuleset(
+    [baseProvisionalFoundationContentPack, oldPack],
+    [baseRulesModule, { ...baseHelpersRulesModule, version: '1.0.0' }],
+    { allowProvisionalPlaytest: true },
+  );
+  const state = createGame({ gameId: 'local-4', seed: 20260726, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, oldRuleset);
+  return JSON.stringify({ schemaVersion: 3, snapshot: serializeSnapshot(state), events: [] });
+}
+
 test('fresh desktop entry explains the new expedition and starts a persisted game', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
@@ -159,7 +195,7 @@ test('explicit helper composition reaches PlayerView and persisted Snapshot iden
     expect.objectContaining({ id: 'base:rules' }),
     expect.objectContaining({
       id: 'base:helpers',
-      version: '1.0.0',
+      version: '1.1.0',
       compositionFingerprint: expect.any(String),
     }),
   ]);
@@ -229,10 +265,20 @@ test('helper advanced rules are provisional-only and restore from pack/module id
   await helpers.check();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('helper-panel')).toBeVisible();
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 08 效果已啟用');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 01／06／07／08／09 效果已啟用');
   await page.reload();
   await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
   await expect(page.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
+});
+
+test('old helper 0.1 save is cleared with an explicit one-time recovery notice', async ({ page }) => {
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: localSaveKey, value: oldHelperSave() });
+  await page.goto('/');
+  const entry = page.getByTestId('expedition-entry');
+  await expect(entry.getByRole('heading', { name: '準備新的遠征' })).toBeVisible();
+  await expect(entry.getByTestId('helper-upgrade-recovery-notice')).toHaveText('協助者規則已更新，舊進度無法安全續玩，已建立新遠征。');
+  await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
 });
 
 test('local save status moves from saved to restored without changing the authoritative revision', async ({ page }) => {
@@ -358,7 +404,7 @@ test('provisional card choice survives restore and shows visible card names inst
 
   const dock = page.getByTestId('lifecycle-dock');
   await expect(dock).toContainText('選擇要棄置的手牌');
-  const visibleCard = dock.getByRole('button', { name: '中性卡牌 summoning-stone' }).first();
+  const visibleCard = dock.getByRole('button', { name: '候選起始資源 A' }).first();
   await expect(visibleCard).toBeVisible();
   await expect(dock).not.toContainText('base:starter');
   await visibleCard.click();
@@ -605,7 +651,7 @@ test('replay runner reports the first assertion divergence without changing the 
   await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
 });
 
-test('deterministic full-game journey defeats, recruits, rests, restores v3 save, and continues legally', async ({ page }) => {
+test('deterministic full-game journey defeats, recruits, rests, restores v4 save, and continues legally', async ({ page }) => {
   await openGame(page);
   const endPhase = page.getByTestId('end-phase');
 
@@ -636,7 +682,7 @@ test('deterministic full-game journey defeats, recruits, rests, restores v3 save
   await expect(playableAdventurer).toBeVisible();
   await runCardAction(page, playableAdventurer, '加入隊伍');
   await expect(page.locator('.log')).toContainText('加入了一名冒險者');
-  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(3);
+  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(4);
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
@@ -676,15 +722,16 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(page.getByTestId('game-app')).toBeVisible();
   await finishTriggeredFinalRound(page);
   await expect(page.getByText('base:all-bosses-defeated')).toBeVisible();
+  await expect(page.getByTestId('viewer-outcome')).toContainText('你的結果：失敗（第 2 名）');
 
   const rows = page.locator('.scoreboard .score-row');
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0)).toContainText('#1 你');
-  await expect(rows.nth(0)).toContainText('5 榮譽');
-  await expect(rows.nth(0)).toContainText('魔王 1／魔物 0');
-  await expect(rows.nth(1)).toContainText('#2');
-  await expect(rows.nth(1)).toContainText(/\d+ 榮譽/);
-  await expect(rows.nth(1)).toContainText('魔王 0');
+  await expect(rows.nth(0)).toContainText('#1');
+  await expect(rows.nth(0)).toContainText(/\d+ 榮譽/);
+  await expect(rows.nth(0)).toContainText('魔王 0');
+  await expect(rows.nth(1)).toContainText('#2 你');
+  await expect(rows.nth(1)).toContainText('3 榮譽');
+  await expect(rows.nth(1)).toContainText('魔王 1／魔物 0');
 
   await openReplayDiagnostics(page);
   await page.getByRole('button', { name: '載入已完成對局 Replay' }).click();
@@ -725,6 +772,10 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await expect(legalBoss).toBeEnabled();
   await runCardAction(page, legalBoss, '討伐');
 
+  await expect(page.getByRole('heading', { name: '羈絆條件已成立' })).toBeVisible();
+  await expect(page.getByTestId('final-round-notice')).toHaveCount(0);
+  await page.getByRole('checkbox', { name: '終局驗證 · 2 榮譽' }).check();
+  await page.getByRole('button', { name: '完成所選羈絆' }).click();
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await finishTriggeredFinalRound(page);
   await expect(page.getByText('base:all-bonds-completed')).toBeVisible();

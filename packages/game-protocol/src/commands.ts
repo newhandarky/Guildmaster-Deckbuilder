@@ -7,6 +7,9 @@ export type GameCommand =
   | { type: 'USE_ITEM'; cardId: string }
   | { type: 'ATTACK_TARGET'; targetId: string }
   | { type: 'BUY_CARD'; cardId: string }
+  | { type: 'SELECT_BONDS'; offerId: string; bondIds: readonly string[] }
+  | { type: 'COMPLETE_BONDS'; bondIds: readonly string[] }
+  | { type: 'REFRESH_MARKET'; row: 'adventurer' | 'item'; discardCardId: string; refreshCardIds: readonly string[] }
   | { type: 'RESOLVE_EFFECT_CHOICE'; executionId: string; choiceId: string; optionId: string }
   | { type: 'RESPOND_COUNTER_CONSENT'; requestId: string; response: 'accept' | 'decline' }
   | { type: 'CANCEL_COUNTER_CONSENT'; requestId: string }
@@ -22,6 +25,9 @@ export const GameCommandSchema: z.ZodType<GameCommand> = z.discriminatedUnion('t
   z.object({ type: z.literal('USE_ITEM'), cardId: nonEmptyId }).strict(),
   z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmptyId }).strict(),
   z.object({ type: z.literal('BUY_CARD'), cardId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('SELECT_BONDS'), offerId: nonEmptyId, bondIds: z.array(nonEmptyId).length(5) }).strict(),
+  z.object({ type: z.literal('COMPLETE_BONDS'), bondIds: z.array(nonEmptyId).min(1).max(5) }).strict(),
+  z.object({ type: z.literal('REFRESH_MARKET'), row: z.enum(['adventurer', 'item']), discardCardId: nonEmptyId, refreshCardIds: z.array(nonEmptyId).min(1).max(3) }).strict(),
   z.object({ type: z.literal('RESOLVE_EFFECT_CHOICE'), executionId: nonEmptyId, choiceId: nonEmptyId, optionId: nonEmptyId }).strict(),
   z.object({ type: z.literal('RESPOND_COUNTER_CONSENT'), requestId: nonEmptyId, response: z.enum(['accept', 'decline']) }).strict(),
   z.object({ type: z.literal('CANCEL_COUNTER_CONSENT'), requestId: nonEmptyId }).strict(),

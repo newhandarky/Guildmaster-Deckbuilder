@@ -1,5 +1,5 @@
 import { baseProvisionalFoundationContentPack } from '@guildmaster/content-base';
-import { baseHelperZoneIds } from '@guildmaster/content-base-helpers';
+import { baseHelperZoneIds, baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseRulesModule, createGame, createRuleset, dispatch, envelope, getLegalCommands, getPartyLimit, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
 import { createWebRuleset, webContentModeFromPackIds, webGameSetupFromSnapshot } from './ruleset.js';
@@ -21,7 +21,7 @@ describe('web content modes', () => {
     };
     const state = createGame(initialConfig, ruleset);
 
-    expect(state.rulesModules[1]?.compositionFingerprint).toBeTruthy();
+    expect(state.rulesModules.find(({ id }) => id === 'base:helpers')?.compositionFingerprint).toBeTruthy();
     expect(state.moduleState['base:helpers']).toEqual({ schemaVersion: 1 });
     expect(state.zones[baseHelperZoneIds.active]!.cardIds).toHaveLength(1);
     expect(state.players[0]!.party).toHaveLength(6);
@@ -86,6 +86,14 @@ describe('web content modes', () => {
     if (replay.status === 'completed') expect(replay.finalSnapshot).toEqual(serializeSnapshot(state));
   });
 
+  it('fixes the Batch A E2E fixture to helper 01 followed by helper 07', () => {
+    const ruleset = createWebRuleset('helper-batch-a');
+    const state = createGame({ gameId: 'helper-batch-a', seed: 20260726, players: [{ id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'AI', kind: 'ai' }], startingPlayerId: 'human-1' }, ruleset);
+    expect(state.zones[baseHelperZoneIds.active]!.cardIds.map((cardId) => state.cards[cardId]!.definitionId)).toEqual(['base:helper/helper-01']);
+    expect(state.zones[baseHelperZoneIds.deck]!.cardIds.map((cardId) => state.cards[cardId]!.definitionId)).toEqual(['base:helper/helper-07']);
+    expect(state.zones['base:item-row']!.cardIds.every((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.cost === 6)).toBe(true);
+  });
+
   it('loads helper rules only for an explicit provisional setup and derives that setup from Snapshot identity', () => {
     expect(() => createWebRuleset(undefined, { contentMode: 'demo', advancedRules: { helpers: true } })).toThrow(/require provisional/);
     const ruleset = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: true } });
@@ -98,11 +106,42 @@ describe('web content modes', () => {
     expect(() => webGameSetupFromSnapshot(['base:provisional-foundation'], ['base:rules', 'base:helpers'])).toThrow(/inconsistent/);
   });
 
+  it('rejects an old helper Replay by registry identity instead of rewriting its history', () => {
+    const oldPack = { ...baseProvisionalHelpersContentPack, manifest: { ...baseProvisionalHelpersContentPack.manifest, version: '0.1.0', hash: 'base-provisional-helpers-v1-helper-08-capacity' } };
+    const oldRuleset = createRuleset([baseProvisionalFoundationContentPack, oldPack], [baseRulesModule, { ...baseHelpersRulesModule, version: '1.0.0' }], { allowProvisionalPlaytest: true });
+    const initialConfig = { gameId: 'old-helper-replay', seed: 11, players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }], startingPlayerId: 'human-1' };
+    const currentRuleset = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: true } });
+    const replay = replayGame({ schemaVersion: 1, protocolVersion: 1, registry: replayRegistryFingerprint(oldRuleset), initialConfig, commands: [] }, currentRuleset);
+    expect(replay).toMatchObject({ status: 'failed', diagnostic: { reasonCode: 'REGISTRY_MISMATCH' } });
+  });
+
   it('requires explicit provisional permission at the engine boundary', () => {
     expect(() => createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule])).toThrow(/explicit allowProvisionalPlaytest/);
     expect(createWebRuleset(undefined, 'provisional-playtest').registry.packs).toEqual([
       expect.objectContaining({ id: 'base:provisional-foundation', contentStatus: 'provisional-playtest' }),
     ]);
+  });
+
+  it('creates the separate full provisional four-player ruleset without helpers', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' })]);
+    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(90);
+    expect(ruleset.registry.bonds).toHaveLength(30);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:provisional-original-full-rules']);
+    expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules', 'base:provisional-original-full-rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
+    expect(() => createWebRuleset(undefined, { contentMode: 'provisional-original-full', advancedRules: { helpers: true } })).toThrow(/does not enable helpers/);
+  });
+
+  it('keeps helper-off provisional registry identity and definition count unchanged', () => {
+    const direct = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
+    const web = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: false } });
+    const config = { gameId: 'helper-off-identity', seed: 73, players: [{ id: 'human-1', name: '你', kind: 'human' as const }, { id: 'ai-1', name: 'AI', kind: 'ai' as const }], startingPlayerId: 'human-1' };
+    const directState = createGame(config, direct);
+    const webState = createGame(config, web);
+    expect(Object.keys(web.registry.definitions)).toHaveLength(Object.keys(direct.registry.definitions).length);
+    expect(web.registry.packs).toEqual(direct.registry.packs);
+    expect(webState).toEqual(directState);
   });
 
   it('creates and restores a deterministic foundation playtest snapshot', () => {
@@ -263,7 +302,7 @@ describe('web content modes', () => {
     expect(getLegalCommands(state, ruleset, 'human-1')).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
   });
 
-  it('recovers a mage-affinity card while excluding non-mage cards and every resource-13 copy', () => {
+  it('recovers a non-identical item while excluding adventurers, equipment, and every resource-13 copy', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-playtest');
     const state = createGame({
       gameId: 'foundation-resource-13',
@@ -274,26 +313,27 @@ describe('web content modes', () => {
     const stones = Object.values(state.cards).filter(({ definitionId }) => definitionId === 'base:resource/resource-13');
     const itemId = stones[0]!.id;
     const excludedStoneId = stones[1]!.id;
-    const mageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-03')!.id;
-    const nonMageId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-02')!.id;
+    const recoverableItemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-08')!.id;
+    const mageAdventurerId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-03')!.id;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-02')!.id;
     for (const zone of Object.values(state.zones)) {
-      zone.cardIds = zone.cardIds.filter((id) => ![itemId, excludedStoneId, mageId, nonMageId].includes(id));
+      zone.cardIds = zone.cardIds.filter((id) => ![itemId, excludedStoneId, recoverableItemId, mageAdventurerId, equipmentId].includes(id));
     }
     const player = state.players[0]!;
     player.hand.push(itemId);
-    player.discardPile.push(nonMageId, excludedStoneId, mageId);
+    player.discardPile.push(mageAdventurerId, equipmentId, excludedStoneId, recoverableItemId);
 
     expect(getLegalCommands(state, ruleset, player.id)).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
     const suspended = dispatch(state, ruleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'foundation-use-resource-13'));
     expect(suspended.error).toBeUndefined();
-    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([mageId]);
+    expect(suspended.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual([recoverableItemId]);
 
     const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
-    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === mageId)!;
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === recoverableItemId)!;
     const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, 'foundation-resolve-resource-13'));
     expect(completed.error).toBeUndefined();
-    expect(completed.state.players[0]!.hand).toContain(mageId);
-    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining([nonMageId, excludedStoneId]));
+    expect(completed.state.players[0]!.hand).toContain(recoverableItemId);
+    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining([mageAdventurerId, equipmentId, excludedStoneId]));
     expect(completed.state.players[0]!.playArea).toContain(itemId);
     expect(completed.state.revision).toBe(1);
     expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);

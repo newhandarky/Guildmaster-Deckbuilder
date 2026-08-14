@@ -3,12 +3,12 @@ import { getDefinition } from '../model/factories.js';
 import type { RulesModule } from './ruleset.js';
 
 export const baseRulesModule: RulesModule = {
-  id: 'base:rules', version: '0.3.0', createInitialState: () => ({}),
+  id: 'base:rules', version: '0.4.0', createInitialState: () => ({}),
   zoneDefinitions: [
-    { zoneId: baseZoneIds.adventurerDeck, kind: 'orderedDeck', visibility: 'public', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.adventurerRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
-    { zoneId: baseZoneIds.itemDeck, kind: 'orderedDeck', visibility: 'public', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.itemRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
-    { zoneId: baseZoneIds.monsterDeck, kind: 'orderedDeck', visibility: 'public', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.monsterRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
-    { zoneId: baseZoneIds.bossDeck, kind: 'orderedDeck', visibility: 'public', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.bossRow, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'base:rules' }
+    { zoneId: baseZoneIds.adventurerDeck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.adventurerRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
+    { zoneId: baseZoneIds.itemDeck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.itemRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
+    { zoneId: baseZoneIds.monsterDeck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.monsterRow, kind: 'faceUpRow', visibility: 'public', rulesModuleId: 'base:rules' },
+    { zoneId: baseZoneIds.bossDeck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:rules' }, { zoneId: baseZoneIds.bossRow, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'base:rules' }
   ],
   getPartyLimit: (_state, _player, currentLimit) => Math.min(currentLimit, 5),
   teamOverflowPolicies: [{ schemaVersion: 1, policyId: 'base:discard-oldest', moduleId: 'base:rules', priority: 1, teamScope: 'player-party', mode: 'discard-oldest', reasonCode: 'TEAM_CAPACITY_OVERFLOW' }],

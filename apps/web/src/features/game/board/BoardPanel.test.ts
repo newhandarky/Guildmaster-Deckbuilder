@@ -14,7 +14,7 @@ describe('base supply empty states', () => {
 
 describe('action preview scope', () => {
   const previews: ActionPreviewSet = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     gameId: 'game-1',
     revision: 4,
     actorId: 'p1',

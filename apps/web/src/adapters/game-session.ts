@@ -9,18 +9,25 @@ import type {
   Phase,
   PlayerView,
   ReplayDiagnostic,
+  ReplayAutomationDecision,
 } from '@guildmaster/game-protocol';
 
 export type SessionPersistenceStatus = {
-  schemaVersion: 1;
-  state: 'fresh' | 'restored' | 'saved' | 'memory-only';
+  schemaVersion: 2;
+  state: 'fresh' | 'restored' | 'saving' | 'saved' | 'memory-only';
   revision: number;
   replayHistoryComplete: boolean;
+  recoveryReason?: 'INVALID_SAVE' | 'REGISTRY_MISMATCH' | 'REPLAY_DIVERGENCE' | 'CPU_PROFILE_MISMATCH';
+  recovery?: {
+    reasonCode: 'helper-rules-upgraded';
+    previousPackVersion: '0.1.0';
+    previousModuleVersion: '1.0.0';
+  } | undefined;
 };
 
 export type SessionEntrySummary = {
   schemaVersion: 3;
-  contentMode: 'demo' | 'provisional-playtest';
+  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
   advancedRules: { helpers: boolean };
   contentPackId: string;
   canContinue: boolean;
@@ -35,12 +42,21 @@ export type SessionEntrySummary = {
 export type SessionUpdate = {
   view: PlayerView;
   definitions: Readonly<Record<string, CardDefinition>>;
+  bondDefinitions: readonly { id: string; name: string; honor: number; requiredBosses: number }[];
   events: DomainEvent[];
   legalCommands: GameCommand[];
   actionPreviews: ActionPreviewSet;
   entrySummary: SessionEntrySummary;
   persistence: SessionPersistenceStatus;
   replayHistoryComplete: boolean;
+  cpu: {
+    profileId: string; profileVersion: string;
+    status: 'idle' | 'ready' | 'blocked';
+    nextActorId?: string;
+    stepKey: string;
+    diagnostic?: string;
+    decisions: readonly ReplayAutomationDecision[];
+  };
   error?: EngineError | undefined;
   scoreboard?: ScoreRow[] | undefined;
 };

@@ -8,11 +8,13 @@
     "build": "tsc -p tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run src",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:offline": "vite build && playwright test -c playwright.offline.config.ts"
   },
   "dependencies": {
     "@guildmaster/content-base": "workspace:*",
     "@guildmaster/content-base-helpers": "workspace:*",
+    "@guildmaster/content-base-rules": "workspace:*",
     "@guildmaster/game-ai": "workspace:*",
     "@guildmaster/game-engine": "workspace:*",
     "@guildmaster/game-protocol": "workspace:*",

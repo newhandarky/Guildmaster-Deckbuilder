@@ -5,6 +5,7 @@ import {
   demoPresentationAssetManifest,
   demoPresentationPack,
   provisionalFoundationPresentationPack,
+  provisionalOriginalFullPresentationPack,
   provisionalHelpersPresentationPack,
 } from '@guildmaster/presentation-demo';
 
@@ -32,7 +33,7 @@ const resolveAsset = (assetKey: string) => {
 };
 
 export const presentationResolver = createPresentationResolver(
-  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalHelpersPresentationPack],
+  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalOriginalFullPresentationPack, provisionalHelpersPresentationPack],
   { resolveAsset },
 );
 
@@ -42,7 +43,7 @@ export const lifecycleCopyResolver = createLifecycleCopyResolver({
     { choiceId: 'base:resource/resource-04-discard-boss', title: '選擇要棄置的魔王', description: '棄置選擇的魔王後，抽 3 張牌。' },
     { choiceId: 'base:resource/resource-05-recover-equipment', title: '選擇要取回的裝備', description: '將選擇的裝備從棄牌堆加入手牌。' },
     { choiceId: 'base:resource/resource-10-discard', title: '選擇要棄置的手牌', description: '棄置選擇的手牌後，抽 2 張牌。' },
-    { choiceId: 'base:resource/resource-13-recover-mage-card', title: '選擇要取回的法師卡', description: '將選擇的非同名法師卡從棄牌堆加入手牌。' },
+    { choiceId: 'base:resource/resource-13-recover-item-card', title: '選擇要取回的道具卡', description: '將選擇的非同名道具卡從棄牌堆加入手牌。' },
     { choiceId: 'base:resource/resource-15-remove', title: '選擇要移除的卡牌', description: '從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲。' },
     { choiceId: 'base:resource/resource-17-discard', title: '選擇要棄置的手牌', description: '這張道具已抽牌；請選擇 1 張手牌棄置。' },
   ],

@@ -1,5 +1,5 @@
 import { ActionPreviewSetSchema, type ActionPreviewItem, type ActionPreviewSet, type AttackResolutionCondition, type AttackResolutionResult, type CombatRewardCondition, type CommandEnvelope, type GameCommand, type GameState } from '@guildmaster/game-protocol';
-import { getDefinition, getPlayer } from '../model/factories.js';
+import { getDefinition, getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { baseZoneIds } from '../model/zones.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
@@ -12,10 +12,26 @@ import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluat
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { executeEffect } from '../effects/executor.js';
 import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
+import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
+import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
 type CommandBeforePreviewResult = { states: GameState[]; indeterminate: boolean; requiresLifecycle: boolean };
+function nonEmptySubsets(ids: readonly string[]): string[][] {
+  const results: string[][] = [];
+  for (let mask = 1; mask < (1 << ids.length); mask += 1) results.push(ids.filter((_id, index) => (mask & (1 << index)) !== 0));
+  return results;
+}
+function fixedCombinations(ids: readonly string[], count: number): string[][] {
+  const results: string[][] = [];
+  const visit = (start: number, prefix: string[]): void => {
+    if (prefix.length === count) { results.push(prefix); return; }
+    for (let index = start; index < ids.length; index += 1) visit(index + 1, [...prefix, ids[index]!]);
+  };
+  visit(0, []);
+  return results;
+}
 
 function attackPreviewObservesHiddenInformation(state: GameState, ruleset: Ruleset, actorId: string, targetId: string): boolean {
   const target = state.enemyTargets[targetId];
@@ -140,7 +156,9 @@ function purchaseIsLegalInAnyPreview(preview: CommandBeforePreviewResult, rulese
   if (preview.indeterminate) return true;
   return preview.states.some((state) => {
     const isPublicSupply = state.zones[baseZoneIds.adventurerRow]?.cardIds.includes(cardId) || state.zones[baseZoneIds.itemRow]?.cardIds.includes(cardId);
-    return Boolean(isPublicSupply) && (getDefinition(ruleset.registry, state, cardId).cost ?? Number.POSITIVE_INFINITY) <= getPurchasePower(state, ruleset, actorId);
+    if (!isPublicSupply) return false;
+    const cost = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId });
+    return cost.status === 'ready' && cost.evaluation.effectiveCost <= getPurchasePower(state, ruleset, actorId);
   });
 }
 
@@ -159,6 +177,7 @@ export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: st
 
 function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, cardId: string): boolean {
   const definition = getDefinition(ruleset.registry, state, cardId);
+  if (definition.tags?.includes('playtest:effects-disabled')) return false;
   if (!definition.useEffect) return true;
   const preview = structuredClone(state); const player = getPlayer(preview, actorId);
   const index = player.hand.indexOf(cardId);
@@ -174,6 +193,11 @@ function itemUseCanBegin(state: GameState, ruleset: Ruleset, actorId: string, ca
 
 export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: string): GameCommand[] {
   if (validateRulesetStateCompatibility(state, ruleset)) return [];
+  if (state.status === 'setup') {
+    const setup = state.bondSetup;
+    if (!setup || setup.currentActorId !== actorId || state.activePlayerId !== actorId) return [];
+    return fixedCombinations(setup.offers[actorId] ?? [], 5).map((bondIds) => ({ type: 'SELECT_BONDS', offerId: setup.offerId, bondIds }));
+  }
   if (state.status !== 'playing' && state.status !== 'finalRound') return [];
   if (validateSupplyContinuityState(state, ruleset).length) return [];
   const consent = state.effectState.pendingCounterConsent;
@@ -205,10 +229,15 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   if (state.activePlayerId !== actorId) return [];
   const player = getPlayer(state, actorId);
   const commands: GameCommand[] = [];
+  const completableBondIds = player.bonds.filter(({ completed }) => !completed).flatMap(({ bondId }) => {
+    const evaluation = evaluateBondCondition(state, ruleset, actorId, bondId);
+    return evaluation.status === 'ready' && evaluation.evaluation.satisfied ? [bondId] : [];
+  });
+  commands.push(...nonEmptySubsets(completableBondIds).map((bondIds) => ({ type: 'COMPLETE_BONDS' as const, bondIds })));
   if (state.phase === 'action1' || state.phase === 'action2') {
     for (const cardId of player.hand) {
       const definition = getDefinition(ruleset.registry, state, cardId);
-      if (definition.type === 'adventurer') commands.push({ type: 'PLAY_ADVENTURER', cardId });
+      if (isPartyMemberCard(ruleset.registry, state, cardId)) commands.push({ type: 'PLAY_ADVENTURER', cardId });
       if (definition.type === 'item' && itemUseCanBegin(state, ruleset, actorId, cardId)) commands.push({ type: 'USE_ITEM', cardId });
       if (definition.type === 'equipment') for (const slot of player.party) {
         const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: cardId, adventurerId: slot.adventurerId });
@@ -228,6 +257,13 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     const preview = previewCommandBefore(state, ruleset, actorId, 'BUY_CARD');
     for (const cardId of [...state.zones[baseZoneIds.adventurerRow]!.cardIds, ...state.zones[baseZoneIds.itemRow]!.cardIds]) {
       if (purchaseIsLegalInAnyPreview(preview, ruleset, actorId, cardId)) commands.push({ type: 'BUY_CARD', cardId });
+    }
+    if (!player.turnMarketRefreshed && player.hand.length) {
+      for (const [row, zoneId] of [['adventurer', baseZoneIds.adventurerRow], ['item', baseZoneIds.itemRow]] as const) {
+        for (const refreshCardIds of nonEmptySubsets(state.zones[zoneId]!.cardIds)) {
+          for (const discardCardId of player.hand) commands.push({ type: 'REFRESH_MARKET', row, discardCardId, refreshCardIds });
+        }
+      }
     }
   }
   commands.push({ type: 'END_PHASE', phase: state.phase });
@@ -300,16 +336,18 @@ function attackPreviewItem(preview: CommandBeforePreviewResult, ruleset: Ruleset
 function purchasePreviewItem(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, command: Extract<GameCommand, { type: 'BUY_CARD' }>): Extract<ActionPreviewItem, { kind: 'purchase' }> {
   if (!preview.requiresLifecycle && !preview.indeterminate && preview.states.length === 1) {
     const previewState = preview.states[0]!;
-    const cost = getDefinition(ruleset.registry, previewState, command.cardId).cost;
+    const cost = evaluatePurchaseCost(previewState, ruleset, { schemaVersion: 1, playerId: actorId, cardId: command.cardId });
     const availablePurchasePower = getPurchasePower(previewState, ruleset, actorId);
-    if (cost !== undefined && cost <= availablePurchasePower) return {
+    if (cost.status === 'ready' && cost.evaluation.effectiveCost <= availablePurchasePower) return {
       kind: 'purchase',
       status: 'ready',
       command: structuredClone(command),
       cardId: command.cardId,
-      cost,
+      printedCost: cost.evaluation.printedCost,
+      effectiveCost: cost.evaluation.effectiveCost,
+      appliedModifiers: structuredClone(cost.evaluation.appliedModifiers),
       availablePurchasePower,
-      remainingPurchasePower: availablePurchasePower - cost,
+      remainingPurchasePower: availablePurchasePower - cost.evaluation.effectiveCost,
     };
   }
   return { kind: 'purchase', status: 'requires-lifecycle', command: structuredClone(command), cardId: command.cardId };
@@ -329,7 +367,7 @@ export function getActionPreviewSet(state: GameState, ruleset: Ruleset, actorId:
     const preview = previewCommandBefore(state, ruleset, actorId, 'BUY_CARD');
     items.push(...purchaseCommands.map((command) => purchasePreviewItem(preview, ruleset, actorId, command)));
   }
-  return ActionPreviewSetSchema.parse({ schemaVersion: 1, gameId: state.gameId, revision: state.revision, actorId, items });
+  return ActionPreviewSetSchema.parse({ schemaVersion: 2, gameId: state.gameId, revision: state.revision, actorId, items });
 }
 
 export function envelope(state: GameState, actorId: string, command: GameCommand, commandId = `legal-${state.revision + 1}`): CommandEnvelope {

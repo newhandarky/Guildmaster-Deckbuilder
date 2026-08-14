@@ -53,7 +53,7 @@ describe('Rules Module lifecycle dispatcher', () => {
     const last = hook('test:last', 'last', 'turn-start', 2, modify(4));
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:choice', [first]), module('test:last', [last])]); const state = gameFor(ruleset);
     expect(dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'turn-start', actorId: 'p1', metadata: { source: 'test' } }, { controllerId: 'p1', playerRefs: { actor: 'p1' } }).status).toBe('suspended');
-    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), ruleset);
     expect(restored.effectState.pendingLifecycle).toMatchObject({ payload: { point: 'turn-start', metadata: { source: 'test' } }, context: { playerRefs: { actor: 'p1' } }, currentHook: { moduleId: 'test:choice', hookId: 'choice' }, remainingHooks: [{ moduleId: 'test:last', hookId: 'last' }] });
     const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE' && candidate.optionId === 'accept')!;
     const result = dispatch(restored, ruleset, envelope(restored, 'p1', command));
@@ -102,7 +102,7 @@ describe('Rules Module lifecycle dispatcher', () => {
 
   it('keeps deterministic RNG and replay results across modules', () => {
     const random = hook('test:random', 'random', 'turn-start', 1, { kind: 'random', randomId: 'coin', outcomes: [{ id: 'one', effect: modify(1) }, { id: 'three', effect: modify(3) }] });
-    const ruleset = createRuleset([testPack], [baseRulesModule, module('test:random', [random]), module('test:last', [hook('test:last', 'last', 'turn-start', 2, modify(4))])]); const left = gameFor(ruleset); const right = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(left))));
+    const ruleset = createRuleset([testPack], [baseRulesModule, module('test:random', [random]), module('test:last', [hook('test:last', 'last', 'turn-start', 2, modify(4))])]); const left = gameFor(ruleset); const right = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(left))), ruleset);
     const leftResult = dispatchLifecycle(left, ruleset, { schemaVersion: 1, point: 'turn-start' }, { controllerId: 'p1' }); const rightResult = dispatchLifecycle(right, ruleset, { schemaVersion: 1, point: 'turn-start' }, { controllerId: 'p1' });
     expect(right).toEqual(left); expect(rightResult.events).toEqual(leftResult.events);
   });
@@ -214,7 +214,7 @@ describe('Rules Module lifecycle dispatcher', () => {
   it('resumes a command exactly once after a command-before choice Snapshot round-trip', () => {
     const before = hook('test:before', 'choose', 'command-before', 1, choiceBody(1)); const after = hook('test:after', 'after', 'command-after', 1, modify(2)); const ruleset = createRuleset([testPack], [baseRulesModule, module('test:before', [before]), module('test:after', [after])]); const state = gameFor(ruleset);
     const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' })); expect(suspended.error).toBeUndefined(); expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingCommand?.envelope.command.type).toBe('END_PHASE');
-    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state)))); const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === 'accept')!;
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset); const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === 'accept')!;
     const result = dispatch(restored, ruleset, envelope(restored, 'p1', choice)); expect(result.error).toBeUndefined(); expect(result.state.revision).toBe(1); expect(result.state.phase).toBe('combat'); expect(result.state.players[0]!.turnPurchaseBonus).toBe(3); expect(result.state.effectState).toEqual({});
   });
 

@@ -31,8 +31,8 @@ export type CombatReward = { kind: 'draw'; count: number } | { kind: 'purchase-b
 export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
-  | { kind: 'choice'; choiceId: string; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
-  | { kind: 'choose-card'; choiceId: string; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; effect: EffectNode }
+  | { kind: 'choice'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
+  | { kind: 'choose-card'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; skipOptionId?: string; effect: EffectNode }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
@@ -53,7 +53,7 @@ export type EffectNode =
   | { kind: 'finish-enemy-encounter'; encounterId: string; policy: { moduleId: string; policyId: string } };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>> | undefined; playerRefs?: Readonly<Record<string, string>> | undefined; locationRefs?: Readonly<Record<string, EffectConcreteCardLocation>> | undefined };
-export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; actorId: string; options: readonly { id: string; effect: EffectNode; context?: EffectContext }[]; remaining: readonly EffectNode[]; context: EffectContext; source?: EffectSelectableCardSource };
+export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actorId: string; options: readonly { id: string; effect: EffectNode; context?: EffectContext }[]; remaining: readonly EffectNode[]; context: EffectContext; source?: EffectSelectableCardSource };
 export type PendingCounterConsent = {
   schemaVersion: 1;
   executionId: string;
@@ -88,9 +88,10 @@ export type PendingLifecycleDispatch = {
 /** Original command and uncommitted lifecycle events held while command-before is unresolved. */
 export type PendingCommandContinuation =
   | { schemaVersion: 1; kind?: 'command-before-lifecycle'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; resolutionEnvelopes?: readonly import('./commands.js').CommandEnvelope[] }
+  | { schemaVersion: 1; kind: 'phase-transition'; envelope: import('./commands.js').CommandEnvelope & { command: Extract<import('./commands.js').GameCommand, { type: 'END_PHASE' }> }; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; factStart: number; cursor: 'after-phase-end' | 'complete-nonrest' | 'after-turn-end' | 'complete-game-end' | 'after-turn-start' | 'complete-turn-start' }
   | { schemaVersion: 1; kind: 'team-overflow'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; policy: { moduleId: string; policyId: string }; candidateIds: readonly string[]; requiredSelectionCount: number; optionCandidates: Readonly<Record<string, readonly string[]>>; registry: LifecycleRegistrySnapshot }
   | { schemaVersion: 1; kind: 'card-use-effect'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; context: EffectContext; registry: LifecycleRegistrySnapshot }
-  | { schemaVersion: 1; kind: 'combat-reward'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; evaluation: import('./combat-reward.js').CombatRewardEvaluation; policyIndex: number; step: 'resume-policy-effect' | 'dispatch-next-policy'; context: EffectContext; registry: LifecycleRegistrySnapshot };
+  | { schemaVersion: 1; kind: 'combat-reward'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; evaluation: import('./combat-reward.js').CombatRewardEvaluation; policyIndex: number; step: 'resume-policy-effect' | 'dispatch-next-policy'; context: EffectContext; registry: LifecycleRegistrySnapshot };
 /** Serializable cursor for a command whose reducer has completed but post-command lifecycle work is pending. */
 export type PendingPostCommandContinuation = {
   schemaVersion: 1;
@@ -184,12 +185,13 @@ const rewardSchema: z.ZodType<CombatReward> = z.discriminatedUnion('kind', [
 ]);
 const policyRefSchema = z.object({ moduleId: nonEmpty, policyId: nonEmpty }).strict();
 const uniqueOptions = <T extends { id: string }>(values: readonly T[]): boolean => new Set(values.map(({ id }) => id)).size === values.length;
-const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
+const decisionKindSchema = z.enum(['choose-effect-option', 'discard-card', 'remove-card', 'recover-card', 'choose-market-card', 'choose-enemy-target', 'choose-party-member', 'draft-card', 'transfer-card']);
+const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), skipOptionId: nonEmpty.optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
 
 export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
   z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
-  z.object({ kind: z.literal('choice'), choiceId: nonEmpty, actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
+  z.object({ kind: z.literal('choice'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
   chooseCardSchema,
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),

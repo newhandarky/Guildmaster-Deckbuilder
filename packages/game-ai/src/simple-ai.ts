@@ -8,6 +8,9 @@ function rank(command: GameCommand): number {
   if (command.type === 'EQUIP_ITEM') return 3;
   if (command.type === 'USE_ITEM') return 4;
   if (command.type === 'BUY_CARD') return 5;
+  if (command.type === 'SELECT_BONDS') return 0;
+  if (command.type === 'COMPLETE_BONDS') return 1;
+  if (command.type === 'REFRESH_MARKET') return 6;
   return 99;
 }
 

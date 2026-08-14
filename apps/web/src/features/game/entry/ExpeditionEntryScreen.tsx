@@ -11,6 +11,7 @@ type Props = {
 };
 
 const statusCopy: Record<SessionEntrySummary['status'], string> = {
+  setup: '選擇私人羈絆',
   playing: '可繼續遊玩',
   finalRound: '最終輪進行中',
   pendingOfficialRuling: '等待規則裁定',
@@ -56,9 +57,18 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
       </div>
     </header>
 
+    {persistence.recoveryReason
+      ? <aside className="warning" data-testid="entry-recovery-notice" role="status">舊進度未通過安全驗證，已建立新的遠征；原因：{persistence.recoveryReason}。</aside>
+      : null}
+
     {persistence.state === 'memory-only'
       ? <aside className="warning" role="status" data-testid="entry-storage-warning">
           本機儲存目前不可用；仍可遊玩，但進度只會保留在此分頁。
+        </aside>
+      : null}
+    {persistence.recovery?.reasonCode === 'helper-rules-upgraded'
+      ? <aside className="warning" role="status" data-testid="helper-upgrade-recovery-notice">
+          協助者規則已更新，舊進度無法安全續玩，已建立新遠征。
         </aside>
       : null}
 
@@ -86,7 +96,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
             checked={selectedMode === mode}
             onChange={() => {
               setSelectedMode(mode);
-              if (mode === 'demo') setHelpersEnabled(false);
+              if (mode !== 'provisional-playtest') setHelpersEnabled(false);
             }}
           />
           <span><strong>{option.label}</strong><small>{option.description}</small>{option.warning ? <small className="content-mode-warning">{option.warning}</small> : null}</span>
@@ -100,7 +110,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
               <input type="checkbox" checked={helpersEnabled} onChange={(event) => setHelpersEnabled(event.currentTarget.checked)} />
               <span>
                 <strong>協助者進階規則</strong>
-                <small>依本局種子抽選協助者；目前只有候選協助者 08 的隊伍上限效果已啟用。</small>
+                <small>依本局種子抽選協助者；目前已啟用候選協助者 01／06／07／08／09 的效果。</small>
               </span>
             </label>
           </fieldset>

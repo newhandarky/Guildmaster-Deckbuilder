@@ -12,11 +12,18 @@ export const baseHelperIds = Array.from(
   (_, index) => `base:helper/helper-${String(index + 1).padStart(2, '0')}`,
 ) as readonly string[];
 
+export const enabledBaseHelperDefinitionIds = [
+  'base:helper/helper-01',
+  'base:helper/helper-06',
+  'base:helper/helper-07',
+  'base:helper/helper-08',
+  'base:helper/helper-09',
+] as const;
 export const enabledBaseHelperDefinitionId = 'base:helper/helper-08';
 
 const definitions: readonly CardDefinition[] = baseHelperIds.map((id, index) => {
   const sequence = String(index + 1).padStart(2, '0');
-  const enabled = id === enabledBaseHelperDefinitionId;
+  const enabled = enabledBaseHelperDefinitionIds.includes(id as (typeof enabledBaseHelperDefinitionIds)[number]);
   return {
     id,
     name: `候選協助者 ${sequence}`,
@@ -30,8 +37,8 @@ const definitions: readonly CardDefinition[] = baseHelperIds.map((id, index) => 
 export const baseProvisionalHelpersContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-helpers',
-    version: '0.1.0',
-    hash: 'base-provisional-helpers-v1-helper-08-capacity',
+    version: '0.2.0',
+    hash: 'base-provisional-helpers-v2-batch-a',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
     dependencies: ['base:provisional-foundation'],
@@ -42,8 +49,8 @@ export const baseProvisionalHelpersContentPack: ContentPack = {
 
 export const baseHelpersRulesModule: RulesModule = {
   id: 'base:helpers',
-  version: '1.0.0',
-  config: { enabledHelperDefinitionId: enabledBaseHelperDefinitionId },
+  version: '1.1.0',
+  config: { enabledHelperDefinitionIds: [...enabledBaseHelperDefinitionIds] },
   composition: {
     schemaVersion: 1,
     kind: 'optional',
@@ -103,6 +110,45 @@ export const baseHelpersRulesModule: RulesModule = {
     playerScope: 'all-players',
     mode: 'discard-newest',
     reasonCode: 'HELPER_CAPACITY_REDUCED',
+  }],
+  purchaseCostModifierRules: [
+    {
+      schemaVersion: 1,
+      ruleId: 'base:helper-01-supply-discount',
+      moduleId: 'base:helpers',
+      priority: 10,
+      activation: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-01' },
+      target: { kind: 'definition-type-in', values: ['item', 'equipment'] },
+      amount: -1,
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'base:helper-06-adventurer-discount',
+      moduleId: 'base:helpers',
+      priority: 20,
+      activation: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-06' },
+      target: { kind: 'definition-type-in', values: ['adventurer'] },
+      amount: -1,
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'base:helper-09-equipment-discount',
+      moduleId: 'base:helpers',
+      priority: 30,
+      activation: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-09' },
+      target: { kind: 'definition-type-in', values: ['equipment'] },
+      amount: -1,
+    },
+  ],
+  restHandSizePolicies: [{
+    schemaVersion: 1,
+    policyId: 'base:helper-07-rest-six',
+    moduleId: 'base:helpers',
+    priority: 10,
+    activation: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-07' },
+    playerScope: 'active-player',
+    mode: 'replace',
+    handSize: 6,
   }],
   lifecycleHooks: [{
     schemaVersion: 1,

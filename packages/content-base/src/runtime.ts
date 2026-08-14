@@ -2,6 +2,7 @@ import type { ContentPack } from '@guildmaster/game-protocol';
 import { demoCards } from './cards/demo-cards.js';
 
 export { baseProvisionalFoundationContentPack } from './playtest/provisional-foundation-pack.js';
+export { baseProvisionalOriginalFullContentPack, baseProvisionalOriginalFullCapabilityMatrix, baseProvisionalOriginalFullCapabilityRegistry } from './playtest/provisional-original-full-pack.js';
 
 /** Runtime-safe demo data; source audit metadata is exported only from the package root. */
 export const baseDemoContentPack: ContentPack = {

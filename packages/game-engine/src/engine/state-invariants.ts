@@ -15,6 +15,20 @@ export function validateGameStateInvariants(state: GameState): string[] {
   if (duplicates(playerIds).length) errors.push('Player IDs must be unique.');
   if (!playerIds.includes(state.activePlayerId)) errors.push('Active player must exist.');
   if (!playerIds.includes(state.startingPlayerId)) errors.push('Starting player must exist.');
+  if (!state.turnFacts || state.turnFacts.playerId !== state.activePlayerId) errors.push('Turn fact ledger must belong to the active player.');
+  if (state.status === 'setup') {
+    const setup = state.bondSetup;
+    if (!setup || setup.currentActorId !== state.activePlayerId || !playerIds.includes(setup.currentActorId)) errors.push('Bond setup must identify the active actor.');
+    else {
+      if (duplicates(setup.completedPlayerIds).length || setup.completedPlayerIds.some((id) => !playerIds.includes(id))) errors.push('Bond setup completed players are invalid.');
+      const offered = playerIds.flatMap((id) => setup.offers[id] ?? []);
+      if (playerIds.some((id) => setup.offers[id]?.length !== 7) || duplicates(offered).length) errors.push('Bond setup must contain seven unique offers per player.');
+      for (const player of state.players) {
+        const completed = setup.completedPlayerIds.includes(player.id);
+        if ((completed && player.bonds.length !== 5) || (!completed && player.bonds.length !== 0)) errors.push(`Player ${player.id} bond setup state is inconsistent.`);
+      }
+    }
+  } else if (state.bondSetup) errors.push('Bond setup must be absent after setup completes.');
   if (duplicates(state.rulesModules.map(({ id }) => id)).length) errors.push('Rules Module IDs must be unique.');
   if (duplicates(state.contentPacks.map(({ id }) => id)).length) errors.push('Content Pack IDs must be unique.');
 
@@ -38,6 +52,7 @@ export function validateGameStateInvariants(state: GameState): string[] {
     for (const cardId of zone.cardIds) addLocation(cardId, `zone:${zoneId}`);
   }
   for (const player of state.players) {
+    if (typeof player.turnMarketRefreshed !== 'boolean') errors.push(`Player ${player.id} market refresh flag is missing.`);
     if (duplicates(player.counters.map(({ resourceId }) => resourceId)).length) errors.push(`Player ${player.id} counters must have unique resource IDs.`);
     for (const zoneName of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) {
       if (duplicates(player[zoneName]).length) errors.push(`Player ${player.id} ${zoneName} contains duplicate cards.`);
@@ -105,6 +120,11 @@ export function assertGameStateInvariants(state: GameState): void {
 /** Validates module-owned zone contracts and setup-selected card pools. */
 export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ruleset): string[] {
   const errors: string[] = [];
+  if (state.bondSetup) {
+    const bondIds = new Set(ruleset.registry.bonds.map(({ id }) => id));
+    for (const [playerId, offer] of Object.entries(state.bondSetup.offers)) if (offer.some((bondId) => !bondIds.has(bondId))) errors.push(`Bond setup offer for ${playerId} contains an unknown bond.`);
+    for (const player of state.players) if (player.bonds.some(({ bondId }) => !bondIds.has(bondId) || !state.bondSetup!.offers[player.id]?.includes(bondId))) errors.push(`Player ${player.id} selected a bond outside the authoritative offer.`);
+  }
   const moduleIds = new Set(ruleset.modules.map(({ id }) => id));
   for (const module of ruleset.modules) {
     if (!(module.id in state.moduleState)) {

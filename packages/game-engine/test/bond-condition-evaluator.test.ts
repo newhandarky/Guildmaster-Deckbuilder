@@ -67,11 +67,52 @@ describe('generic bond condition evaluation', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, bondModule, lifecycleModule]);
     const state = createGame({ gameId: 'bond-choice', seed: 8, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset); state.phase = 'combat';
     const targetId = Object.values(state.enemyTargets).find((target) => target.kind === 'monster')!.targetId;
-    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
-    expect(suspended.state.revision).toBe(0); expect(suspended.state.effectState.pendingPostCommand?.facts.some((fact) => fact.type === 'BOND_COMPLETED')).toBe(true);
+    const attacked = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
+    expect(attacked.error).toBeUndefined(); expect(attacked.state.players[0]!.bonds[0]!.completed).toBe(false);
+    const completeBond = getLegalCommands(attacked.state, ruleset, 'p1').find((candidate) => candidate.type === 'COMPLETE_BONDS')!;
+    const suspended = dispatch(attacked.state, ruleset, envelope(attacked.state, 'p1', completeBond));
+    expect(suspended.state.revision).toBe(1); expect(suspended.state.effectState.pendingPostCommand?.facts.some((fact) => fact.type === 'BOND_COMPLETED')).toBe(true);
     const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
     const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!;
     const complete = dispatch(restored, ruleset, envelope(restored, 'p1', command));
-    expect(complete.error).toBeUndefined(); expect(complete.state.players[0]!.bonds[0]!.completed).toBe(true); expect(complete.events.filter((entry) => entry.type === 'BOND_COMPLETED')).toHaveLength(1); expect(complete.state.revision).toBe(1);
+    expect(complete.error).toBeUndefined(); expect(complete.state.players[0]!.bonds[0]!.completed).toBe(true); expect(complete.events.filter((entry) => entry.type === 'BOND_COMPLETED')).toHaveLength(1); expect(complete.state.revision).toBe(2);
+  });
+
+  it('offers every currently eligible non-empty subset, permits deferral, and rejects stale or duplicate completion atomically', () => {
+    const pack = structuredClone(testPack);
+    pack.manifest = { ...pack.manifest, id: 'test:bond-subsets', hash: 'bond-subsets' };
+    pack.bonds = [
+      { id: 'test:bond/a', name: 'A', honor: 2, requiredBosses: 0 },
+      { id: 'test:bond/b', name: 'B', honor: 3, requiredBosses: 0 },
+      { id: 'test:bond/c', name: 'C', honor: 4, requiredBosses: 99 },
+    ];
+    const ruleset = createRuleset([pack], [baseRulesModule]);
+    const state = createGame({ gameId: 'bond-subsets', seed: 13, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset);
+    const legal = getLegalCommands(state, ruleset, 'p1');
+    expect(legal).toContainEqual({ type: 'END_PHASE', phase: 'action1' });
+    expect(legal.filter((command) => command.type === 'COMPLETE_BONDS')).toEqual([
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a'] },
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/b'] },
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a', 'test:bond/b'] },
+    ]);
+    expect(restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), ruleset)).toEqual(state);
+
+    const deferred = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' }));
+    expect(deferred.error).toBeUndefined();
+    expect(deferred.state.players[0]!.bonds.every(({ completed }) => !completed)).toBe(true);
+
+    const before = structuredClone(state);
+    const duplicate = dispatch(state, ruleset, envelope(state, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a', 'test:bond/a'] }));
+    expect(duplicate.error?.code).toBe('INVALID_COMMAND'); expect(duplicate.state).toEqual(before);
+    const stale = dispatch(state, ruleset, envelope(state, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/c'] }));
+    expect(stale.error?.code).toBe('INVALID_COMMAND'); expect(stale.state).toEqual(before);
+
+    const completed = dispatch(state, ruleset, envelope(state, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/b'] }));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.bonds).toEqual([
+      { bondId: 'test:bond/a', completed: false },
+      { bondId: 'test:bond/b', completed: true },
+      { bondId: 'test:bond/c', completed: false },
+    ]);
   });
 });

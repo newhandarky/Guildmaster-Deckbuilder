@@ -1,7 +1,7 @@
 import { baseDemoContentPack } from '@guildmaster/content-base/runtime';
 import type { ContentPack } from '@guildmaster/game-protocol';
 
-const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent', 'optional-helper'] as const;
+const scenarioIds = ['all-bosses-endgame', 'all-bonds-endgame', 'tagged-card-layout', 'empty-partial-supplies', 'lifecycle-choice', 'lifecycle-consent', 'optional-helper', 'helper-batch-a'] as const;
 
 export type E2EScenario = (typeof scenarioIds)[number];
 
@@ -19,6 +19,7 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
   'lifecycle-choice': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
   'lifecycle-consent': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
   'optional-helper': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
+  'helper-batch-a': { bossCopies: 2, bonds: baseDemoContentPack.bonds! },
 };
 
 /**
@@ -27,7 +28,6 @@ const scenarioSetups: Record<E2EScenario, ScenarioSetup> = {
  * all play continues through PlayerView, legal commands, and authoritative dispatch.
  */
 function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): ContentPack {
-  const helperFixture = id === 'optional-helper';
   const starter = baseDemoContentPack.starter!;
   return {
     ...baseDemoContentPack,
@@ -37,13 +37,16 @@ function createEndgameScenarioPack(id: E2EScenario, setup: ScenarioSetup): Conte
         return { ...definition, tags: ['e2e-layout-tag'] };
       }
       if (setup.emptyPartialSupplies && ['adventurer', 'equipment', 'item'].includes(definition.type)) return { ...definition, copies: 0 };
-      if (helperFixture && definition.id === starter.crystalDefinitionId) return { ...definition, type: 'equipment' };
+      if (id === 'optional-helper' && definition.id === starter.crystalDefinitionId) return { ...definition, type: 'equipment' };
+      if (id === 'helper-batch-a' && (definition.type === 'item' || definition.type === 'equipment')) {
+        return definition.id === 'base:item/trail-rations' ? { ...definition, copies: 3, cost: 6 } : { ...definition, copies: 0 };
+      }
       if (definition.type !== 'boss') return definition;
       return definition.id === 'base:boss/ruin-warden'
-        ? { ...definition, copies: setup.bossCopies, combat: helperFixture ? 0 : 5 }
+        ? { ...definition, copies: setup.bossCopies, combat: id === 'optional-helper' ? 0 : id === 'helper-batch-a' ? 6 : 5 }
         : { ...definition, copies: 0 };
     }),
-    ...(helperFixture && 'adventurerDefinitionId' in starter
+    ...(id === 'optional-helper' && 'adventurerDefinitionId' in starter
       ? { starter: {
           partyDefinitionIds: Array.from({ length: 6 }, () => starter.adventurerDefinitionId),
           summonStoneDefinitionId: starter.summonStoneDefinitionId,
@@ -69,3 +72,4 @@ export function resolveE2EScenario(search: string): E2EScenario | undefined {
 export function getE2EScenarioPack(scenario: E2EScenario): ContentPack {
   return scenarioPacks[scenario];
 }
+export function getE2EScenarioBossCount(scenario: E2EScenario): number { return scenarioSetups[scenario].bossCopies; }

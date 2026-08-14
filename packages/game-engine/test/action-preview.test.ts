@@ -93,7 +93,7 @@ describe('authoritative action previews', () => {
     const purchase = previews.items.find((item) => item.kind === 'purchase');
     if (!purchase || purchase.kind !== 'purchase') throw new Error('Missing purchase preview.');
 
-    expect(purchase).toMatchObject({ cost: 2, availablePurchasePower: available, remainingPurchasePower: available - 2 });
+    expect(purchase).toMatchObject({ printedCost: 2, effectiveCost: 2, appliedModifiers: [], availablePurchasePower: available, remainingPurchasePower: available - 2 });
     const result = dispatch(state, testRuleset, envelope(state, 'p1', purchase.command, 'preview-purchase'));
     expect(result.error).toBeUndefined();
     const after = getActionPreviewSet(result.state, testRuleset, 'p1');
@@ -112,7 +112,7 @@ describe('authoritative action previews', () => {
     if (!command) throw new Error('Expected the automatic purchase bonus to make a card legal.');
     const preview = getActionPreviewSet(state, ruleset, 'p1').items.find((item) => item.kind === 'purchase' && item.cardId === command.cardId);
 
-    expect(preview).toMatchObject({ kind: 'purchase', status: 'ready', availablePurchasePower: 3, cost: 2, remainingPurchasePower: 1 });
+    expect(preview).toMatchObject({ kind: 'purchase', status: 'ready', availablePurchasePower: 3, printedCost: 2, effectiveCost: 2, appliedModifiers: [], remainingPurchasePower: 1 });
     expect(state).toEqual(before);
     const result = dispatch(state, ruleset, envelope(state, 'p1', command, 'preview-purchase-automatic'));
     expect(result.error).toBeUndefined();

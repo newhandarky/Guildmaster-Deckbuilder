@@ -69,7 +69,9 @@ describe('card visual model', () => {
       status: 'ready' as const,
       command,
       cardId: instance.id,
-      cost: 2,
+      printedCost: 2,
+      effectiveCost: 2,
+      appliedModifiers: [],
       availablePurchasePower: 3,
       remainingPurchasePower: 1,
     };

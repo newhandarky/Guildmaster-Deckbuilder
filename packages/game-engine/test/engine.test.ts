@@ -30,7 +30,7 @@ describe('基礎規則引擎', () => {
 
   it('Snapshot JSON round-trip 保留可序列化狀態', () => {
     const state = makeGame();
-    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), testRuleset);
     expect(restored).toEqual(state);
   });
 });

@@ -32,15 +32,24 @@ function migrateV1(snapshot: Record<string, unknown>): unknown {
   if (!state || !shared) throw new Error('Unsupported snapshot schema.');
   const zoneMap: Record<string, string> = { adventurerDeck: baseZoneIds.adventurerDeck, adventurerRow: baseZoneIds.adventurerRow, itemDeck: baseZoneIds.itemDeck, itemRow: baseZoneIds.itemRow, monsterDeck: baseZoneIds.monsterDeck, monsterRow: baseZoneIds.monsterRow, bossDeck: baseZoneIds.bossDeck, bossRow: baseZoneIds.bossRow };
   const zones = Object.fromEntries(Object.entries(zoneMap).map(([legacy, zoneId]) => [zoneId, { zoneId, kind: legacy.endsWith('Deck') ? 'orderedDeck' : legacy === 'bossRow' ? 'singleSlot' : 'faceUpRow', cardIds: shared[legacy] ?? [], visibility: 'public', rulesModuleId: 'base:rules' }]));
-  const players = ((state.players as Record<string, unknown>[]) ?? []).map((player) => ({ ...player, counters: [], moduleState: {} }));
+  const players = ((state.players as Record<string, unknown>[]) ?? []).map((player) => ({ ...player, counters: [], moduleState: {}, turnMarketRefreshed: false }));
   const enemyTargets = Object.fromEntries(Object.entries((state.enemyTargets as Record<string, Record<string, unknown>>) ?? {}).map(([id, target]) => [id, { ...target, parentEncounterId: 'base:enemies', zoneId: target.kind === 'boss' ? baseZoneIds.bossRow : baseZoneIds.monsterRow, attachments: [], moduleState: {} }]));
   const enemyEncounters = ((state.enemyEncounters as Record<string, unknown>[]) ?? []).map((encounter) => ({ ...encounter, status: 'active', rulesModuleId: 'base:rules', state: {} }));
-  const migratedState: Record<string, unknown> = { ...state, schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', players, zones, enemyTargets, enemyEncounters }; delete migratedState.sharedZones;
+  const activePlayerId = state.activePlayerId as string;
+  const migratedState: Record<string, unknown> = { ...state, schemaVersion: 2, engineVersion: '0.2.0', rulesetVersion: '0.2.0', players, zones, enemyTargets, enemyEncounters, turnFacts: { schemaVersion: 1, playerId: activePlayerId, adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false } }; delete migratedState.sharedZones;
   return { schemaVersion: 2, engineVersion: migratedState.engineVersion, rulesetVersion: migratedState.rulesetVersion, contentPacks: migratedState.contentPacks, rulesModules: migratedState.rulesModules, state: migratedState };
 }
 export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState {
   if (!isFiniteJsonValue(snapshot)) throw new Error('Snapshot must contain finite, acyclic plain JSON data.');
-  const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : raw; const envelope = SnapshotEnvelopeSchema.parse(migrated);
+  const raw = snapshot as Record<string, unknown>; const migrated = raw.schemaVersion === 1 ? migrateV1(raw) : structuredClone(raw);
+  if ((migrated as Record<string, unknown>).schemaVersion === 2) {
+    const legacyState = (migrated as { state?: Record<string, unknown> }).state;
+    if (legacyState) {
+      for (const player of (legacyState.players as Record<string, unknown>[] | undefined) ?? []) player.turnMarketRefreshed ??= false;
+      legacyState.turnFacts ??= { schemaVersion: 1, playerId: legacyState.activePlayerId, adventurersRecruited: 0, adventurersAddedToParty: 0, itemsBought: 0, equipmentBought: 0, purchasePowerSpent: 0, extraCardsDrawn: 0, itemsUsed: 0, bossesDefeated: 0, monstersDefeated: 0, marketRefreshed: false, combatResolved: false, combatSkipped: false };
+    }
+  }
+  const envelope = SnapshotEnvelopeSchema.parse(migrated);
   if (envelope.engineVersion !== envelope.state.engineVersion || envelope.rulesetVersion !== envelope.state.rulesetVersion) throw new Error('Snapshot engine or ruleset version mismatch.');
   if (JSON.stringify(envelope.contentPacks) !== JSON.stringify(envelope.state.contentPacks)) throw new Error('Snapshot content manifest mismatch.');
   if (JSON.stringify(envelope.rulesModules) !== JSON.stringify(envelope.state.rulesModules)) throw new Error('Snapshot Rules Module manifest mismatch.');
@@ -51,7 +60,8 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   }
   const state = structuredClone(envelope.state) as GameState; state.effectState ??= {};
   assertGameStateInvariants(state);
-  if (!ruleset && Object.values(state.zones).some(({ visibility }) => visibility === 'hidden')) throw new Error('Snapshot with hidden Rules Module zones requires the active ruleset for canonical restore.');
+  if (state.effectState.pendingChoice?.source && !ruleset) throw new Error('Pending dynamic card choice Snapshot requires the active ruleset for canonical restore.');
+  if (!ruleset && Object.values(state.zones).some(({ visibility, rulesModuleId }) => visibility === 'hidden' && rulesModuleId !== 'base:rules')) throw new Error('Snapshot with hidden Rules Module zones requires the active ruleset for canonical restore.');
   if (ruleset) {
     assertRulesetGameStateInvariants(state, ruleset);
     if (ruleset.modules.some((module) => (module.setupContributions?.length ?? 0) > 0)) {
@@ -64,6 +74,11 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const setupDifference = firstDifference(canonical.setupSelections, state.setupSelections, '$.setupSelections');
       if (setupDifference) throw new Error(`Snapshot setup selection does not match canonical seed replay at ${setupDifference}.`);
     }
+    if (state.bondSetup) {
+      const canonical = createGame({ gameId: state.gameId, seed: state.seed, players: state.players.map(({ id, name, kind }) => ({ id, name, kind })), startingPlayerId: state.startingPlayerId }, ruleset);
+      const offerDifference = firstDifference(canonical.bondSetup?.offers, state.bondSetup.offers, '$.bondSetup.offers');
+      if (!canonical.bondSetup || canonical.bondSetup.offerId !== state.bondSetup.offerId || offerDifference) throw new Error(`Snapshot bond setup does not match canonical seed replay${offerDifference ? ` at ${offerDifference}` : ''}.`);
+    }
     const encounterError = validateEncounterStateAgainstRuleset(state, ruleset);
     if (encounterError) throw new Error(`Snapshot encounter registry mismatch: ${encounterError}`);
     const consentError = validatePendingCounterConsentState(state, ruleset);
@@ -72,8 +87,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (continuityErrors.length) throw new Error(`Snapshot supply continuity mismatch: ${continuityErrors.join(' ')}`);
   }
   if (state.effectState.pendingChoice?.source) {
-    if (!ruleset) throw new Error('Pending dynamic card choice Snapshot requires the active ruleset for canonical restore.');
-    const choiceError = validatePendingDynamicCardChoice(state, ruleset);
+    const choiceError = validatePendingDynamicCardChoice(state, ruleset!);
     if (choiceError) throw new Error(choiceError);
   }
   const pending = state.effectState.pendingLifecycle;
@@ -97,6 +111,25 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
   const command = state.effectState.pendingCommand;
   if (command) {
     const choice = state.effectState.pendingChoice; const consent = state.effectState.pendingCounterConsent;
+    if (command.kind === 'phase-transition') {
+      const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState);
+      const rollbackEffects = rollbackState.effectState;
+      if (Boolean(choice) === Boolean(consent) || !pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'END_PHASE' || command.envelope.gameId !== state.gameId || command.envelope.expectedRevision !== state.revision || command.factStart > command.events.length || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid phase transition continuation.');
+      const eventError = validateTransactionEventSequence(command.events, state, pending.registry, command.envelope.commandId, ruleset);
+      if (eventError) throw new Error(eventError);
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending phase transition Snapshot requires the active ruleset for canonical restore.');
+      let canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error) throw new Error(`Phase transition canonical replay failed at the root command: ${canonical.error.message}`);
+      for (const resolutionEnvelope of command.resolutionEnvelopes) {
+        canonical = dispatch(canonical.state, ruleset, structuredClone(resolutionEnvelope));
+        if (canonical.error) throw new Error(`Phase transition canonical replay failed at a resolution command: ${canonical.error.message}`);
+      }
+      if (canonical.state.effectState.pendingCommand?.kind !== 'phase-transition') throw new Error('Phase transition canonical replay did not suspend at the expected boundary.');
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Phase transition suspended state does not match canonical replay at ${difference}.`);
+      return state;
+    }
     if (command.kind === 'team-overflow') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
       const optionSets = Object.values(command.optionCandidates);
@@ -127,8 +160,19 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
     if (command.kind === 'combat-reward') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) }; const evaluation = command.evaluation;
       if (Boolean(choice) === Boolean(consent) || pending || state.effectState.pendingPostCommand || command.continuationId !== `combat-reward:${command.envelope.commandId}` || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || JSON.stringify(command.registry) !== JSON.stringify(registry) || JSON.stringify(evaluation.registry) !== JSON.stringify(registry) || evaluation.input.playerId !== command.envelope.actorId || evaluation.input.targetId !== command.envelope.command.targetId || command.policyIndex >= evaluation.matchedPolicies.length || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.events.map(({ eventId }) => eventId)).size !== command.events.length) throw new Error('Invalid combat reward continuation.');
-      if (ruleset) { const rewardError = validatePendingCombatRewardContinuation(state, ruleset); if (rewardError) throw new Error(rewardError); }
-      command.rollbackState = structuredClone(rollbackState); return state;
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending combat reward Snapshot requires the active ruleset for canonical restore.');
+      const rewardError = validatePendingCombatRewardContinuation(state, ruleset); if (rewardError) throw new Error(rewardError);
+      let canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error) throw new Error(`Combat reward canonical replay failed at the root command: ${canonical.error.message}`);
+      for (const resolutionEnvelope of command.resolutionEnvelopes) {
+        canonical = dispatch(canonical.state, ruleset, structuredClone(resolutionEnvelope));
+        if (canonical.error) throw new Error(`Combat reward canonical replay failed at a resolution command: ${canonical.error.message}`);
+      }
+      if (canonical.state.effectState.pendingCommand?.kind !== 'combat-reward') throw new Error('Combat reward canonical replay did not suspend at the expected effect boundary.');
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Combat reward suspended state does not match canonical replay at ${difference}.`);
+      return state;
     }
     const executionId = pending ? `${pending.dispatchId}:${pending.currentHook.moduleId}:${pending.currentHook.hookId}` : '';
     const suspension = choice ?? consent;

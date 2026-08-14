@@ -1,5 +1,6 @@
-import { baseDemoContentPack, baseProvisionalFoundationContentPack } from '@guildmaster/content-base/runtime';
+import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base/runtime';
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
+import { baseProvisionalOriginalFullRulesModule } from '@guildmaster/content-base-rules';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
 import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
@@ -28,6 +29,7 @@ const choiceModule: RulesModule = {
       body: {
         kind: 'choice',
         choiceId: 'e2e:command-path',
+        decisionKind: 'choose-effect-option',
         actor: { kind: 'controller' },
         options: [
           { id: 'continue', effect: modifyPurchase(1) },
@@ -78,7 +80,7 @@ const consentModule: RulesModule = {
   }],
 };
 
-export type WebContentMode = 'demo' | 'provisional-playtest';
+export type WebContentMode = 'demo' | 'provisional-playtest' | 'provisional-original-full';
 export type WebGameSetup = { contentMode: WebContentMode; advancedRules: { helpers: boolean } };
 export const defaultWebGameSetup: WebGameSetup = { contentMode: 'demo', advancedRules: { helpers: false } };
 
@@ -96,9 +98,15 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
     description: '載入候選起始卡、冒險者、首批十一種物資、魔物與魔王數值。',
     warning: '內部測試模式：卡牌名稱使用中性代號；已接入首批物資與十項卡牌效果，其餘個別效果尚未啟用。',
   },
+  'provisional-original-full': {
+    label: '基礎版原作衍生 Provisional 測試',
+    description: '固定一名真人與三名 CPU，載入完整候選 roster、起始裝備與已驗證的首批卡牌效果。',
+    warning: '內部測試模式：候選冒險者 02／09、魔物 01／02／03／06／09／10／11／14 與既有十四項物資效果已啟用；其餘未覆核效果保持停用，不得視為官方完整基礎版。',
+  },
 };
 
 export function webContentModeFromPackIds(packIds: readonly string[]): WebContentMode {
+  if (packIds.includes(baseProvisionalOriginalFullContentPack.manifest.id)) return 'provisional-original-full';
   return packIds.includes(baseProvisionalFoundationContentPack.manifest.id) ? 'provisional-playtest' : 'demo';
 }
 
@@ -114,39 +122,65 @@ function normalizeSetup(setup: WebGameSetup | WebContentMode): WebGameSetup {
   return typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
 }
 
-function e2eHelperPack(basePack: ContentPack): ContentPack {
-  const fixtureIds = new Set(['base:helper/helper-01', 'base:helper/helper-08']);
+function e2eHelperDefinitionIds(scenario: E2EScenario): Set<string> {
+  return new Set(scenario === 'helper-batch-a'
+    ? ['base:helper/helper-01', 'base:helper/helper-07']
+    : ['base:helper/helper-01', 'base:helper/helper-08']);
+}
+
+function e2eHelperPack(basePack: ContentPack, scenario: E2EScenario): ContentPack {
+  const fixtureIds = e2eHelperDefinitionIds(scenario);
   return {
     ...baseProvisionalHelpersContentPack,
     manifest: {
       ...baseProvisionalHelpersContentPack.manifest,
       id: 'e2e:helper-content',
-      hash: 'e2e-helper-content-v1',
+      hash: `e2e-helper-content-${scenario}-v2`,
       contentStatus: 'demo',
       dependencies: [basePack.manifest.id],
     },
-    definitions: baseProvisionalHelpersContentPack.definitions.filter(({ id }) => fixtureIds.has(id)),
+    definitions: baseProvisionalHelpersContentPack.definitions
+      .filter(({ id }) => fixtureIds.has(id))
+      .sort((left, right) => scenario === 'helper-batch-a' ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id)),
+  };
+}
+
+function e2eHelperModule(scenario: E2EScenario): RulesModule {
+  const fixtureIds = e2eHelperDefinitionIds(scenario);
+  return {
+    ...baseHelpersRulesModule,
+    config: { fixtureDefinitionIds: [...fixtureIds] },
+    purchaseCostModifierRules: baseHelpersRulesModule.purchaseCostModifierRules!.filter(({ activation }) => fixtureIds.has(activation.definitionId)),
+    restHandSizePolicies: baseHelpersRulesModule.restHandSizePolicies!.filter(({ activation }) => fixtureIds.has(activation.definitionId)),
   };
 }
 
 export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetup | WebContentMode = defaultWebGameSetup) {
   const setup = normalizeSetup(setupInput);
   if (!scenario && setup.contentMode === 'demo' && setup.advancedRules.helpers) throw new Error('Helper advanced rules require provisional playtest content.');
+  if (!scenario && setup.contentMode === 'provisional-original-full' && setup.advancedRules.helpers) throw new Error('The four-player full provisional baseline does not enable helpers.');
   const scenarioModule = scenario === 'lifecycle-choice'
     ? choiceModule
     : scenario === 'lifecycle-consent'
       ? consentModule
       : undefined;
   const scenarioPack = scenario ? getE2EScenarioPack(scenario) : undefined;
-  const helperScenario = scenario === 'optional-helper';
+  const helperScenario = scenario === 'optional-helper' || scenario === 'helper-batch-a';
   const packs = scenarioPack
-    ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack)] : [])]
+    ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack, scenario)] : [])]
+    : setup.contentMode === 'provisional-original-full'
+      ? [baseProvisionalOriginalFullContentPack]
     : setup.contentMode === 'provisional-playtest'
       ? [baseProvisionalFoundationContentPack, ...(setup.advancedRules.helpers ? [baseProvisionalHelpersContentPack] : [])]
       : [baseDemoContentPack];
   return createRuleset(
     packs,
-    [baseRulesModule, ...(scenarioModule ? [scenarioModule] : []), ...(helperScenario || !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : [])],
-    { allowProvisionalPlaytest: !scenario && setup.contentMode === 'provisional-playtest' },
+    [
+      baseRulesModule,
+      ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule] : []),
+      ...(scenarioModule ? [scenarioModule] : []),
+      ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : []),
+    ],
+    { allowProvisionalPlaytest: !scenario && setup.contentMode !== 'demo' },
   );
 }

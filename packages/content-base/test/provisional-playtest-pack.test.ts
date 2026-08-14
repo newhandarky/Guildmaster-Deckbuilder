@@ -34,6 +34,7 @@ describe('provisional playtest Content Pack assembly', () => {
       expect(result.pack.manifest.contentStatus).toBe('provisional-playtest');
       expect(result.pack.definitions.every((definition) => definition.name === `placeholder:${definition.id}`)).toBe(true);
       expect(result.pack.definitions.every((definition) => definition.source === 'provisional-playtest')).toBe(true);
+      expect(result.pack.definitions.find(({ id }) => id === 'base:starter/spirit-crystal')).toMatchObject({ type: 'equipment', combat: 1 });
       expect('partyDefinitionIds' in result.pack.starter! && result.pack.starter.partyDefinitionIds).toEqual(starterIds.slice(0, 5));
     }
   });
@@ -53,6 +54,6 @@ describe('provisional playtest Content Pack assembly', () => {
     candidate.fields.find((field) => field.field === 'copies')!.candidateValue = Number.POSITIVE_INFINITY;
     const result = assembleProvisionalPlaytestPack(invalid, { definitionIds: starterIds });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.failures.some((failure) => failure.definitionId === '<catalog>' && failure.reason.includes('finite non-negative integer'))).toBe(true);
+    if (!result.ok) expect(result.failures.some((failure) => failure.definitionId === '<catalog>' && failure.reason.includes('finite integer'))).toBe(true);
   });
 });

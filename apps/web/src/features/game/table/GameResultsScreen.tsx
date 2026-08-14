@@ -13,6 +13,7 @@ type ScoreboardRow = {
 
 type Props = {
   conditionId: string;
+  viewerId: string;
   scoreboard: readonly ScoreboardRow[];
   diagnostics: ReactNode;
   notices: ReactNode;
@@ -21,10 +22,15 @@ type Props = {
 };
 
 export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameResultsScreen(
-  { conditionId, scoreboard, diagnostics, notices, persistence, onRestart },
+  { conditionId, viewerId, scoreboard, diagnostics, notices, persistence, onRestart },
   ref,
 ) {
   const restartRef = useRef<HTMLButtonElement>(null);
+  const viewer = scoreboard.find(({ playerId }) => playerId === viewerId);
+  const sharedWinners = scoreboard.filter(({ rank }) => rank === 1).length > 1;
+  const viewerOutcome = viewer?.rank === 1
+    ? sharedWinners ? '共同勝利' : '勝利'
+    : '失敗';
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => restartRef.current?.focus());
@@ -37,6 +43,7 @@ export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameRes
         <p className="eyebrow">文字版 MVP</p>
         <h1>遠征結算</h1>
         <p>{conditionId}</p>
+        <p data-testid="viewer-outcome"><strong>你的結果：{viewerOutcome}</strong>{viewer ? `（第 ${viewer.rank} 名）` : ''}</p>
       </div>
       <div className="status">
         <strong>對局已結束</strong>

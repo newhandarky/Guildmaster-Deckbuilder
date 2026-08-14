@@ -8,6 +8,13 @@ export function getDefinition(registry: ContentRegistry, state: GameState, cardI
   return definition;
 }
 
+export function isPartyMemberCard(registry: ContentRegistry, state: GameState, cardId: string): boolean {
+  const definition = getDefinition(registry, state, cardId);
+  if (definition.type === 'adventurer') return true;
+  const starterIds = 'partyDefinitionIds' in registry.starter ? registry.starter.partyDefinitionIds : [registry.starter.adventurerDefinitionId];
+  return starterIds.includes(definition.id);
+}
+
 export function createCard(state: GameState, definitionId: string, ownerId?: string): CardInstance {
   const id = `card-${Object.keys(state.cards).length + 1}`;
   const card: CardInstance = ownerId ? { id, definitionId, ownerId } : { id, definitionId };
