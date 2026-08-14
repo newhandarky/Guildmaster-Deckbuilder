@@ -5,6 +5,7 @@ import type { Ruleset } from '../rules/ruleset.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
 import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modifier-evaluator.js';
+import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 
 function blank(command: GameCommand): CpuActionFeature {
   return { schemaVersion: 1, command: structuredClone(command), honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, overflowLoss: 0 };
@@ -77,10 +78,12 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
     }
     if (command.type === 'BUY_CARD') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);
+      const purchaseCost = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId: command.cardId });
+      if (purchaseCost.status !== 'ready') throw new Error(`CPU action features require a valid purchase cost: ${purchaseCost.error}`);
       feature.honorGain = definition.honor ?? 0;
       feature.permanentPurchasePower = definition.purchasePower ?? 0;
       feature.partyCombatGain = definition.combat ?? 0;
-      feature.purchaseCost = definition.cost ?? 0;
+      feature.purchaseCost = purchaseCost.evaluation.effectiveCost;
     }
     if (command.type === 'COMPLETE_BONDS') {
       feature.bondHonorGain = command.bondIds.reduce((sum, bondId) => sum + (ruleset.registry.bonds.find(({ id }) => id === bondId)?.honor ?? 0), 0);

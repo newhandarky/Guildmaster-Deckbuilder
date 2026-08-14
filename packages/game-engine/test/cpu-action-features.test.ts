@@ -106,4 +106,22 @@ describe('public CPU action features', () => {
     const feature = getCpuActionFeatures(state, ruleset, 'p1').find(({ command }) => command.type === 'COMPLETE_BONDS' && command.bondIds.length === 2);
     expect(feature).toMatchObject({ command: { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a', 'test:bond/b'] }, bondHonorGain: 6 });
   });
+
+  it('uses the authoritative effective purchase cost when a public modifier is active', () => {
+    const module: RulesModule = {
+      id: 'test:cpu-discount', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled',
+      zoneDefinitions: [{ zoneId: 'test:cpu-discount-active', kind: 'singleSlot', visibility: 'public', rulesModuleId: 'test:cpu-discount' }],
+      purchaseCostModifierRules: [{ schemaVersion: 1, moduleId: 'test:cpu-discount', ruleId: 'supply-discount', priority: 1, activation: { kind: 'definition-in-zone', zoneId: 'test:cpu-discount-active', definitionId: 'test:monster/wolf' }, target: { kind: 'definition-type-in', values: ['item', 'equipment'] }, amount: -1 }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const state = makeGame(ruleset);
+    const wolfId = state.zones['base:monster-deck']!.cardIds.find((cardId) => state.cards[cardId]!.definitionId === 'test:monster/wolf')!;
+    state.zones['base:monster-deck']!.cardIds = state.zones['base:monster-deck']!.cardIds.filter((cardId) => cardId !== wolfId);
+    state.zones['test:cpu-discount-active']!.cardIds.push(wolfId);
+    state.phase = 'purchase';
+
+    const supplyCardId = state.zones['base:item-row']!.cardIds[0]!;
+    const feature = getCpuActionFeatures(state, ruleset, 'p1').find(({ command }) => command.type === 'BUY_CARD' && command.cardId === supplyCardId);
+    expect(feature).toMatchObject({ purchaseCost: 1 });
+  });
 });

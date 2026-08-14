@@ -28,7 +28,11 @@ describe('four-player setup and market refresh commands', () => {
     expect(projectPlayerView(state, ruleset, 'p1').bondSetup?.offeredBondIds).toHaveLength(7);
     expect(projectPlayerView(state, ruleset, 'p2').bondSetup?.offeredBondIds).toBeUndefined();
 
-    for (const player of players) {
+    const selectedByP1 = getLegalCommands(state, ruleset, 'p1')[0]!;
+    state = dispatch(state, ruleset, envelope(state, 'p1', selectedByP1)).state;
+    expect(projectPlayerView(state, ruleset, 'p2').opponents.find(({ id }) => id === 'p1')?.bonds).toEqual([]);
+
+    for (const player of players.slice(1)) {
       const legal = getLegalCommands(state, ruleset, player.id);
       expect(legal[0]?.type).toBe('SELECT_BONDS');
       const result = dispatch(state, ruleset, envelope(state, player.id, legal[0]!));
@@ -39,6 +43,9 @@ describe('four-player setup and market refresh commands', () => {
     expect(state.bondSetup).toBeUndefined();
     expect(state.activePlayerId).toBe('p1');
     expect(state.players.every(({ bonds }) => bonds.length === 5)).toBe(true);
+    state.players[0]!.bonds[0]!.completed = true;
+    const p2View = projectPlayerView(state, ruleset, 'p2');
+    expect(p2View.opponents.find(({ id }) => id === 'p1')?.bonds).toEqual([state.players[0]!.bonds[0]]);
   });
 
   it('round-trips setup and rejects an offer that diverges from canonical seed replay', () => {
