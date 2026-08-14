@@ -56,14 +56,10 @@ for (const viewport of [
     const utilityBox = await utility.boundingBox();
     const interactionBox = await page.getByTestId('interaction-rail').boundingBox();
     const activityBox = await page.getByTestId('activity-rail').boundingBox();
-    const encounterBox = await page.getByTestId('encounter-area').boundingBox();
-    const tavernBox = await page.getByTestId('tavern-area').boundingBox();
     const monsterRow = page.locator('[data-zone-id="base:monster-row"] .card-row');
 
     expect(utilityBox?.width).toBeCloseTo(320, 0);
     expect(utilityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
-    expect(tavernBox?.x).toBeGreaterThan((encounterBox?.x ?? 0) + (encounterBox?.width ?? 0));
-    expect(encounterBox?.width).toBeCloseTo(tavernBox?.width ?? 0, 0);
     expect(await monsterRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
     expect(rectanglesOverlap(interactionBox, activityBox)).toBe(false);
 
@@ -110,6 +106,34 @@ test('card details use a bottom sheet in portrait and a side sheet in landscape'
   expect((landscapeBox?.x ?? 0) + (landscapeBox?.width ?? 0)).toBeCloseTo(844, 0);
   expect(landscapeBox?.height).toBeCloseTo(390, 0);
   expect(landscapeBox?.width).toBeLessThan(844);
+});
+
+test('public table tabs use the ARIA keyboard pattern without changing the game snapshot', async ({ page }) => {
+  await openGame(page);
+  const tabs = page.getByRole('tablist', { name: '公共牌桌區域' });
+  const encounter = tabs.getByRole('tab', { name: /遭遇區/ });
+  const tavern = tabs.getByRole('tab', { name: /酒館區/ });
+  const snapshotBefore = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
+
+  await expect(encounter).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel')).toHaveAttribute('data-testid', 'encounter-area');
+  for (const tab of [encounter, tavern]) {
+    const panelId = await tab.getAttribute('aria-controls');
+    await expect(page.locator(`[id="${panelId}"]`)).toHaveCount(1);
+  }
+  await expect(tavern).toContainText('可作業');
+  await expect(tavern).toContainText('牌庫');
+  await encounter.focus();
+  await encounter.press('ArrowRight');
+  await expect(tavern).toBeFocused();
+  await expect(tavern).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel')).toHaveAttribute('data-testid', 'tavern-area');
+  await expect(page.locator('[data-zone-id="base:boss-row"]')).toBeHidden();
+  await expect(page.locator('[data-zone-id="base:adventurer-row"]')).toBeVisible();
+  await tavern.press('Home');
+  await expect(encounter).toBeFocused();
+  await expect(encounter).toHaveAttribute('aria-selected', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(snapshotBefore);
 });
 
 for (const viewport of [
@@ -204,10 +228,7 @@ function rectanglesOverlap(
 
 async function expectFixedTableOrder(page: Page): Promise<void> {
   const selectors = [
-    '[data-zone-id="base:boss-row"]',
-    '[data-zone-id="base:monster-row"]',
-    '[data-zone-id="base:adventurer-row"]',
-    '[data-zone-id="base:item-row"]',
+    '[data-testid="public-table"]',
     '[data-testid="guild-area"]',
     '[data-testid="interaction-rail"]',
     '[data-testid="activity-rail"]',

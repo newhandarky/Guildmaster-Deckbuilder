@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionPreviewSet } from '@guildmaster/game-protocol';
 import { actionPreviewItemsForScope } from './action-preview-scope.js';
+import { hasUnviewedCardIds } from './public-table-tab-state.js';
 import { emptySupplyMessage } from './supply-empty-state.js';
 
 describe('base supply empty states', () => {
@@ -26,5 +27,13 @@ describe('action preview scope', () => {
     expect(actionPreviewItemsForScope(previews, { gameId: 'other', revision: 4, actorId: 'p1' })).toEqual([]);
     expect(actionPreviewItemsForScope(previews, { gameId: 'game-1', revision: 5, actorId: 'p1' })).toEqual([]);
     expect(actionPreviewItemsForScope(previews, { gameId: 'game-1', revision: 4, actorId: 'p2' })).toEqual([]);
+  });
+});
+
+describe('public table new-card indicator', () => {
+  it('only flags newly added public cards, not removals or reordering', () => {
+    expect(hasUnviewedCardIds(['a', 'b'], ['b'])).toBe(false);
+    expect(hasUnviewedCardIds(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(hasUnviewedCardIds(['a', 'b'], ['b', 'c'])).toBe(true);
   });
 });
