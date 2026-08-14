@@ -40,6 +40,8 @@ export type TurnFactLedger = {
 };
 export type PlayerDecisionKind = 'choose-effect-option' | 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card';
 export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string }[] };
+export type PublicOpponentPartyMember = { adventurerId: string; equipmentId?: string; effectiveCombat: number };
+export type OpponentPlayerView = { id: string; name: string; kind: PlayerKind; seatIndex: number; isActive: boolean; handCount: number; partyCount: number; discardCount: number; partyCombat: number; party: PublicOpponentPartyMember[]; defeatedBosses: number; defeatedMonsters: number; bonds: BondState[]; counters: PlayerCounterState[] };
 
 export type GameState = {
   schemaVersion: 2; engineVersion: string; rulesetVersion: string;
@@ -56,7 +58,7 @@ export type GameState = {
 export type PlayerView = {
   viewerId: string; gameId: string; status: GameStatus; phase: Phase; round: number; revision: number; activePlayerId: string;
   self: Omit<PlayerState, 'drawPile'> & { drawPileCount: number }; partyLimit: number;
-  opponents: { id: string; name: string; kind: PlayerKind; seatIndex: number; isActive: boolean; handCount: number; partyCount: number; discardCount: number; defeatedBosses: number; defeatedMonsters: number; bonds: BondState[]; counters: PlayerCounterState[] }[];
+  opponents: OpponentPlayerView[];
   bondSetup?: { schemaVersion: 1; offerId: string; currentActorId: string; offeredBondIds?: readonly string[]; completedPlayerIds: readonly string[] };
   decisionPrompt?: PlayerDecisionPrompt;
   pendingCounterConsent?: { requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwnerId: string; requesterId: string; requiredActorIds: readonly string[]; acceptedActorIds: readonly string[]; status: 'pending' };

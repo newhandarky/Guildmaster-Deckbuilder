@@ -195,6 +195,11 @@ export function App() {
       }}
       phase={view.phase}
       opponents={view.opponents}
+      cards={view.cards}
+      definitions={definitions}
+      presentation={presentationResolver}
+      bondDefinitions={bondDefinitions}
+      suspendDetails={lifecyclePending}
     />}
     publicTable={<BoardPanel
       zones={view.zones}

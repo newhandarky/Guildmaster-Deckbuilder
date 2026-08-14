@@ -32,4 +32,22 @@ describe('PlayerView visibility boundary', () => {
     expect(view.cards[attachmentId]).toBeDefined();
     expect(view.cards[state.players[0]!.hand[0]!]).toBeUndefined();
   });
+
+  it('projects opponents’ public party and equipment without exposing their hands or draw piles', () => {
+    const state = makeGame();
+    const opponent = state.players[1]!;
+    const adventurerId = 'public-opponent-adventurer';
+    const equipmentId = 'public-opponent-equipment';
+    state.cards[adventurerId] = { id: adventurerId, definitionId: 'test:adventurer/a' };
+    state.cards[equipmentId] = { id: equipmentId, definitionId: 'test:item/spear' };
+    opponent.party.push({ adventurerId, equipmentId });
+    const view = projectPlayerView(state, testRuleset, 'p1');
+    const projected = view.opponents.find(({ id }) => id === opponent.id)!;
+
+    expect(projected.party).toContainEqual({ adventurerId, equipmentId, effectiveCombat: 3 });
+    expect(view.cards[adventurerId]).toBeDefined();
+    expect(view.cards[equipmentId]).toBeDefined();
+    expect(view.cards[opponent.hand[0]!]).toBeUndefined();
+    for (const cardId of opponent.drawPile) expect(view.cards[cardId]).toBeUndefined();
+  });
 });

@@ -30,7 +30,7 @@ function view(overrides: Partial<PlayerView> = {}): PlayerView {
       history: { defeatedBosses: 0, defeatedMonsters: 0 },
     },
     partyLimit: 5,
-    opponents: [{ id: 'p2', name: '同伴', kind: 'human', seatIndex: 1, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] }],
+    opponents: [{ id: 'p2', name: '同伴', kind: 'human', seatIndex: 1, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, partyCombat: 0, party: [], defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] }],
     zones: {},
     enemyTargets: {},
     cards: {},
@@ -123,8 +123,8 @@ describe('lifecycle interaction model', () => {
     const model = buildLifecycleInteractionModel(view({
       pendingCounterConsent: { ...pendingConsent, requiredActorIds: ['p1', 'p3'], acceptedActorIds: ['p1'] },
       opponents: [
-        { id: 'p2', name: '同伴', kind: 'human', seatIndex: 1, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] },
-        { id: 'p3', name: '第三位玩家', kind: 'human', seatIndex: 2, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] },
+        { id: 'p2', name: '同伴', kind: 'human', seatIndex: 1, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, partyCombat: 0, party: [], defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] },
+        { id: 'p3', name: '第三位玩家', kind: 'human', seatIndex: 2, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, partyCombat: 0, party: [], defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] },
       ],
     }), [], [], defaultLifecycleCopyResolver);
     expect(model).toMatchObject({
