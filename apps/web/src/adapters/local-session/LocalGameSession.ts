@@ -127,7 +127,9 @@ export class LocalGameSession {
     const oldModule = state.rulesModules?.some(({ id, version }) => id === 'base:helpers' && version === '1.0.0') ?? false;
     const currentPack = this.ruleset.registry.packs.some(({ id, version }) => id === 'base:provisional-helpers' && version !== '0.1.0');
     const currentModule = this.ruleset.modules.some(({ id, version }) => id === 'base:helpers' && version !== '1.0.0');
-    return oldPack && oldModule && currentPack && currentModule;
+    const oldFull = state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full') && !(state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full-helpers'));
+    const currentFull = this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full-helpers');
+    return oldPack && oldModule && currentPack && currentModule || Boolean(oldFull && currentFull);
   }
 
   current(): SessionUpdate {

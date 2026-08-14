@@ -84,6 +84,12 @@ export type WebContentMode = 'demo' | 'provisional-playtest' | 'provisional-orig
 export type WebGameSetup = { contentMode: WebContentMode; advancedRules: { helpers: boolean } };
 export const defaultWebGameSetup: WebGameSetup = { contentMode: 'demo', advancedRules: { helpers: false } };
 
+/** Full four-player mode uses a distinct helper-pack identity so snapshots cannot be mistaken for foundation-helper games. */
+const baseProvisionalOriginalFullHelpersContentPack: ContentPack = {
+  ...baseProvisionalHelpersContentPack,
+  manifest: { ...baseProvisionalHelpersContentPack.manifest, id: 'base:provisional-original-full-helpers', version: '1.0.0', hash: 'base-provisional-original-full-helpers-v1', dependencies: [baseProvisionalOriginalFullContentPack.manifest.id] },
+};
+
 export const webContentModeOptions: Readonly<Record<WebContentMode, {
   label: string;
   description: string;
@@ -112,14 +118,15 @@ export function webContentModeFromPackIds(packIds: readonly string[]): WebConten
 
 export function webGameSetupFromSnapshot(packIds: readonly string[], moduleIds: readonly string[]): WebGameSetup {
   const contentMode = webContentModeFromPackIds(packIds);
-  const helperPack = packIds.includes(baseProvisionalHelpersContentPack.manifest.id);
+  const helperPack = packIds.includes(baseProvisionalHelpersContentPack.manifest.id) || packIds.includes(baseProvisionalOriginalFullHelpersContentPack.manifest.id);
   const helperModule = moduleIds.includes(baseHelpersRulesModule.id);
-  if (helperPack !== helperModule || helperModule && contentMode !== 'provisional-playtest') throw new Error('Saved helper setup has an inconsistent Content Pack or Rules Module identity.');
+  if (helperPack !== helperModule) throw new Error('Saved helper setup has an inconsistent Content Pack or Rules Module identity.');
   return { contentMode, advancedRules: { helpers: helperModule } };
 }
 
 function normalizeSetup(setup: WebGameSetup | WebContentMode): WebGameSetup {
-  return typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
+  const normalized = typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
+  return normalized.contentMode === 'provisional-original-full' ? { ...normalized, advancedRules: { helpers: true } } : normalized;
 }
 
 function e2eHelperDefinitionIds(scenario: E2EScenario): Set<string> {
@@ -158,7 +165,6 @@ function e2eHelperModule(scenario: E2EScenario): RulesModule {
 export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetup | WebContentMode = defaultWebGameSetup) {
   const setup = normalizeSetup(setupInput);
   if (!scenario && setup.contentMode === 'demo' && setup.advancedRules.helpers) throw new Error('Helper advanced rules require provisional playtest content.');
-  if (!scenario && setup.contentMode === 'provisional-original-full' && setup.advancedRules.helpers) throw new Error('The four-player full provisional baseline does not enable helpers.');
   const scenarioModule = scenario === 'lifecycle-choice'
     ? choiceModule
     : scenario === 'lifecycle-consent'
@@ -169,7 +175,7 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
   const packs = scenarioPack
     ? [scenarioPack, ...(helperScenario ? [e2eHelperPack(scenarioPack, scenario)] : [])]
     : setup.contentMode === 'provisional-original-full'
-      ? [baseProvisionalOriginalFullContentPack]
+      ? [baseProvisionalOriginalFullContentPack, baseProvisionalOriginalFullHelpersContentPack]
     : setup.contentMode === 'provisional-playtest'
       ? [baseProvisionalFoundationContentPack, ...(setup.advancedRules.helpers ? [baseProvisionalHelpersContentPack] : [])]
       : [baseDemoContentPack];
@@ -177,9 +183,9 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
     packs,
     [
       baseRulesModule,
-      ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule] : []),
+      ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule, baseHelpersRulesModule] : []),
       ...(scenarioModule ? [scenarioModule] : []),
-      ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers ? [baseHelpersRulesModule] : []),
+      ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers && setup.contentMode !== 'provisional-original-full' ? [baseHelpersRulesModule] : []),
     ],
     { allowProvisionalPlaytest: !scenario && setup.contentMode !== 'demo' },
   );

@@ -122,15 +122,14 @@ describe('web content modes', () => {
     ]);
   });
 
-  it('creates the separate full provisional four-player ruleset without helpers', () => {
+  it('creates the separate full provisional four-player ruleset with its distinct helper identity', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-original-full');
-    expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' })]);
-    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(90);
+    expect(ruleset.registry.packs).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' }), expect.objectContaining({ id: 'base:provisional-original-full-helpers' })]));
+    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(102);
     expect(ruleset.registry.bonds).toHaveLength(30);
-    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:provisional-original-full-rules']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers', 'base:provisional-original-full-rules']);
     expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
-    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules', 'base:provisional-original-full-rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
-    expect(() => createWebRuleset(undefined, { contentMode: 'provisional-original-full', advancedRules: { helpers: true } })).toThrow(/does not enable helpers/);
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full', 'base:provisional-original-full-helpers'], ['base:rules', 'base:provisional-original-full-rules', 'base:helpers'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: true } });
   });
 
   it('keeps helper-off provisional registry identity and definition count unchanged', () => {

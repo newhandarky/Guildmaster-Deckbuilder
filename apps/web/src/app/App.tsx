@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
+import { BondPanel } from '../features/game/bonds/BondPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
@@ -212,7 +213,7 @@ export function App() {
       previewScope={{ gameId: view.gameId, revision: view.revision, actorId: view.viewerId }}
       onInspect={inspectCard}
     />}
-    party={<PartyPanel
+    party={<><PartyPanel
       player={view.self}
       partyLimit={view.partyLimit}
       definitions={definitions}
@@ -221,7 +222,7 @@ export function App() {
       equipCardId={equipmentCardId}
       legalEquipCommands={legalEquipCommands}
       onInspect={inspectCard}
-    />}
+    /><BondPanel bonds={view.self.bonds} definitions={bondDefinitions} completableBondIds={completableBondIds} /></>}
     hand={<HandPanel
       cardIds={view.self.hand}
       definitions={definitions}

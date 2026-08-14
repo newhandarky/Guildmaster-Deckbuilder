@@ -92,6 +92,11 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .table-area, .guild-area { min-width: 0; padding: 1rem; border: 1px solid #304664; border-radius: 1rem; background: rgb(14 25 43 / .68); }
 .area-title { margin-bottom: 1rem; color: #f4d9a5; font-size: 1.15rem; }
 .board-row, .party-panel, .hand-panel { min-width: 0; }
+.bond-panel { display: grid; gap: .65rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #304664; }
+.bond-panel h3, .bond-panel ul { margin: 0; }
+.bond-panel ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .5rem; padding: 0; list-style: none; }
+.bond-panel li { display: grid; gap: .2rem; padding: .6rem; border: 1px solid #405878; border-radius: .6rem; background: #1b2c46; }
+.bond-panel li span { color: #b6c7e3; font-size: .8rem; }
 .board-row + .board-row, .party-panel + .hand-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #304664; }
 .helper-retired-count { margin: .35rem 0 0; color: #b6c7e3; font-size: .85rem; }
 .activity-rail { display: grid; gap: 1rem; align-content: start; }

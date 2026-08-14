@@ -96,14 +96,14 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
             checked={selectedMode === mode}
             onChange={() => {
               setSelectedMode(mode);
-              if (mode !== 'provisional-playtest') setHelpersEnabled(false);
+              if (mode !== 'provisional-playtest') setHelpersEnabled(mode === 'provisional-original-full');
             }}
           />
           <span><strong>{option.label}</strong><small>{option.description}</small>{option.warning ? <small className="content-mode-warning">{option.warning}</small> : null}</span>
         </label>)}
       </fieldset>
 
-      {selectedMode === 'provisional-playtest'
+      {selectedMode === 'provisional-original-full' ? <p className="notice">完整四人模式固定啟用協助者規則。</p> : selectedMode === 'provisional-playtest'
         ? <fieldset className="advanced-rules-picker">
             <legend>進階規則</legend>
             <label className={helpersEnabled ? 'content-mode-option content-mode-option-selected' : 'content-mode-option'}>
