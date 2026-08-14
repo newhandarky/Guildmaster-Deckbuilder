@@ -36,7 +36,8 @@ secrets/
 *.swp
 *.swo
 
-# Temporary source/reference downloads
+# Local-only documentation and temporary source/reference downloads
+/docs/
 work/
 tmp/
 temp/
