@@ -29,7 +29,6 @@ test('desktop card details show current, cost, and remaining purchase power', as
   await endPhase.click();
   await endPhase.click();
 
-  await page.getByRole('tab', { name: /酒館區/ }).click();
   const tavern = page.getByTestId('public-table').getByTestId('tavern-area');
   await tavern.locator('[data-legal-action="true"]').first().click();
   const preview = page.getByTestId('action-preview');
@@ -50,7 +49,6 @@ test('Batch A helper discount, rotation, rest hand size, save, and replay stay a
   await endPhase.click();
   await endPhase.click();
 
-  await page.getByRole('tab', { name: /酒館區/ }).click();
   const supply = page.locator('[data-zone-id="base:item-row"] [data-card-type="item"][data-legal-action="true"]').first();
   await expect(supply).toBeVisible();
   await supply.click();
@@ -68,7 +66,6 @@ test('Batch A helper discount, rotation, rest hand size, save, and replay stay a
   await combatItem.click();
   await page.getByTestId('card-details').getByRole('button', { name: '使用道具', exact: true }).click();
   await endPhase.click();
-  await page.getByRole('tab', { name: /遭遇區/ }).click();
   const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
   await boss.click();
   await page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true }).click();

@@ -1,5 +1,14 @@
 import type { ActionPreviewItem, CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
+import {
+  appearanceForCardType,
+  professionFromTags,
+  professionPresentation,
+  typeIconFor,
+  type CardAppearance,
+  type ProfessionKey,
+} from './card-appearance.js';
+import type { CardIconKey } from './card-icons.js';
 
 export type CardTemplate = 'character' | 'standard' | 'supply' | 'enemy' | 'boss' | 'full-art';
 export type CardInteractionState = 'default' | 'legal' | 'selected' | 'target' | 'unavailable';
@@ -7,14 +16,22 @@ export type CardMetricKind = 'cost' | 'combat' | 'purchasePower' | 'honor';
 
 export type CardMetric = {
   kind: CardMetricKind;
-  icon: string;
+  iconKey: CardIconKey;
   label: string;
   value: number;
 };
 
 export type CardTag = {
   label: string;
+  iconKey?: CardIconKey;
   tone?: 'melee' | 'tank' | 'ranged' | 'mage' | 'support';
+};
+
+export type CardCornerSlot = {
+  slot: 'type' | 'honor' | 'combat' | 'purchase';
+  iconKey: CardIconKey;
+  value?: number;
+  accessibleLabel: string;
 };
 
 export type CardAction =
@@ -34,10 +51,12 @@ export type CardVisualViewModel = {
   cardType: string;
   cardTypeLabel: string;
   template: CardTemplate;
+  appearance: CardAppearance;
+  profession?: ProfessionKey;
   art: PresentationViewModel['portraitAsset'];
   shortDisplayText: string;
   detailDisplayText: string;
-  metrics: readonly CardMetric[];
+  corners: readonly CardCornerSlot[];
   detailMetrics: readonly CardMetric[];
   /** Player-facing classification only; raw mechanics tags stay in debug details. */
   publicTags: readonly CardTag[];
@@ -76,6 +95,8 @@ const typeLabels: Readonly<Record<string, string>> = {
   item: '道具',
   monster: '魔物',
   boss: '魔王',
+  helper: '協助者',
+  bond: '羈絆',
 };
 
 const stateLabels: Readonly<Record<CardInteractionState, string>> = {
@@ -91,29 +112,40 @@ const stateDescriptions: Readonly<Record<CardInteractionState, string>> = {
   unavailable: '目前不可執行',
 };
 
-const professionLabels: Readonly<Record<string, CardTag>> = {
-  melee: { label: '⚔ 近戰', tone: 'melee' },
-  tank: { label: '🛡 坦克', tone: 'tank' },
-  ranged: { label: '⌁ 遠程', tone: 'ranged' },
-  mage: { label: '✦ 法師', tone: 'mage' },
-  support: { label: '✚ 輔助', tone: 'support' },
-};
-
 function publicTagsFor(tags: readonly string[]): CardTag[] {
-  return tags.flatMap((tag) => {
-    const profession = tag.match(/^profession:(.+)$/)?.[1];
-    return profession && professionLabels[profession] ? [professionLabels[profession]] : [];
-  });
+  const profession = professionFromTags(tags);
+  if (!profession) return [];
+  const presentation = professionPresentation[profession];
+  return [{ label: presentation.label, iconKey: presentation.iconKey, tone: profession }];
 }
 
 function metricsFor(definition: CardDefinition | undefined): CardMetric[] {
   if (!definition) return [];
   const metrics: CardMetric[] = [];
-  if (definition.cost !== undefined) metrics.push({ kind: 'cost', icon: '◈', label: '費用', value: definition.cost });
-  if (definition.combat !== undefined) metrics.push({ kind: 'combat', icon: '⚔', label: '戰力', value: definition.combat });
-  if (definition.purchasePower !== undefined) metrics.push({ kind: 'purchasePower', icon: '◆', label: '購買力', value: definition.purchasePower });
-  if (definition.honor !== undefined) metrics.push({ kind: 'honor', icon: '✦', label: '榮譽', value: definition.honor });
+  if (definition.cost !== undefined) metrics.push({ kind: 'cost', iconKey: 'metric-purchase', label: '費用', value: definition.cost });
+  if (definition.combat !== undefined) metrics.push({ kind: 'combat', iconKey: 'metric-combat', label: '印刷戰力', value: definition.combat });
+  if (definition.purchasePower !== undefined) metrics.push({ kind: 'purchasePower', iconKey: 'metric-purchase', label: '購買力', value: definition.purchasePower });
+  if (definition.honor !== undefined) metrics.push({ kind: 'honor', iconKey: 'metric-honor-star', label: '榮譽', value: definition.honor });
   return metrics;
+}
+
+function cornersFor(
+  definition: CardDefinition | undefined,
+  cardTypeLabel: string,
+  appearance: CardAppearance,
+  profession: ProfessionKey | undefined,
+): CardCornerSlot[] {
+  const corners: CardCornerSlot[] = [{
+    slot: 'type',
+    iconKey: typeIconFor(definition?.type ?? 'unknown', appearance, profession),
+    accessibleLabel: profession ? `職業：${professionPresentation[profession].label}` : `卡牌類型：${cardTypeLabel}`,
+  }];
+  if (!definition) return corners;
+  if (definition.honor !== undefined) corners.push({ slot: 'honor', iconKey: 'metric-honor-star', value: definition.honor, accessibleLabel: `榮譽 ${definition.honor}` });
+  if (definition.combat !== undefined) corners.push({ slot: 'combat', iconKey: 'metric-combat', value: definition.combat, accessibleLabel: `印刷戰力 ${definition.combat}` });
+  if (definition.cost !== undefined) corners.push({ slot: 'purchase', iconKey: 'metric-purchase', value: definition.cost, accessibleLabel: `費用 ${definition.cost}` });
+  else if (definition.purchasePower !== undefined) corners.push({ slot: 'purchase', iconKey: 'metric-purchase', value: definition.purchasePower, accessibleLabel: `購買力 ${definition.purchasePower}` });
+  return corners;
 }
 
 function fallbackPresentation(definitionId: string): Pick<CardVisualViewModel, 'displayName' | 'art' | 'shortDisplayText' | 'detailDisplayText'> {
@@ -139,17 +171,26 @@ export function buildCardVisualModel({
   const fallback = fallbackPresentation(definitionId);
   const detailMetrics = metricsFor(definition);
   const cardType = definition?.type ?? 'unknown';
+  const cardTypeLabel = Object.hasOwn(typeLabels, cardType)
+    ? typeLabels[cardType] ?? '特殊卡牌'
+    : '特殊卡牌';
+  const appearance = appearanceForCardType(cardType);
+  const profession = professionFromTags(definition?.tags ?? []);
   return {
     ...(instance ? { instanceId: instance.id } : {}),
     definitionId,
     displayName: presentation?.displayName ?? fallback.displayName,
     cardType,
-    cardTypeLabel: typeLabels[cardType] ?? '特殊卡牌',
-    template: typeTemplates[cardType] ?? 'standard',
+    cardTypeLabel,
+    template: Object.hasOwn(typeTemplates, cardType)
+      ? typeTemplates[cardType] ?? 'standard'
+      : 'standard',
+    appearance,
+    ...(profession ? { profession } : {}),
     art: presentation?.portraitAsset ?? fallback.art,
     shortDisplayText: presentation?.shortDisplayText ?? fallback.shortDisplayText,
     detailDisplayText: presentation?.detailDisplayText ?? fallback.detailDisplayText,
-    metrics: detailMetrics.slice(0, 3),
+    corners: cornersFor(definition, cardTypeLabel, appearance, profession),
     detailMetrics,
     publicTags: publicTagsFor(definition?.tags ?? []),
     debugTags: [...(definition?.tags ?? [])],
@@ -177,7 +218,7 @@ export function equipmentSelectionAction(
 
 /** Gives inspectable cards a concise name without implying that opening details executes the action. */
 export function cardAccessibleName(card: CardVisualViewModel): string {
-  const metricSummary = card.metrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
+  const metricSummary = card.detailMetrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
   const actionSummary = card.action ? `，動作：${card.action.label}` : '';
   return `${card.displayName}，${card.cardTypeLabel}${metricSummary ? `，${metricSummary}` : ''}，${card.stateDescription}${actionSummary}，開啟卡牌詳情`;
 }

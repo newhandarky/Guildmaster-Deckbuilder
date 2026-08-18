@@ -43,27 +43,56 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
+test('card frame stays rectangular with a thin fixed outer border at 112px, 146px, and 252px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page);
+  const compactCard = page.getByTestId('hand').getByRole('button').first();
+  await expect(compactCard).toHaveCSS('border-radius', '10px');
+  await expect(compactCard).toHaveCSS('border-top-width', '1px');
+  expect((await compactCard.boundingBox())?.width).toBeCloseTo(112, 0);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const desktopCard = page.getByTestId('hand').getByRole('button').first();
+  await expect(desktopCard).toHaveCSS('border-radius', '10px');
+  await expect(desktopCard).toHaveCSS('border-top-width', '1px');
+  expect((await desktopCard.boundingBox())?.width).toBeCloseTo(146, 0);
+
+  await desktopCard.click();
+  const detailsCard = page.locator('.card-details-art');
+  await expect(detailsCard).toHaveCSS('border-radius', '10px');
+  await expect(detailsCard).toHaveCSS('border-top-width', '1px');
+  expect((await detailsCard.boundingBox())?.width).toBeCloseTo(252, 0);
+});
+
 for (const viewport of [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
 ]) {
   test(`desktop utility column keeps controls beside the table without overlap at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await openGame(page);
+    await openGame(page, '/?e2eScenario=optional-helper');
 
     const playBox = await page.getByTestId('game-play-column').boundingBox();
     const utility = page.getByTestId('game-utility-column');
     const utilityBox = await utility.boundingBox();
     const interactionBox = await page.getByTestId('interaction-rail').boundingBox();
     const activityBox = await page.getByTestId('activity-rail').boundingBox();
+    const helperBox = await page.getByTestId('helper-panel').boundingBox();
+    const bossBox = await page.locator('[data-zone-id="base:boss-row"]').boundingBox();
+    const monsterBox = await page.locator('[data-zone-id="base:monster-row"]').boundingBox();
+    const recruitBox = await page.locator('[data-zone-id="base:adventurer-row"]').boundingBox();
+    const storeBox = await page.locator('[data-zone-id="base:item-row"]').boundingBox();
     const monsterRow = page.locator('[data-zone-id="base:monster-row"] .card-row');
 
     expect(utilityBox?.width).toBeCloseTo(320, 0);
     expect(utilityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
-    expect(await monsterRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
+    if (viewport.width >= 1440) expect(helperBox?.y).toBeCloseTo(bossBox?.y ?? 0, 0);
+    expect(bossBox?.y).toBeCloseTo(monsterBox?.y ?? 0, 0);
+    expect(recruitBox?.y).toBeCloseTo(storeBox?.y ?? 0, 0);
+    await expect(monsterRow).toHaveCSS('overflow-x', 'auto');
     expect(rectanglesOverlap(interactionBox, activityBox)).toBe(false);
 
-    for (const row of await page.locator('.card-row').all()) {
+    for (const row of await page.locator('.card-row:visible').all()) {
       expect(rectanglesOverlap(interactionBox, await row.boundingBox())).toBe(false);
     }
 
@@ -108,31 +137,19 @@ test('card details use a bottom sheet in portrait and a side sheet in landscape'
   expect(landscapeBox?.width).toBeLessThan(844);
 });
 
-test('public table tabs use the ARIA keyboard pattern without changing the game snapshot', async ({ page }) => {
+test('encounter and tavern areas stay simultaneously visible without tab semantics or game mutations', async ({ page }) => {
   await openGame(page);
-  const tabs = page.getByRole('tablist', { name: '公共牌桌區域' });
-  const encounter = tabs.getByRole('tab', { name: /遭遇區/ });
-  const tavern = tabs.getByRole('tab', { name: /酒館區/ });
   const snapshotBefore = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
 
-  await expect(encounter).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel')).toHaveAttribute('data-testid', 'encounter-area');
-  for (const tab of [encounter, tavern]) {
-    const panelId = await tab.getAttribute('aria-controls');
-    await expect(page.locator(`[id="${panelId}"]`)).toHaveCount(1);
-  }
-  await expect(tavern).toContainText('可作業');
-  await expect(tavern).toContainText('牌庫');
-  await encounter.focus();
-  await encounter.press('ArrowRight');
-  await expect(tavern).toBeFocused();
-  await expect(tavern).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel')).toHaveAttribute('data-testid', 'tavern-area');
-  await expect(page.locator('[data-zone-id="base:boss-row"]')).toBeHidden();
+  await expect(page.getByRole('tablist')).toHaveCount(0);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('tabpanel')).toHaveCount(0);
+  await expect(page.getByTestId('encounter-area')).toBeVisible();
+  await expect(page.getByTestId('tavern-area')).toBeVisible();
+  await expect(page.locator('[data-zone-id="base:boss-row"]')).toBeVisible();
+  await expect(page.locator('[data-zone-id="base:monster-row"]')).toBeVisible();
   await expect(page.locator('[data-zone-id="base:adventurer-row"]')).toBeVisible();
-  await tavern.press('Home');
-  await expect(encounter).toBeFocused();
-  await expect(encounter).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[data-zone-id="base:item-row"]')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(snapshotBefore);
 });
 

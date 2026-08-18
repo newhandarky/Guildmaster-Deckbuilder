@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
+import { CardIcon } from '../cards/card-icons.js';
 import { ActionPreviewPanel } from './ActionPreviewPanel.js';
-import { CardPresentationImage } from './CardPresentationImage.js';
+import { CardFace } from './Card.js';
 
 type Props = {
   card: CardVisualViewModel | undefined;
@@ -70,24 +71,25 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
         <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={close}>×</button>
       </header>
       <div className="card-details-body">
-        <div className={`card-details-art card-${card.template}`} data-asset-key={card.art.key}>
-          <CardPresentationImage
-            art={card.art}
-            sizes="(max-width: 767px) 112px, 252px"
-            placeholderAccessible
-          />
+        <div
+          className={`card game-card card-details-art card-${card.template}`}
+          data-card-type={card.cardType}
+          data-card-appearance={card.appearance}
+          data-profession={card.profession}
+        >
+          <CardFace card={card} showState={false} sizes="(max-width: 767px) 112px, 252px" placeholderAccessible />
         </div>
         <p className="card-details-copy">{card.detailDisplayText}</p>
         {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
           {card.detailMetrics.map((metric) => <div key={metric.kind}>
-            <dt>{metric.icon} {metric.label}</dt>
+            <dt><CardIcon iconKey={metric.iconKey} /> {metric.label}</dt>
             <dd>{metric.value}</dd>
           </div>)}
         </dl> : null}
         {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
         <div className="card-details-meta">
           {card.publicTags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
-            {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.label}</span>)}
+            {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
           </div> : null}
           <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
         </div>
