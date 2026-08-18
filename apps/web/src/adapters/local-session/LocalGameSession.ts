@@ -29,7 +29,7 @@ export class LocalGameSession {
   constructor(private readonly ruleset: Ruleset, private readonly humanId = 'human-1') {
     const loaded = loadLocalGame();
     if (loaded.status === 'loaded') {
-      const helperUpgrade = this.requiresHelperUpgradeRecovery(loaded.game.snapshot);
+      const rulesUpgrade = this.rulesUpgradeRecovery(loaded.game.snapshot);
       try {
         const saved = loaded.game;
         if (typeof saved.snapshot?.state?.gameId === 'string') this.restoreGameSequence(saved.snapshot.state.gameId);
@@ -67,13 +67,13 @@ export class LocalGameSession {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
-        if (!helperUpgrade) this.recoveryReason = message.includes('profile') ? 'CPU_PROFILE_MISMATCH' : message.includes('registry') || message.includes('Rules Module') ? 'REGISTRY_MISMATCH' : 'REPLAY_DIVERGENCE';
+        if (!rulesUpgrade) this.recoveryReason = message.includes('profile') ? 'CPU_PROFILE_MISMATCH' : message.includes('registry') || message.includes('Rules Module') ? 'REGISTRY_MISMATCH' : 'REPLAY_DIVERGENCE';
         const cleared = clearLocalGame();
         this.state = this.createFreshGame();
         this.events = [];
         this.persistenceState = cleared.durable ? 'fresh' : 'saving';
         if (!cleared.durable) this.trackPersistence(cleared.completion, 'fresh');
-        if (helperUpgrade) this.recovery = { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' };
+        if (rulesUpgrade) this.recovery = rulesUpgrade;
       }
     } else {
       this.state = this.createFreshGame();
@@ -119,9 +119,9 @@ export class LocalGameSession {
     if (Number.isSafeInteger(sequence)) this.gameSequence = Math.max(this.gameSequence, sequence);
   }
 
-  private requiresHelperUpgradeRecovery(snapshot: { state?: unknown }): boolean {
+  private rulesUpgradeRecovery(snapshot: { state?: unknown }): SessionPersistenceStatus['recovery'] {
     const value = snapshot.state;
-    if (!value || typeof value !== 'object') return false;
+    if (!value || typeof value !== 'object') return undefined;
     const state = value as Partial<GameState>;
     const oldPack = state.contentPacks?.some(({ id, version }) => id === 'base:provisional-helpers' && version === '0.1.0') ?? false;
     const oldModule = state.rulesModules?.some(({ id, version }) => id === 'base:helpers' && version === '1.0.0') ?? false;
@@ -129,7 +129,14 @@ export class LocalGameSession {
     const currentModule = this.ruleset.modules.some(({ id, version }) => id === 'base:helpers' && version !== '1.0.0');
     const oldFull = state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full') && !(state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full-helpers'));
     const currentFull = this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full-helpers');
-    return oldPack && oldModule && currentPack && currentModule || Boolean(oldFull && currentFull);
+    if (oldPack && oldModule && currentPack && currentModule || Boolean(oldFull && currentFull)) return { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' };
+    const previousFullPack = state.contentPacks?.find(({ id, version }) => id === 'base:provisional-original-full' && ['0.4.0', '0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.9.0', '0.10.0', '0.11.0'].includes(version));
+    const previousFullModule = state.rulesModules?.find(({ id, version }) => id === 'base:provisional-original-full-rules' && ['1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '2.0.0', '2.1.0'].includes(version));
+    const currentFullPack = this.ruleset.registry.packs.some(({ id, version }) => id === 'base:provisional-original-full' && version === '0.12.0');
+    const currentFullModule = this.ruleset.modules.some(({ id, version }) => id === 'base:provisional-original-full-rules' && version === '2.2.0');
+    return previousFullPack && previousFullModule && currentFullPack && currentFullModule
+      ? { reasonCode: 'card-rules-upgraded', previousPackVersion: previousFullPack.version, previousModuleVersion: previousFullModule.version }
+      : undefined;
   }
 
   current(): SessionUpdate {

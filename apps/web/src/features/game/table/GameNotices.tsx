@@ -27,8 +27,11 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
     {persistence.recovery?.reasonCode === 'helper-rules-upgraded'
       ? <aside className="warning" data-testid="helper-upgrade-recovery-notice" role="status">協助者規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
       : null}
+    {persistence.recovery?.reasonCode === 'card-rules-upgraded'
+      ? <aside className="warning" data-testid="card-rules-upgrade-recovery-notice" role="status">卡牌效果規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
+      : null}
     {contentMode === 'provisional-original-full'
-      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：已啟用十四項物資效果、起始裝備、候選冒險者 02／09，以及候選魔物 01／02／03／06／09／10／11／14 的擊敗獎勵；其餘效果仍依問卷逐批確認。數位逐種類配比不代表官方完整卡表。</aside>
+      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：已啟用十四項物資效果、起始裝備、候選冒險者 02／04／05／09／10／15／20／24／27、候選魔物 01／02／03／06／09／10／11／14，以及候選魔王 01／02／03／05／06／08／09／10／11 的規則與擊敗獎勵；其餘效果仍依問卷逐批實作。數位逐種類配比不代表官方完整卡表。</aside>
       : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">

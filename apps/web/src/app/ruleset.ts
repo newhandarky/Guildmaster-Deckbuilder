@@ -107,7 +107,7 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   'provisional-original-full': {
     label: '基礎版原作衍生 Provisional 測試',
     description: '固定一名真人與三名 CPU，載入完整候選 roster、起始裝備與已驗證的首批卡牌效果。',
-    warning: '內部測試模式：候選冒險者 02／09、魔物 01／02／03／06／09／10／11／14 與既有十四項物資效果已啟用；其餘未覆核效果保持停用，不得視為官方完整基礎版。',
+    warning: '內部測試模式：候選冒險者 02／04／05／09／10／15／20／24／27、魔物 01／02／03／06／09／10／11／14、魔王 01／02／03／05／06／08／09／10／11 與既有十四項物資效果已啟用；其餘未覆核效果保持停用，不得視為官方完整基礎版。',
   },
 };
 
