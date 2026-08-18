@@ -148,7 +148,7 @@ function attackIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset:
     const result = evaluateCombat(state, ruleset, actorId, targetId);
     if (result.status !== 'ready' || !result.evaluation.eligible) return false;
     if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, targetId, result.evaluation.outcome.kind).status !== 'ready') return false;
-    return getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
+    return getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat, targetId, result.evaluation.maximumPartySlots, result.evaluation.equipmentSuppressed) !== undefined;
   });
 }
 
@@ -170,8 +170,8 @@ export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: s
   return handPower + player.turnPurchaseBonus - player.turnPurchaseSpent;
 }
 
-export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number): { slotCount: number; power: number } | undefined {
-  const prefix = evaluateCombatPartyPrefix(state, ruleset, playerId, required);
+export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number, targetId?: string, maximumPartySlots?: number, equipmentSuppressed = false): { slotCount: number; power: number } | undefined {
+  const prefix = evaluateCombatPartyPrefix(state, ruleset, playerId, required, targetId, maximumPartySlots, equipmentSuppressed);
   return prefix ? { slotCount: prefix.slotCount, power: prefix.power } : undefined;
 }
 
@@ -308,7 +308,7 @@ function readyAttackPreview(state: GameState, ruleset: Ruleset, actorId: string,
   }
   const combat = evaluateCombat(state, ruleset, actorId, command.targetId);
   if (combat.status !== 'ready' || !combat.evaluation.eligible) return undefined;
-  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat);
+  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
   if (!partyPrefix) return undefined;
   return {
     kind: 'attack',

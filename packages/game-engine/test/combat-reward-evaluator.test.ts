@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RulesModule } from '../src/rules/ruleset.js';
 import type { CombatRewardPolicy, EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, evaluateCombatRewards, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, evaluateCombatRewards, getCpuActionFeatures, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import { testPack } from './fixtures.js';
 
@@ -25,10 +25,95 @@ describe('generic combat reward policy evaluation', () => {
     expect(evaluateCombatRewards(state, ambiguous, 'p1', monster(state))).toMatchObject({ status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED' });
   });
 
+  it('rejects dynamic reward choices whose shared source is missing or hidden at registration', () => {
+    const body = (zoneId: string): EffectDefinition['body'] => ({ kind: 'choose-card', choiceId: `choice:${zoneId}`, actor: { kind: 'controller' }, from: { kind: 'shared-zone', zoneId }, selectedCardKey: 'selected', zeroCandidateBehavior: 'skip', effect: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 1 } });
+    expect(() => createRuleset([testPack], [baseRulesModule, module([reward('missing-zone', { kind: 'always', value: true }, 1, body('missing:zone'))])])).toThrow('unknown shared zone');
+    expect(() => createRuleset([testPack], [baseRulesModule, module([reward('hidden-zone', { kind: 'always', value: true }, 1, body('base:item-deck'))])])).toThrow('must be public');
+  });
+
+  it('rejects shared-deck draws whose source is missing or is not an ordered deck', () => {
+    const body = (sourceZoneId: string): EffectDefinition['body'] => ({ kind: 'draw-shared-deck', sourceZoneId, player: { kind: 'controller' }, destination: 'discardPile', count: 1 });
+    expect(() => createRuleset([testPack], [baseRulesModule, module([reward('missing-deck', { kind: 'always', value: true }, 1, body('missing:deck'))])])).toThrow('unknown zone');
+    expect(() => createRuleset([testPack], [baseRulesModule, module([reward('row-not-deck', { kind: 'always', value: true }, 1, body('base:item-row'))])])).toThrow('must be an ordered deck');
+  });
+
   it('executes each matching policy once in the authoritative defeat transaction', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, module([reward('purchase', { kind: 'target-kind-in', kinds: ['monster'] }, 1), reward('counter', { kind: 'always', value: true }, 2, { kind: 'modify-value', target: { kind: 'player-counter', player: { kind: 'controller' }, resourceId: 'reward' }, amount: 3 })])]); const state = game(ruleset); const targetId = monster(state);
     const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }));
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.turnPurchaseBonus).toBe(2); expect(result.state.players[0]!.counters).toContainEqual({ resourceId: 'reward', amount: 3, visibility: 'ownerOnly' }); expect(result.events.filter((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(2);
+  });
+
+  it('supports a zero-candidate combat-failure gate while preserving participant loss and resumable success', () => {
+    const gate: EffectDefinition['body'] = {
+      kind: 'choose-card',
+      choiceId: 'post-combat-cost',
+      decisionKind: 'discard-card',
+      actor: { kind: 'controller' },
+      from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' },
+      predicate: { kind: 'definition-type-in', values: ['adventurer'] },
+      selectedCardKey: 'cost',
+      zeroCandidateEffect: { kind: 'mark-combat-failed', reasonCode: 'REQUIRED_HAND_CARD_MISSING' },
+      effect: { kind: 'sequence', effects: [
+        { kind: 'discard-card', card: { kind: 'context-card', key: 'cost' }, from: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } },
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+      ] },
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module([reward('post-combat-gate', { kind: 'target-kind-in', kinds: ['monster'] }, 1, gate)])]);
+
+    const failedState = game(ruleset); const failedTargetId = monster(failedState); failedState.players[0]!.turnCombatBonus = 2;
+    const partyBefore = failedState.players[0]!.party.length; const participantId = failedState.players[0]!.party[0]!.adventurerId;
+    expect(getCpuActionFeatures(failedState, ruleset, 'p1').find(({ command }) => command.type === 'ATTACK_TARGET' && command.targetId === failedTargetId)).toMatchObject({ monsterDefeat: 0, honorGain: 0, immediatePurchasePower: 0 });
+    const failed = dispatch(failedState, ruleset, envelope(failedState, 'p1', { type: 'ATTACK_TARGET', targetId: failedTargetId }, 'failed-gate'));
+    expect(failed.error).toBeUndefined(); expect(failed.state.revision).toBe(1);
+    expect(failed.state.enemyTargets[failedTargetId]!.status).toBe('available');
+    expect(failed.state.players[0]!.party).toHaveLength(partyBefore - 1);
+    expect(failed.state.players[0]!.discardPile).toContain(participantId);
+    expect(failed.state.players[0]!.turnPurchaseBonus).toBe(0);
+    expect(failed.events).toContainEqual(expect.objectContaining({ type: 'COMBAT_FAILED', causedByCommandId: 'failed-gate' }));
+    expect(failed.events.some(({ type }) => type === 'COMBAT_REWARD_POLICY_EXECUTED')).toBe(false);
+
+    const successState = game(ruleset); const successTargetId = monster(successState); successState.players[0]!.turnCombatBonus = 2;
+    const row = successState.zones['base:adventurer-row']!;
+    const costId = row.cardIds.shift()!; successState.players[0]!.hand.push(costId); successState.cards[costId]!.ownerId = 'p1';
+    const suspended = dispatch(successState, ruleset, envelope(successState, 'p1', { type: 'ATTACK_TARGET', targetId: successTargetId }, 'success-gate'));
+    expect(suspended.error).toBeUndefined(); expect(suspended.state.effectState.pendingChoice).toMatchObject({ choiceId: 'post-combat-cost', decisionKind: 'discard-card' });
+    const pending = suspended.state.effectState.pendingChoice!;
+    const forged = dispatch(suspended.state, ruleset, envelope(suspended.state, 'p1', { type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: 'forged' }, 'forged-gate'));
+    expect(forged.error?.code).toBe('INVALID_COMMAND'); expect(forged.state).toEqual(successState);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
+    const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === costId)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, 'p1', choice, 'resolve-gate'));
+    expect(completed.error).toBeUndefined(); expect(completed.state.enemyTargets[successTargetId]!.status).toBe('defeated');
+    expect(completed.state.players[0]!.discardPile).toContain(costId);
+    expect(completed.state.players[0]!.turnPurchaseBonus).toBe(5);
+    expect(completed.events.filter(({ type }) => type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(1);
+  });
+
+  it('stops reward continuation when a resumed choice marks combat failed', () => {
+    const suspendedFailure: EffectDefinition['body'] = {
+      kind: 'choice',
+      choiceId: 'resumed-failure',
+      actor: { kind: 'controller' },
+      options: [{ id: 'fail', effect: { kind: 'mark-combat-failed', reasonCode: 'FAIL_AFTER_CHOICE' } }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module([
+      reward('suspended-failure', { kind: 'always', value: true }, 1, suspendedFailure),
+      reward('must-not-run', { kind: 'always', value: true }, 2, { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 99 }),
+    ])]);
+    const state = game(ruleset); const targetId = monster(state); state.players[0]!.turnCombatBonus = 2;
+    const partyBefore = state.players[0]!.party.length;
+    const suspended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'resumed-failure-root'));
+    expect(suspended.error).toBeUndefined();
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(suspended.state))), ruleset);
+    const choice = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.choiceId === 'resumed-failure')!;
+    const completed = dispatch(restored, ruleset, envelope(restored, 'p1', choice, 'resumed-failure-choice'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.revision).toBe(1);
+    expect(completed.state.enemyTargets[targetId]!.status).toBe('available');
+    expect(completed.state.players[0]!.party).toHaveLength(partyBefore - 1);
+    expect(completed.state.players[0]!.turnPurchaseBonus).toBe(0);
+    expect(completed.events).toContainEqual(expect.objectContaining({ type: 'COMBAT_FAILED', payload: expect.objectContaining({ reasonCode: 'FAIL_AFTER_CHOICE' }) }));
+    expect(completed.events.some(({ type }) => type === 'COMBAT_REWARD_POLICY_EXECUTED')).toBe(false);
   });
 
   it('does not grant rewards for remove-target replacement and rolls back failed reward effects', () => {
@@ -47,6 +132,67 @@ describe('generic combat reward policy evaluation', () => {
     expect(() => restoreSnapshot(snapshot)).toThrow(/requires the active ruleset/);
     const restored = restoreSnapshot(snapshot, ruleset); const command = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE')!; const completed = dispatch(restored, ruleset, envelope(restored, 'p1', command));
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(4); expect(completed.state.players[0]!.turnCombatBonus).toBe(1); expect(completed.state.zones['base:monster-row']!.cardIds).toHaveLength(3); expect(completed.events.filter((event) => event.type === 'COMBAT_REWARD_POLICY_EXECUTED')).toHaveLength(2); expect(completed.events.filter((event) => event.type === 'ENEMY_DEFEATED')).toHaveLength(1);
+  });
+
+  it('selects up to two qualifying public-row cards across a Snapshot continuation and skips an empty row', () => {
+    const chooseSecond: EffectDefinition['body'] = {
+      kind: 'choose-card',
+      choiceId: 'public-reward-second',
+      decisionKind: 'choose-market-card',
+      actor: { kind: 'controller' },
+      from: { kind: 'shared-zone', zoneId: 'base:item-row' },
+      predicate: { kind: 'definition-cost-at-most', value: 2 },
+      selectedCardKey: 'second',
+      zeroCandidateBehavior: 'skip',
+      effect: { kind: 'move-card', card: { kind: 'context-card', key: 'second' }, from: { kind: 'shared-zone', zoneId: 'base:item-row' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' }, transferOwnership: true },
+    };
+    const body: EffectDefinition['body'] = {
+      kind: 'sequence',
+      effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        {
+          kind: 'choose-card',
+          choiceId: 'public-reward-first',
+          decisionKind: 'choose-market-card',
+          actor: { kind: 'controller' },
+          from: { kind: 'shared-zone', zoneId: 'base:item-row' },
+          predicate: { kind: 'definition-cost-at-most', value: 2 },
+          selectedCardKey: 'first',
+          zeroCandidateBehavior: 'skip',
+          effect: { kind: 'sequence', effects: [
+            { kind: 'move-card', card: { kind: 'context-card', key: 'first' }, from: { kind: 'shared-zone', zoneId: 'base:item-row' }, to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' }, transferOwnership: true },
+            chooseSecond,
+          ] },
+        },
+      ],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module([reward('public-row', { kind: 'always', value: true }, 1, body)])]);
+    const state = game(ruleset); const targetId = monster(state); const initialRow = [...state.zones['base:item-row']!.cardIds];
+    const first = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'public-row-root'));
+    expect(first.error).toBeUndefined();
+    expect(first.state.effectState.pendingChoice).toMatchObject({ choiceId: 'public-reward-first', decisionKind: 'choose-market-card' });
+    expect(first.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual(initialRow);
+    const firstCommand = getLegalCommands(first.state, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === initialRow[0])!;
+    const second = dispatch(first.state, ruleset, envelope(first.state, 'p1', firstCommand));
+    expect(second.error).toBeUndefined();
+    expect(second.state.effectState.pendingChoice).toMatchObject({ choiceId: 'public-reward-second', decisionKind: 'choose-market-card' });
+    expect(second.state.effectState.pendingChoice?.options.map(({ id }) => id)).toEqual(initialRow.slice(1));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(second.state))), ruleset);
+    const secondCommand = getLegalCommands(restored, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === initialRow[1])!;
+    const completed = dispatch(restored, ruleset, envelope(restored, 'p1', secondCommand));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.players[0]!.turnPurchaseBonus).toBe(5);
+    expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining(initialRow.slice(0, 2)));
+    expect(completed.state.zones['base:item-row']!.cardIds).toEqual(initialRow.slice(2));
+    expect(completed.state.cards[initialRow[0]!]!.ownerId).toBe('p1');
+    expect(completed.state.cards[initialRow[1]!]!.ownerId).toBe('p1');
+
+    const empty = game(ruleset); const emptyTargetId = monster(empty); const itemRow = empty.zones['base:item-row']!; empty.zones['base:item-deck']!.cardIds.push(...itemRow.cardIds.splice(0));
+    const skipped = dispatch(empty, ruleset, envelope(empty, 'p1', { type: 'ATTACK_TARGET', targetId: emptyTargetId }, 'empty-public-row-root'));
+    expect(skipped.error).toBeUndefined();
+    expect(skipped.state.effectState.pendingChoice).toBeUndefined();
+    expect(skipped.state.players[0]!.turnPurchaseBonus).toBe(5);
+    expect(skipped.events.some(({ type }) => type === 'EFFECT_CHOICE_SKIPPED')).toBe(true);
   });
 
   it('requires a ruleset and fails closed for tampered dynamic combat reward choices', () => {

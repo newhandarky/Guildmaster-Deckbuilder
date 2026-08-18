@@ -9,10 +9,10 @@ export type CpuReasonCode =
 export type CpuScoringWeights = {
   honor: number; bondHonor: number; bossProgress: number; monsterDefeat: number;
   permanentPurchasePower: number; partyCombat: number; draw: number; removal: number;
-  immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; overflowLoss: number;
+  immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; equipmentRemoval: number; overflowLoss: number;
 };
 export type CpuProfile = {
-  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.2.0';
+  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.3.0';
   commandPriority: readonly GameCommand['type'][]; weights: CpuScoringWeights;
   maxActionsPerTurn: 128; maxAutonomousSteps: 512; repeatedVisibleStateLimit: 3;
 };
@@ -27,9 +27,9 @@ export type CpuDecisionResult =
   | { status: 'blocked'; reasonCode: 'UNSUPPORTED_DECISION_KIND' | 'NO_LEGAL_COMMAND' | 'MISSING_ACTION_FEATURE' | 'REPEATED_VISIBLE_STATE' | 'MAX_ACTIONS_EXCEEDED'; diagnostic: string };
 
 export const baseBalancedCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
-  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.2.0',
+  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.3.0',
   commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
-  weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, overflowLoss: -1 },
+  weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, equipmentRemoval: -8, overflowLoss: -1 },
   maxActionsPerTurn: 128, maxAutonomousSteps: 512, repeatedVisibleStateLimit: 3,
 });
 
@@ -66,7 +66,7 @@ function scoreFeature(feature: CpuActionFeature, weights: CpuScoringWeights): { 
     ['honor', feature.honorGain], ['bondHonor', feature.bondHonorGain], ['bossProgress', feature.bossProgress], ['monsterDefeat', feature.monsterDefeat],
     ['permanentPurchasePower', feature.permanentPurchasePower], ['partyCombat', feature.partyCombatGain], ['draw', feature.cardsDrawn], ['removal', feature.removalValue],
     ['immediatePower', feature.immediatePurchasePower + feature.immediateCombatPower], ['purchaseCost', feature.purchaseCost], ['partyCombatLoss', feature.partyCombatLoss],
-    ['equipmentLoss', feature.equipmentLoss], ['overflowLoss', feature.overflowLoss],
+    ['equipmentLoss', feature.equipmentLoss], ['equipmentRemoval', feature.equipmentRemoval], ['overflowLoss', feature.overflowLoss],
   ];
   const terms = raw.filter(([, value]) => value !== 0).map(([featureName, value]) => ({ feature: featureName, value, weight: weights[featureName], contribution: value * weights[featureName] }));
   return { score: terms.reduce((sum, term) => sum + term.contribution, 0), terms };

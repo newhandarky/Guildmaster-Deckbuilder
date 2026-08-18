@@ -20,6 +20,7 @@ export type PlayerState = {
 export type ZoneKind = 'orderedDeck' | 'faceUpRow' | 'singleSlot' | 'moduleArea';
 export type ZoneState = { zoneId: ZoneId; kind: ZoneKind; cardIds: string[]; visibility: 'public' | 'ownerOnly' | 'hidden'; ownerId?: string; rulesModuleId?: string; metadata?: Record<string, unknown> };
 export type EnemyTargetState = { targetId: string; cardInstanceId: string; kind: string; status: 'available' | 'engaged' | 'defeated' | 'removed'; parentEncounterId?: string; partKey?: string; zoneId?: ZoneId; health?: { current: number; max: number }; attachments: string[]; moduleState: Record<string, unknown> };
+export type PublicEnemyTargetState = EnemyTargetState & { effectiveCombat?: number; combatEligible?: boolean; combatRestrictionReasonCodes?: readonly string[]; maximumPartySlots?: number; participantLimitReasonCode?: string; equipmentSuppressed?: boolean; equipmentSuppressionReasonCodes?: readonly string[] };
 export type EnemyEncounterState = { encounterId: string; targetIds: string[]; kind: string; status: 'active' | 'finished'; rulesModuleId?: string; resolutionPolicy?: { moduleId: string; policyId: string }; state: Record<string, unknown> };
 export type EndState = { conditionId: string; conditionIds?: string[]; finalRoundEndPlayerId: string; triggeredAtRevision: number };
 export type SetupSelectionState = {
@@ -62,5 +63,5 @@ export type PlayerView = {
   bondSetup?: { schemaVersion: 1; offerId: string; currentActorId: string; offeredBondIds?: readonly string[]; completedPlayerIds: readonly string[] };
   decisionPrompt?: PlayerDecisionPrompt;
   pendingCounterConsent?: { requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwnerId: string; requesterId: string; requiredActorIds: readonly string[]; acceptedActorIds: readonly string[]; status: 'pending' };
-  zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, EnemyTargetState>; cards: Record<string, CardInstance>; endState?: EndState;
+  zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, PublicEnemyTargetState>; cards: Record<string, CardInstance>; endState?: EndState;
 };

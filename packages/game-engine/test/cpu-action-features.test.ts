@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EquipmentCombatModifierRule } from '@guildmaster/game-protocol';
+import type { EquipmentCombatModifierRule, PartyCombatModifierRule } from '@guildmaster/game-protocol';
 import { createGame, createRuleset, getCpuActionFeatures } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule, Ruleset } from '../src/rules/ruleset.js';
@@ -26,7 +26,54 @@ const equipmentModifierRuleset = () => {
   return createRuleset([testPack], [baseRulesModule, module]);
 };
 
+const partyModifierRuleset = () => {
+  const pack = structuredClone(testPack);
+  pack.manifest = { ...pack.manifest, id: 'test:cpu-party-modifier', hash: 'cpu-party-modifier' };
+  const wolf = pack.definitions.find(({ id }) => id === 'test:monster/wolf')!;
+  wolf.combat = 2;
+  const rule: PartyCombatModifierRule = {
+    schemaVersion: 1,
+    moduleId: 'test:cpu-party-power',
+    ruleId: 'source-adjacent-bonus',
+    priority: 1,
+    sourceDefinitionIds: ['test:adventurer/a'],
+    subject: 'adjacent',
+    when: { kind: 'always', value: true },
+    amount: { kind: 'fixed', value: 2 },
+  };
+  const module: RulesModule = {
+    id: 'test:cpu-party-power', version: '1', partyCombatModifierRules: [rule],
+    getPartyLimit: (_state, _player, limit) => limit,
+    onSupplyDepleted: () => 'handled',
+  };
+  return createRuleset([pack], [baseRulesModule, module]);
+};
+
 describe('public CPU action features', () => {
+  it('uses authoritative before/after party totals for positional modifier gain and loss', () => {
+    const ruleset = partyModifierRuleset();
+    const state = makeGame(ruleset);
+    const player = state.players[0]!;
+    const sourceId = state.zones['base:adventurer-deck']!.cardIds.find((cardId) => state.cards[cardId]!.definitionId === 'test:adventurer/a')!;
+    state.zones['base:adventurer-deck']!.cardIds = state.zones['base:adventurer-deck']!.cardIds.filter((cardId) => cardId !== sourceId);
+    state.cards[sourceId]!.ownerId = player.id;
+    player.hand.push(sourceId);
+    const retained = player.party[0]!;
+    for (const slot of player.party.slice(1)) player.discardPile.push(slot.adventurerId);
+    player.party = [retained];
+    state.phase = 'action1';
+
+    const play = getCpuActionFeatures(state, ruleset, player.id).find(({ command }) => command.type === 'PLAY_ADVENTURER' && command.cardId === sourceId);
+    expect(play).toMatchObject({ partyCombatGain: 4, partyCombatLoss: 0 });
+
+    player.hand = player.hand.filter((cardId) => cardId !== sourceId);
+    player.party = [{ adventurerId: sourceId }, retained];
+    state.phase = 'combat';
+    const wolf = Object.values(state.enemyTargets).find(({ kind, status, cardInstanceId }) => kind === 'monster' && status === 'available' && state.cards[cardInstanceId]?.definitionId === 'test:monster/wolf')!;
+    const attack = getCpuActionFeatures(state, ruleset, player.id).find(({ command }) => command.type === 'ATTACK_TARGET' && command.targetId === wolf.targetId);
+    expect(attack).toMatchObject({ partyCombatLoss: 4 });
+  });
+
   it('accounts for the deterministic party member and equipment lost to overflow', () => {
     const ruleset = equipmentModifierRuleset();
     const state = makeGame(ruleset);

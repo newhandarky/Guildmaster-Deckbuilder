@@ -25,7 +25,7 @@ export function evaluateRestHandSize(state: GameState, ruleset: Ruleset, input: 
     const activationError = validateCardPresenceState(state, ruleset.registry, policy.activation);
     if (activationError) return { status: 'failed', reason: 'INVALID_ACTIVATION', error: activationError };
   }
-  const sorted = ordered(policies.filter((policy) => matchesCardPresence(state, policy.activation)));
+  const sorted = ordered(policies.filter((policy) => matchesCardPresence(state, policy.activation, input.playerId)));
   if (!sorted) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active rest hand-size policies require distinct priorities.' };
   const applied = sorted[0];
   return {

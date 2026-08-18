@@ -7,12 +7,14 @@ export type EffectCardRef = { kind: 'context-card'; key: string } | { kind: 'car
 export type PlayerZoneName = 'drawPile' | 'hand' | 'discardPile' | 'playArea';
 export type EffectConcreteCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: PlayerZoneName } | { kind: 'party'; player: EffectPlayerRef; position: number } | { kind: 'equipment'; player: EffectPlayerRef; partyPosition: number } | { kind: 'shared-zone'; zoneId: string } | { kind: 'removed' };
 export type EffectCardLocation = EffectConcreteCardLocation | { kind: 'context-location'; key: string };
-export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> } | { kind: 'party'; player: EffectPlayerRef };
+export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> } | { kind: 'party'; player: EffectPlayerRef } | { kind: 'shared-zone'; zoneId: string };
 export type EffectSelectableCardSource = EffectSelectableCardLocation | { kind: 'one-of'; locations: readonly EffectSelectableCardLocation[] };
 export type EffectCardPredicate =
   | { kind: 'definition-type-in'; values: readonly string[] }
   | { kind: 'definition-id-in'; values: readonly string[] }
+  | { kind: 'definition-cost-at-most'; value: number }
   | { kind: 'tag-in'; values: readonly string[] }
+  | { kind: 'tag-prefix'; value: string }
   | { kind: 'all'; predicates: readonly EffectCardPredicate[] }
   | { kind: 'any'; predicates: readonly EffectCardPredicate[] }
   | { kind: 'not'; predicate: EffectCardPredicate };
@@ -32,12 +34,14 @@ export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
   | { kind: 'choice'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
-  | { kind: 'choose-card'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; skipOptionId?: string; effect: EffectNode }
+  | { kind: 'choose-card'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; skipOptionId?: string; zeroCandidateBehavior?: 'skip'; zeroCandidateEffect?: EffectNode; effect: EffectNode }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
   | { kind: 'move-card'; card: EffectCardRef; from: EffectCardLocation; to: EffectCardLocation; position?: 'top' | 'bottom' | number; permission?: 'controller-only' | 'system'; transferOwnership?: boolean }
   | { kind: 'draw'; player: EffectPlayerRef; count: EffectNumberValue }
+  | { kind: 'draw-shared-deck'; sourceZoneId: string; player: EffectPlayerRef; destination: 'hand' | 'discardPile'; count: number }
+  | { kind: 'mark-combat-failed'; reasonCode: string }
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'remove-from-game'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system'; attachedEquipmentDisposition?: 'discard' }
   | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
@@ -143,6 +147,7 @@ const locationSchema: z.ZodType<EffectCardLocation> = z.discriminatedUnion('kind
 export const EffectSelectableCardLocationSchema: z.ZodType<EffectSelectableCardLocation> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player-zone'), player: playerRefSchema, zone: z.enum(['hand', 'discardPile', 'playArea']) }).strict(),
   z.object({ kind: z.literal('party'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('shared-zone'), zoneId: nonEmpty }).strict(),
 ]);
 export const EffectSelectableCardSourceSchema: z.ZodType<EffectSelectableCardSource> = z.union([
   EffectSelectableCardLocationSchema,
@@ -163,7 +168,9 @@ const uniqueNonEmptyValues = z.array(canonicalPredicateValue).min(1).max(EFFECT_
 const cardPredicateSchema: z.ZodType<EffectCardPredicate> = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('definition-type-in'), values: uniqueNonEmptyValues }).strict(),
   z.object({ kind: z.literal('definition-id-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('definition-cost-at-most'), value: z.number().finite().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('tag-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('tag-prefix'), value: nonEmpty }).strict(),
   z.object({ kind: z.literal('all'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
   z.object({ kind: z.literal('any'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
   z.object({ kind: z.literal('not'), predicate: cardPredicateSchema }).strict(),
@@ -186,7 +193,7 @@ const rewardSchema: z.ZodType<CombatReward> = z.discriminatedUnion('kind', [
 const policyRefSchema = z.object({ moduleId: nonEmpty, policyId: nonEmpty }).strict();
 const uniqueOptions = <T extends { id: string }>(values: readonly T[]): boolean => new Set(values.map(({ id }) => id)).size === values.length;
 const decisionKindSchema = z.enum(['choose-effect-option', 'discard-card', 'remove-card', 'recover-card', 'choose-market-card', 'choose-enemy-target', 'choose-party-member', 'draft-card', 'transfer-card']);
-const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), skipOptionId: nonEmpty.optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
+const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), skipOptionId: nonEmpty.optional(), zeroCandidateBehavior: z.literal('skip').optional(), zeroCandidateEffect: z.lazy(() => EffectNodeSchema).optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
 
 export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
@@ -198,6 +205,8 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('request-counter-consent'), requestId: nonEmpty, policy: policyRefSchema, counterOwner: playerRefSchema, outcomes: z.object({ accepted: EffectNodeSchema, declined: EffectNodeSchema, cancelled: EffectNodeSchema, expired: EffectNodeSchema }).strict() }).strict(),
   z.object({ kind: z.literal('move-card'), card: cardRefSchema, from: locationSchema, to: locationSchema, position: z.union([z.enum(['top', 'bottom']), z.number().finite().int().nonnegative()]).optional(), permission: z.enum(['controller-only', 'system']).optional(), transferOwnership: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('draw'), player: playerRefSchema, count: numberValueSchema }).strict(),
+  z.object({ kind: z.literal('draw-shared-deck'), sourceZoneId: nonEmpty, player: playerRefSchema, destination: z.enum(['hand', 'discardPile']), count: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('mark-combat-failed'), reasonCode: nonEmpty }).strict(),
   z.object({ kind: z.literal('discard-card'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),
   z.object({ kind: z.literal('remove-from-game'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional(), attachedEquipmentDisposition: z.literal('discard').optional() }).strict(),
   z.object({ kind: z.literal('modify-value'), target: valueTargetSchema, amount: z.number().finite() }).strict(),
@@ -236,6 +245,10 @@ export function validateEffectCardPredicate(predicate: unknown): string[] {
       if (entry.values.some((value) => typeof value === 'string' && value !== value.trim())) return ['Predicate values must not have leading or trailing whitespace.'];
       continue;
     }
+    if (entry.kind === 'tag-prefix') {
+      if (typeof entry.value === 'string' && entry.value !== entry.value.trim()) return ['Predicate tag prefix must not have leading or trailing whitespace.'];
+      continue;
+    }
     if (entry.kind === 'all' || entry.kind === 'any') {
       if (!Array.isArray(entry.predicates)) continue;
       if (entry.predicates.length > EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) return [`Effect card predicate exceeds maximum branch count of ${EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode}.`];
@@ -253,6 +266,7 @@ function validateEffectPredicateBudgets(effect: EffectDefinition): string[] {
     const node = objectValue(queue.pop());
     if (!node) continue;
     if (node.kind === 'choose-card') {
+      if (node.zeroCandidateBehavior && node.zeroCandidateEffect) return ['Choose-card may declare only one zero-candidate outcome.'];
       const source = objectValue(node.from);
       const locations = source?.kind === 'one-of' && Array.isArray(source.locations) ? source.locations : [node.from];
       if (locations.some((location) => objectValue(location)?.kind === 'party') && (typeof node.selectedLocationKey !== 'string' || !node.selectedLocationKey.trim())) return ['Party card choices require selectedLocationKey.'];
@@ -260,7 +274,7 @@ function validateEffectPredicateBudgets(effect: EffectDefinition): string[] {
         const errors = validateEffectCardPredicate(node.predicate);
         if (errors.length) return errors;
       }
-      queue.push(node.effect);
+      queue.push(node.effect, node.zeroCandidateEffect);
       continue;
     }
     if (node.kind === 'sequence' && Array.isArray(node.effects)) queue.push(...node.effects);

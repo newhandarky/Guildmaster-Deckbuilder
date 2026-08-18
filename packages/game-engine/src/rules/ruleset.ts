@@ -1,4 +1,4 @@
-import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validatePurchaseCostModifierRule, validateRestHandSizePolicy, validateSetupCardPoolContribution, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamCapacityEnforcementPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type OptionalRulesModuleComposition, type PlayerState, type PurchaseCostModifierRule, type RestHandSizePolicy, type SetupCardPoolContribution, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamCapacityEnforcementPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
+import { isFiniteJsonValue, validateAttackResolutionPolicy, validateBondConditionRule, validateCardUseEffectDefinition, validateCombatParticipantDeparturePolicy, validateCombatRewardPolicy, validateCombatRule, validateContinuousRule, validateCounterConsentPolicy, validateDiceDefinition, validateEncounterResolutionPolicy, validateEquipmentCombatModifierRule, validateEquipmentDeparturePolicy, validateEquipmentEligibilityRule, validateEquipmentEventTrigger, validateLifecycleHook, validatePartyCombatModifierRule, validatePurchaseCostModifierRule, validateRestHandSizePolicy, validateSetupCardPoolContribution, validateSupplyRowConfiguration, validateSupplyRowRefreshPolicy, validateTeamCapacityEnforcementPolicy, validateTeamOverflowPolicy, type AttackResolutionPolicy, type BondConditionRule, type CombatCondition, type CombatParticipantDeparturePolicy, type CombatRewardPolicy, type CombatRule, type ContentPack, type ContentRegistry, type ContinuousRule, type CounterConsentPolicy, type DiceDefinition, type EffectNode, type EncounterResolutionPolicy, type EquipmentCombatModifierRule, type EquipmentDeparturePolicy, type EquipmentEligibilityRule, type GameState, type LifecycleHook, type OptionalRulesModuleComposition, type PartyCombatModifierRule, type PlayerState, type PurchaseCostModifierRule, type RestHandSizePolicy, type SetupCardPoolContribution, type SupplyRowConfiguration, type SupplyRowRefreshPolicy, type TeamCapacityEnforcementPolicy, type TeamOverflowPolicy } from '@guildmaster/game-protocol';
 import type { ZoneDefinition } from '../model/zones.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { composeRulesModules } from './rules-module-composition.js';
@@ -25,6 +25,9 @@ export type RulesModule = {
   encounterResolutionPolicies?: readonly EncounterResolutionPolicy[];
   equipmentEligibilityRules?: readonly EquipmentEligibilityRule[];
   equipmentCombatModifierRules?: readonly EquipmentCombatModifierRule[];
+  equipmentDeparturePolicies?: readonly EquipmentDeparturePolicy[];
+  combatParticipantDeparturePolicies?: readonly CombatParticipantDeparturePolicy[];
+  partyCombatModifierRules?: readonly PartyCombatModifierRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
   teamCapacityEnforcementPolicies?: readonly TeamCapacityEnforcementPolicy[];
   setupContributions?: readonly SetupCardPoolContribution[];
@@ -42,6 +45,36 @@ export type RulesModule = {
 };
 export type Ruleset = { registry: ContentRegistry; modules: readonly RulesModule[] };
 export type ContentRegistryOptions = { allowProvisionalPlaytest?: boolean };
+
+function combatConditionDefinitionIds(condition: CombatCondition): string[] {
+  if (condition.kind === 'target-definition-id-in') return [...condition.definitionIds];
+  if (condition.kind === 'all' || condition.kind === 'any') return condition.conditions.flatMap(combatConditionDefinitionIds);
+  return condition.kind === 'not' ? combatConditionDefinitionIds(condition.condition) : [];
+}
+
+function selectableSharedZoneIds(node: EffectNode): string[] {
+  if (node.kind === 'choose-card') {
+    const locations = node.from.kind === 'one-of' ? node.from.locations : [node.from];
+    return [...locations.filter((location): location is Extract<typeof location, { kind: 'shared-zone' }> => location.kind === 'shared-zone').map(({ zoneId }) => zoneId), ...selectableSharedZoneIds(node.effect), ...(node.zeroCandidateEffect ? selectableSharedZoneIds(node.zeroCandidateEffect) : [])];
+  }
+  if (node.kind === 'sequence') return node.effects.flatMap(selectableSharedZoneIds);
+  if (node.kind === 'conditional') return [...selectableSharedZoneIds(node.whenTrue), ...(node.whenFalse ? selectableSharedZoneIds(node.whenFalse) : [])];
+  if (node.kind === 'choice') return node.options.flatMap(({ effect }) => selectableSharedZoneIds(effect));
+  if (node.kind === 'random' || node.kind === 'roll-die') return node.outcomes.flatMap(({ effect }) => selectableSharedZoneIds(effect));
+  if (node.kind === 'request-counter-consent') return Object.values(node.outcomes).flatMap(selectableSharedZoneIds);
+  return [];
+}
+
+function sharedDeckDrawZoneIds(node: EffectNode): string[] {
+  if (node.kind === 'draw-shared-deck') return [node.sourceZoneId];
+  if (node.kind === 'choose-card') return [...sharedDeckDrawZoneIds(node.effect), ...(node.zeroCandidateEffect ? sharedDeckDrawZoneIds(node.zeroCandidateEffect) : [])];
+  if (node.kind === 'sequence') return node.effects.flatMap(sharedDeckDrawZoneIds);
+  if (node.kind === 'conditional') return [...sharedDeckDrawZoneIds(node.whenTrue), ...(node.whenFalse ? sharedDeckDrawZoneIds(node.whenFalse) : [])];
+  if (node.kind === 'choice') return node.options.flatMap(({ effect }) => sharedDeckDrawZoneIds(effect));
+  if (node.kind === 'random' || node.kind === 'roll-die') return node.outcomes.flatMap(({ effect }) => sharedDeckDrawZoneIds(effect));
+  if (node.kind === 'request-counter-consent') return Object.values(node.outcomes).flatMap(sharedDeckDrawZoneIds);
+  return [];
+}
 
 export function createContentRegistry(packs: readonly ContentPack[], options: ContentRegistryOptions = {}): ContentRegistry {
   if (!isFiniteJsonValue(packs)) throw new Error('Content Packs must contain finite, acyclic, plain JSON data only.');
@@ -103,7 +136,7 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
   }
   const composedModules = composeRulesModules(modules);
   const registry = createContentRegistry(packs, options);
-  const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const capacityRefs = new Set<string>(); const capacityPriorities = new Set<number>(); const setupRefs = new Set<string>(); const setupPriorities = new Set<number>(); const setupSelectors = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const purchaseCostRefs = new Set<string>(); const purchaseCostPriorities = new Set<number>(); const restHandRefs = new Set<string>(); const restHandPriorities = new Set<number>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
+  const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const equipmentDepartureRefs = new Set<string>(); const registeredEquipmentDeparturePolicies: EquipmentDeparturePolicy[] = []; const participantDepartureRefs = new Set<string>(); const registeredParticipantDeparturePolicies: CombatParticipantDeparturePolicy[] = []; const partyCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const capacityRefs = new Set<string>(); const capacityPriorities = new Set<number>(); const setupRefs = new Set<string>(); const setupPriorities = new Set<number>(); const setupSelectors = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const purchaseCostRefs = new Set<string>(); const purchaseCostPriorities = new Set<number>(); const restHandRefs = new Set<string>(); const restHandPriorities = new Set<number>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
   for (const module of composedModules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
@@ -120,6 +153,9 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const policy of module.encounterResolutionPolicies ?? []) { const errors = validateEncounterResolutionPolicy(policy, module.id); const policyId = typeof policy === 'object' && policy !== null && 'policyId' in policy ? String(policy.policyId) : '<invalid>'; const ref = `${module.id}\u0000${policyId}`; if (encounterRefs.has(ref)) errors.push(`Duplicate encounter policy: ${module.id}/${policyId}.`); encounterRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.equipmentEligibilityRules ?? []) { const errors = validateEquipmentEligibilityRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentRefs.has(ref)) errors.push(`Duplicate equipment eligibility rule: ${module.id}/${rule.ruleId}.`); equipmentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const rule of module.equipmentCombatModifierRules ?? []) { const errors = validateEquipmentCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (equipmentCombatRefs.has(ref)) errors.push(`Duplicate equipment combat modifier rule: ${module.id}/${rule.ruleId}.`); equipmentCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.equipmentDeparturePolicies ?? []) { const errors = validateEquipmentDeparturePolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (equipmentDepartureRefs.has(ref)) errors.push(`Duplicate equipment departure policy: ${module.id}/${policy.policyId}.`); if (registeredEquipmentDeparturePolicies.some((candidate) => candidate.priority === policy.priority && candidate.cause === policy.cause && candidate.equipmentDefinitionIds.some((definitionId) => policy.equipmentDefinitionIds?.includes(definitionId)))) errors.push(`Equipment departure policy priority ${policy.priority} is ambiguous for an overlapping cause and definition.`); for (const definitionId of policy.equipmentDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Equipment departure policy ${policy.policyId} references unknown definition ${definitionId}.`); else if (definition.type !== 'equipment') errors.push(`Equipment departure policy ${policy.policyId} definition ${definitionId} must be equipment.`); } equipmentDepartureRefs.add(ref); registeredEquipmentDeparturePolicies.push(policy); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const policy of module.combatParticipantDeparturePolicies ?? []) { const errors = validateCombatParticipantDeparturePolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (participantDepartureRefs.has(ref)) errors.push(`Duplicate combat participant departure policy: ${module.id}/${policy.policyId}.`); if (registeredParticipantDeparturePolicies.some((candidate) => candidate.priority === policy.priority && candidate.targetDefinitionIds.some((definitionId) => policy.targetDefinitionIds?.includes(definitionId)))) errors.push(`Combat participant departure policy priority ${policy.priority} is ambiguous for an overlapping target.`); for (const definitionId of policy.targetDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Combat participant departure policy ${policy.policyId} references unknown target ${definitionId}.`); else if (definition.type !== 'monster' && definition.type !== 'boss') errors.push(`Combat participant departure policy ${policy.policyId} target ${definitionId} must be an enemy.`); } for (const entry of policy.dispositions ?? []) for (const definitionType of entry.definitionTypes ?? []) if (!Object.values(registry.definitions).some(({ type }) => type === definitionType)) errors.push(`Combat participant departure policy ${policy.policyId} references unknown definition type ${definitionType}.`); participantDepartureRefs.add(ref); registeredParticipantDeparturePolicies.push(policy); if (errors.length) throw new Error(errors.join(' ')); }
+    for (const rule of module.partyCombatModifierRules ?? []) { const errors = validatePartyCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (partyCombatRefs.has(ref)) errors.push(`Duplicate party combat modifier rule: ${module.id}/${rule.ruleId}.`); for (const definitionId of rule.sourceDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Party combat modifier rule ${rule.ruleId} references unknown source definition ${definitionId}.`); else if (definition.type !== 'adventurer' && definition.type !== 'starter') errors.push(`Party combat modifier rule ${rule.ruleId} source ${definitionId} must be an adventurer or starter.`); } partyCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamOverflowPolicies ?? []) { const errors = validateTeamOverflowPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (overflowRefs.has(ref)) errors.push(`Duplicate team overflow policy: ${module.id}/${policy.policyId}.`); overflowRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
     for (const policy of module.teamCapacityEnforcementPolicies ?? []) { const errors = validateTeamCapacityEnforcementPolicy(policy, module.id); if (capacityRefs.has(policy.policyId)) errors.push(`Duplicate team capacity enforcement policy: ${policy.policyId}.`); if (capacityPriorities.has(policy.priority)) errors.push(`Team capacity enforcement policy priority ${policy.priority} is ambiguous.`); capacityRefs.add(policy.policyId); capacityPriorities.add(policy.priority); if (errors.length) throw new Error(errors.join(' ')); }
     for (const contribution of module.setupContributions ?? []) { const errors = validateSetupCardPoolContribution(contribution, module.id); if (setupRefs.has(contribution.contributionId)) errors.push(`Duplicate setup contribution: ${contribution.contributionId}.`); if (setupPriorities.has(contribution.priority)) errors.push(`Setup contribution priority ${contribution.priority} is ambiguous.`); const selector = `${contribution.selector.kind}\u0000${contribution.selector.value}`; if (setupSelectors.has(selector)) errors.push(`Conflicting setup contribution selector: ${contribution.selector.value}.`); setupRefs.add(contribution.contributionId); setupPriorities.add(contribution.priority); setupSelectors.add(selector); if (errors.length) throw new Error(errors.join(' ')); }
@@ -134,14 +170,51 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const policy of module.counterConsentPolicies ?? []) { const errors = validateCounterConsentPolicy(policy, module.id); const ref = `${module.id}\u0000${policy.policyId}`; if (consentRefs.has(ref)) errors.push(`Duplicate counter consent policy: ${module.id}/${policy.policyId}.`); consentRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }
   }
   const zoneDefinitions = new Map(composedModules.flatMap((module) => module.zoneDefinitions ?? []).map((zone) => [zone.zoneId, zone]));
+  for (const module of composedModules) for (const policy of module.combatParticipantDeparturePolicies ?? []) {
+    const zoneIds = [...policy.dispositions.filter(({ destination }) => destination.kind === 'shuffle-into-shared-deck').map(({ destination }) => destination.kind === 'shuffle-into-shared-deck' ? destination.zoneId : ''), ...(policy.replacementDraw ? [policy.replacementDraw.sourceZoneId] : [])];
+    for (const zoneId of zoneIds) { const zone = zoneDefinitions.get(zoneId); if (!zone) throw new Error(`Combat participant departure policy ${policy.policyId} references unknown shared deck ${zoneId}.`); if (zone.kind !== 'orderedDeck') throw new Error(`Combat participant departure policy ${policy.policyId} shared deck ${zoneId} must be an ordered deck.`); }
+  }
+  const registeredEffects = [
+    ...composedModules.flatMap((module) => [
+      ...(module.lifecycleHooks ?? []).map(({ effect }) => effect),
+      ...(module.combatRewardPolicies ?? []).map(({ reward }) => reward),
+    ]),
+    ...Object.values(registry.definitions).flatMap((definition) => [
+      ...(definition.useEffect ? [definition.useEffect] : []),
+      ...(definition.equipmentEventTriggers ?? []).map(({ effect }) => effect),
+    ]),
+  ];
+  for (const effect of registeredEffects) for (const zoneId of selectableSharedZoneIds(effect.body)) {
+    const zone = zoneDefinitions.get(zoneId);
+    if (!zone) throw new Error(`Dynamic card choice references unknown shared zone ${zoneId}.`);
+    if (zone.visibility !== 'public') throw new Error(`Dynamic card choice shared zone ${zoneId} must be public.`);
+  }
+  for (const effect of registeredEffects) for (const zoneId of sharedDeckDrawZoneIds(effect.body)) {
+    const zone = zoneDefinitions.get(zoneId);
+    if (!zone) throw new Error(`Shared-deck draw references unknown zone ${zoneId}.`);
+    if (zone.kind !== 'orderedDeck') throw new Error(`Shared-deck draw source ${zoneId} must be an ordered deck.`);
+  }
   for (const module of composedModules) for (const entry of [...(module.purchaseCostModifierRules ?? []), ...(module.restHandSizePolicies ?? [])]) {
-    const zone = zoneDefinitions.get(entry.activation.zoneId);
-    if (!zone) throw new Error(`Rule activation references unknown zone ${entry.activation.zoneId}.`);
-    if (zone.visibility !== 'public') throw new Error(`Rule activation zone ${entry.activation.zoneId} must be public.`);
+    if (entry.activation.kind === 'definition-in-zone') {
+      const zone = zoneDefinitions.get(entry.activation.zoneId);
+      if (!zone) throw new Error(`Rule activation references unknown zone ${entry.activation.zoneId}.`);
+      if (zone.visibility !== 'public') throw new Error(`Rule activation zone ${entry.activation.zoneId} must be public.`);
+    }
     if (!registry.definitions[entry.activation.definitionId]) throw new Error(`Rule activation references unknown definition ${entry.activation.definitionId}.`);
   }
   for (const module of composedModules) for (const rule of module.purchaseCostModifierRules ?? []) for (const type of rule.target.values) {
     if (!Object.values(registry.definitions).some((definition) => definition.type === type)) throw new Error(`Purchase cost modifier ${rule.ruleId} references unknown definition type ${type}.`);
+  }
+  for (const module of composedModules) for (const rule of module.combatRules ?? []) if (rule.kind === 'modifier' && typeof rule.amount !== 'number' && rule.amount.kind === 'public-zone-card-count') {
+    const zone = zoneDefinitions.get(rule.amount.zoneId);
+    if (!zone) throw new Error(`Combat modifier ${rule.ruleId} references unknown zone ${rule.amount.zoneId}.`);
+    if (zone.visibility !== 'public') throw new Error(`Combat modifier ${rule.ruleId} zone ${rule.amount.zoneId} must be public.`);
+    for (const type of rule.amount.definitionTypes) if (!Object.values(registry.definitions).some((definition) => definition.type === type)) throw new Error(`Combat modifier ${rule.ruleId} references unknown definition type ${type}.`);
+  }
+  for (const module of composedModules) for (const rule of module.combatRules ?? []) for (const definitionId of combatConditionDefinitionIds(rule.when)) {
+    const definition = registry.definitions[definitionId];
+    if (!definition) throw new Error(`Combat rule ${rule.ruleId} references unknown target definition ${definitionId}.`);
+    if (definition.type !== 'monster' && definition.type !== 'boss') throw new Error(`Combat rule ${rule.ruleId} target definition ${definitionId} must be an enemy.`);
   }
   for (const module of composedModules) for (const contribution of module.setupContributions ?? []) {
     const destination = zoneDefinitions.get(contribution.destinationZoneId);

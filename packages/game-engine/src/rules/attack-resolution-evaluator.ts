@@ -52,7 +52,7 @@ export function evaluateAttackResolution(state: GameState, ruleset: Ruleset, req
   const combat = evaluateCombat(state, ruleset, request.playerId, request.targetId);
   if (combat.status !== 'ready') return fail('COMBAT_NOT_READY', combat.error, combat.status);
   if (!combat.evaluation.eligible) return fail('COMBAT_RESTRICTED', `Attack target is restricted: ${combat.evaluation.restrictionReasonCodes.join(', ')}.`);
-  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, request.playerId, combat.evaluation.requiredCombat);
+  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, request.playerId, combat.evaluation.requiredCombat, request.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
   if (!partyPrefix) return fail('INSUFFICIENT_COMBAT', `Player ${request.playerId} cannot meet combat ${combat.evaluation.requiredCombat}.`);
   const policy = selectPolicy(state, ruleset, request.playerId, request.targetId);
   if ('status' in policy) return policy;

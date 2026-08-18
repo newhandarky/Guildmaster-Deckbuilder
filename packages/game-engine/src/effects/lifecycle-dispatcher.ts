@@ -45,7 +45,7 @@ const equipmentTriggerId = ({ cardInstanceId, trigger }: ResolvedEquipmentTrigge
 const normalizedEquipmentEvents = (dispatchId: string, resolved: ResolvedEquipmentTrigger, events: readonly DomainEvent[], offset: number): DomainEvent[] => events.map((event, index) => ({ ...event, eventId: `${dispatchId}:${equipmentTriggerId(resolved)}:${offset + index + 1}` }));
 
 function matchingEquipmentTriggers(state: GameState, ruleset: Ruleset, payload: LifecyclePayload, context: EffectContext): ResolvedEquipmentTrigger[] {
-  if (payload.point !== 'event-after' || !payload.eventType || !payload.actorId) return [];
+  if (payload.point !== 'event-after' || !payload.eventType || !payload.actorId || payload.metadata?.equipmentSuppressed === true) return [];
   const player = state.players.find(({ id }) => id === payload.actorId);
   if (!player) return [];
   return player.party.flatMap((slot, partyPosition) => {

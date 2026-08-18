@@ -16,5 +16,6 @@ export type CpuActionFeature = {
   purchaseCost: number;
   partyCombatLoss: number;
   equipmentLoss: number;
+  equipmentRemoval: number;
   overflowLoss: number;
 };

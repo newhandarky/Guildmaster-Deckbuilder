@@ -100,6 +100,31 @@ describe('serializable effect primitives', () => {
     expect(state.players[0]!.discardPile).toContain(cardId); expect(state.zones['test:module-zone']!.cardIds).not.toContain(cardId);
   });
 
+  it('draws the available top cards from a shared ordered deck, transfers ownership, and rolls back later failure', () => {
+    const state = makeGame();
+    const source = state.zones[baseZoneIds.adventurerDeck]!;
+    const expected = source.cardIds.slice(-2).reverse();
+    const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/shared-deck-draw', body: { kind: 'draw-shared-deck', sourceZoneId: baseZoneIds.adventurerDeck, player: { kind: 'controller' }, destination: 'discardPile', count: 2 } };
+    const completed = executeEffect(state, testRuleset, effect, { controllerId: 'p1' }, 'shared-draw');
+    expect(completed).toMatchObject({ status: 'completed' });
+    expect(completed.events.filter(({ type }) => type === 'SHARED_DECK_CARD_DRAWN')).toHaveLength(2);
+    expect(state.players[0]!.discardPile.slice(-2)).toEqual(expected);
+    for (const cardId of expected) expect(state.cards[cardId]!.ownerId).toBe('p1');
+
+    const partial = makeGame();
+    const partialSource = partial.zones[baseZoneIds.itemDeck]!;
+    const retained = partialSource.cardIds.at(-1)!;
+    partial.removedCards.push(...partialSource.cardIds.splice(0, partialSource.cardIds.length - 1));
+    expect(executeEffect(partial, testRuleset, { schemaVersion: 1, effectId: 'test:effect/partial-shared-draw', body: { kind: 'draw-shared-deck', sourceZoneId: baseZoneIds.itemDeck, player: { kind: 'controller' }, destination: 'hand', count: 3 } }, { controllerId: 'p1' }, 'partial-shared-draw')).toMatchObject({ status: 'completed' });
+    expect(partial.players[0]!.hand).toContain(retained);
+
+    const rollback = makeGame();
+    const before = structuredClone(rollback);
+    const failing: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/shared-draw-rollback', body: { kind: 'sequence', effects: [effect.body, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: discard }] } };
+    expect(executeEffect(rollback, testRuleset, failing, { controllerId: 'p1' }, 'shared-draw-rollback')).toMatchObject({ status: 'failed' });
+    expect(rollback).toEqual(before);
+  });
+
   it('rejects invalid, stale, hidden, and equipment-breaking moves without changing state', () => {
     const state = makeGame(); const before = structuredClone(state); const partyCard = state.players[0]!.party[0]!.adventurerId; const equipment = state.zones[baseZoneIds.itemRow]!.cardIds.find((id) => testRuleset.registry.definitions[state.cards[id]!.definitionId]!.type === 'equipment')!;
     state.zones[baseZoneIds.itemRow]!.cardIds.splice(state.zones[baseZoneIds.itemRow]!.cardIds.indexOf(equipment), 1); state.players[0]!.hand.push(equipment); const equip = dispatch(state, testRuleset, envelope(state, 'p1', { type: 'EQUIP_ITEM', cardId: equipment, adventurerId: partyCard })).state;

@@ -1,19 +1,15 @@
 import type { GameState, PlayerView } from '@guildmaster/game-protocol';
-import { getDefinition, getPlayer } from '../model/factories.js';
+import { getPlayer } from '../model/factories.js';
 import { getPartyLimit, validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
-import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modifier-evaluator.js';
+import { evaluatePartyCombat } from '../rules/party-combat-modifier-evaluator.js';
+import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
 
 function projectPublicParty(state: GameState, ruleset: Ruleset, player: GameState['players'][number]) {
-  return player.party.map((slot) => {
-    const adventurerCombat = getDefinition(ruleset.registry, state, slot.adventurerId).combat ?? 0;
-    const equipmentCombat = slot.equipmentId ? getDefinition(ruleset.registry, state, slot.equipmentId).combat ?? 0 : 0;
-    const modifiers = slot.equipmentId
-      ? evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId: player.id, equipmentCardId: slot.equipmentId, adventurerId: slot.adventurerId })
-      : undefined;
-    if (modifiers && modifiers.status !== 'ready') throw new Error(`Cannot project public party combat: ${modifiers.error}`);
-    return { adventurerId: slot.adventurerId, ...(slot.equipmentId ? { equipmentId: slot.equipmentId } : {}), effectiveCombat: adventurerCombat + equipmentCombat + (modifiers?.evaluation.powerBonus ?? 0) };
-  });
+  const combat = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: player.id });
+  if (combat.status !== 'ready') throw new Error(`Cannot project public party combat: ${combat.error}`);
+  return combat.evaluation.members.map(({ adventurerId, equipmentId, effectiveCombat }) => ({ adventurerId, ...(equipmentId ? { equipmentId } : {}), effectiveCombat }));
 }
 
 export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: string): PlayerView {
@@ -30,6 +26,14 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
   const cards = Object.fromEntries(Object.entries(state.cards).filter(([id]) => visibleIds.has(id)).map(([id, card]) => [id, { id: card.id, definitionId: card.definitionId }]));
   const choice = state.effectState.pendingChoice;
   const kind = choice?.actorId === viewerId ? choice.decisionKind : undefined;
+  const combatObservesHiddenInformation = inspectContinuousPreviewUncertainty(state, ruleset, viewerId).observesHiddenInformation;
+  const publicTargets = Object.fromEntries(Object.entries(state.enemyTargets).map(([targetId, target]) => {
+    const definition = ruleset.registry.definitions[state.cards[target.cardInstanceId]?.definitionId ?? ''];
+    if (definition?.combat === undefined || combatObservesHiddenInformation) return [targetId, structuredClone(target)];
+    const combat = evaluateCombat(state, ruleset, state.activePlayerId, targetId);
+    if (combat.status !== 'ready') throw new Error(`Cannot project public enemy combat: ${combat.reason}: ${combat.error}`);
+    return [targetId, { ...structuredClone(target), effectiveCombat: combat.evaluation.requiredCombat, combatEligible: combat.evaluation.eligible, combatRestrictionReasonCodes: [...combat.evaluation.restrictionReasonCodes], equipmentSuppressed: combat.evaluation.equipmentSuppressed, equipmentSuppressionReasonCodes: [...combat.evaluation.equipmentSuppressionReasonCodes], ...(combat.evaluation.maximumPartySlots ? { maximumPartySlots: combat.evaluation.maximumPartySlots } : {}), ...(combat.evaluation.participantLimitReasonCode ? { participantLimitReasonCode: combat.evaluation.participantLimitReasonCode } : {}) }];
+  }));
   return {
     viewerId, gameId: state.gameId, status: state.status, phase: state.phase, round: state.round, revision: state.revision, activePlayerId: state.activePlayerId,
     self: { ...visibleSelf, drawPileCount: drawPile.length }, partyLimit: getPartyLimit(ruleset, state, player),
@@ -40,6 +44,6 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
     ...(state.bondSetup ? { bondSetup: { schemaVersion: 1 as const, offerId: state.bondSetup.offerId, currentActorId: state.bondSetup.currentActorId, ...(state.bondSetup.currentActorId === viewerId ? { offeredBondIds: [...state.bondSetup.offers[viewerId]!] } : {}), completedPlayerIds: [...state.bondSetup.completedPlayerIds] } } : {}),
     ...(choice?.actorId === viewerId && kind ? { decisionPrompt: { schemaVersion: 1 as const, decisionKind: kind, choiceId: choice.choiceId, minSelections: 1, maxSelections: 1, options: choice.options.map(({ id }) => ({ id, ...(state.cards[id] ? { cardId: id, definitionId: state.cards[id]!.definitionId } : {}) })) } } : {}),
     ...(state.effectState.pendingCounterConsent ? { pendingCounterConsent: { requestId: state.effectState.pendingCounterConsent.requestId, policy: structuredClone(state.effectState.pendingCounterConsent.policy), counterOwnerId: state.effectState.pendingCounterConsent.counterOwnerId, requesterId: state.effectState.pendingCounterConsent.requesterId, requiredActorIds: [...state.effectState.pendingCounterConsent.requiredActorIds], acceptedActorIds: [...state.effectState.pendingCounterConsent.acceptedActorIds], status: 'pending' as const } } : {}),
-    zones: structuredClone(visibleZones), enemyTargets: structuredClone(state.enemyTargets), cards, ...(state.endState ? { endState: structuredClone(state.endState) } : {})
+    zones: structuredClone(visibleZones), enemyTargets: publicTargets, cards, ...(state.endState ? { endState: structuredClone(state.endState) } : {})
   };
 }

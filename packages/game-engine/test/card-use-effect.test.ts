@@ -452,7 +452,7 @@ describe('data-driven card use effects', () => {
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.rollbackState.players[0]!.turnCombatBonus += 100; },
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.events[0]!.message = 'tampered effect event'; },
       (tampered) => { const command = tampered.state.effectState.pendingCommand; if (command?.kind === 'card-use-effect') command.factStart += 1; },
-      (tampered) => { const source = tampered.state.effectState.pendingChoice?.source; if (source?.kind !== 'one-of' && source?.player.kind === 'player-id') source.player.playerId = 'p2'; },
+      (tampered) => { const source = tampered.state.effectState.pendingChoice?.source; if (source?.kind === 'player-zone' || source?.kind === 'party') if (source.player.kind === 'player-id') source.player.playerId = 'p2'; },
     ];
     for (const mutate of cases) {
       const tampered = structuredClone(snapshot);

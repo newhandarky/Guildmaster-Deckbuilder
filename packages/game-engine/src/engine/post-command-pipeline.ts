@@ -40,7 +40,7 @@ const registryFor = (state: GameState, ruleset: Ruleset): LifecycleRegistrySnaps
   modules: ruleset.modules.map(({ id, version }) => ({ id, version }))
 });
 
-export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState, point: PostCommandBoundary, fact?: DomainEvent): LifecyclePayload {
+export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState, point: PostCommandBoundary, fact?: DomainEvent, equipmentSuppressed = false): LifecyclePayload {
   const target = envelope.command.type === 'ATTACK_TARGET' ? state.enemyTargets[envelope.command.targetId] : undefined;
   const targetMetadata = target ? {
     targetId: target.targetId,
@@ -53,8 +53,8 @@ export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState,
     point,
     actorId: envelope.actorId,
     ...(fact
-      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId, ...targetMetadata } }
-      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId, ...targetMetadata } }),
+      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId, ...targetMetadata, ...(equipmentSuppressed ? { equipmentSuppressed: true } : {}) } }
+      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId, ...targetMetadata, ...(equipmentSuppressed ? { equipmentSuppressed: true } : {}) } }),
     phase: state.phase
   };
 }
@@ -326,7 +326,8 @@ export function continuePostCommandPipeline(state: GameState, ruleset: Ruleset, 
   while (true) {
     const fact = cursor.boundary === 'command-after' ? undefined : cursor.facts[cursor.factIndex];
     if (cursor.boundary !== 'command-after' && !fact) return { status: 'failed', state, events: [], error: 'Post-command fact cursor is out of range.', rollback: 'command' };
-    const payload = lifecyclePayloadFor(cursor.envelope, state, cursor.boundary, fact);
+    const equipmentSuppressed = cursor.facts.some((candidate) => candidate.payload?.kind === 'combat-evaluation' && candidate.payload.evaluation.equipmentSuppressed);
+    const payload = lifecyclePayloadFor(cursor.envelope, state, cursor.boundary, fact, equipmentSuppressed);
     const result = dispatchLifecycle(state, ruleset, payload, contextFor(cursor.envelope));
     appendLifecycleEvents(cursor, result.events);
     if (result.status === 'suspended') return suspend(state, cursor);

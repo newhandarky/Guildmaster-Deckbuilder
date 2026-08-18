@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ContentPack, EffectDefinition, GameState, LifecycleHook } from '@guildmaster/game-protocol';
+import type { CombatRule, ContentPack, EffectDefinition, GameState, LifecycleHook } from '@guildmaster/game-protocol';
 import { createGame, createRuleset, dispatch, envelope, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule, Ruleset } from '../src/rules/ruleset.js';
@@ -134,6 +134,24 @@ describe('resumable post-command pipeline', () => {
       mutate(candidate);
       expect(() => roundTrip(candidate, ruleset)).toThrow(/does not match canonical replay/);
     }
+  });
+
+  it('skips equipment event triggers for an equipment-suppressed combat transaction', () => {
+    const suppression: CombatRule = { schemaVersion: 1, moduleId: 'test:suppress-equipment', ruleId: 'monsters-disable-equipment', kind: 'equipment-suppression', when: { kind: 'target-kind-in', kinds: ['monster'] }, reasonCode: 'TARGET_DISABLES_EQUIPMENT' };
+    const suppressionModule: RulesModule = { ...module('test:suppress-equipment', []), combatRules: [suppression], lifecycleHooks: [hook('test:suppress-equipment', 'confirm-after-defeat', 'event-after', 10, choose('suppressed-combat-confirm'), 'ENEMY_DEFEATED')] };
+    const ruleset = equipmentRules(suppressionModule); const state = game(ruleset); const player = state.players[0]!;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((id) => id !== equipmentId);
+    for (const candidate of state.players) { candidate.hand = candidate.hand.filter((id) => id !== equipmentId); candidate.drawPile = candidate.drawPile.filter((id) => id !== equipmentId); candidate.discardPile = candidate.discardPile.filter((id) => id !== equipmentId); }
+    player.party[0]!.equipmentId = equipmentId; state.cards[equipmentId]!.ownerId = player.id; player.turnCombatBonus = 100; state.phase = 'combat';
+    const targetId = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'monster' && status === 'available')!.targetId;
+    const handCount = player.hand.length; const result = dispatch(state, ruleset, envelope(state, player.id, { type: 'ATTACK_TARGET', targetId }, 'suppressed-equipment-trigger'));
+    expect(result.error).toBeUndefined(); expect(result.state.players[0]!.hand).toHaveLength(handCount); expect(result.state.effectState.pendingChoice).toBeDefined();
+    expect(result.events.some(({ type }) => type === 'CARD_DRAWN')).toBe(false);
+    expect(result.events.find(({ type }) => type === 'COMBAT_EVALUATED')?.payload).toMatchObject({ kind: 'combat-evaluation', evaluation: { equipmentSuppressed: true } });
+    const completed = resolve(roundTrip(result.state, ruleset), ruleset);
+    expect(completed.error).toBeUndefined(); expect(completed.state.players[0]!.hand).toHaveLength(handCount);
+    expect(completed.events.some(({ type }) => type === 'CARD_DRAWN')).toBe(false);
   });
 
   it.each(['event-before', 'event-after', 'command-after'] as const)('rolls the entire command back when a later %s hook fails', (point) => {

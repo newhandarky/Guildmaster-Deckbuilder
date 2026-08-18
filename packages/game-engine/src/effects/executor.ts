@@ -37,7 +37,7 @@ function numberValue(value: import('@guildmaster/game-protocol').EffectNumberVal
 }
 function commitState(target: GameState, source: GameState): void { Object.assign(target, source); }
 type DynamicCardChoiceNode = Extract<EffectNode, { kind: 'choose-card' }>;
-type ResolvedSelectableCardLocation = { kind: 'player-zone'; player: { kind: 'player-id'; playerId: string }; zone: 'hand' | 'discardPile' | 'playArea' } | { kind: 'party'; player: { kind: 'player-id'; playerId: string } };
+type ResolvedSelectableCardLocation = { kind: 'player-zone'; player: { kind: 'player-id'; playerId: string }; zone: 'hand' | 'discardPile' | 'playArea' } | { kind: 'party'; player: { kind: 'player-id'; playerId: string } } | { kind: 'shared-zone'; zoneId: string };
 type ResolvedSelectableCardSource = ResolvedSelectableCardLocation | { kind: 'one-of'; locations: readonly ResolvedSelectableCardLocation[] };
 type DynamicCardChoiceCandidate = { cardId: string; location: EffectConcreteCardLocation };
 type DynamicCardChoiceCandidates = { status: 'ready'; actorId: string; source: ResolvedSelectableCardSource; candidates: DynamicCardChoiceCandidate[] } | { status: 'failed'; error: string };
@@ -48,13 +48,16 @@ function matchesCardPredicate(state: GameState, ruleset: Ruleset, cardId: string
   if (!card || !definition) return false;
   if (predicate.kind === 'definition-type-in') return predicate.values.includes(definition.type);
   if (predicate.kind === 'definition-id-in') return predicate.values.includes(card.definitionId);
+  if (predicate.kind === 'definition-cost-at-most') return definition.cost !== undefined && definition.cost <= predicate.value;
   if (predicate.kind === 'tag-in') return predicate.values.some((tag) => definition.tags?.includes(tag));
+  if (predicate.kind === 'tag-prefix') return definition.tags?.some((tag) => tag.startsWith(predicate.value)) ?? false;
   if (predicate.kind === 'all') return predicate.predicates.every((entry) => matchesCardPredicate(state, ruleset, cardId, entry));
   if (predicate.kind === 'any') return predicate.predicates.some((entry) => matchesCardPredicate(state, ruleset, cardId, entry));
   return !matchesCardPredicate(state, ruleset, cardId, predicate.predicate);
 }
 
 function resolveSelectableCardLocation(location: EffectSelectableCardLocation, context: EffectContext): ResolvedSelectableCardLocation | undefined {
+  if (location.kind === 'shared-zone') return location;
   const ownerId = playerId(location.player, context);
   if (!ownerId) return undefined;
   return location.kind === 'party'
@@ -73,6 +76,7 @@ function sourceLocations(source: ResolvedSelectableCardSource): readonly Resolve
 }
 
 function candidatesAtLocation(state: GameState, actorId: string, location: ResolvedSelectableCardLocation): DynamicCardChoiceCandidate[] {
+  if (location.kind === 'shared-zone') return getZone(state, location.zoneId).cardIds.map((cardId) => ({ cardId, location }));
   const player = getPlayer(state, actorId);
   if (location.kind === 'player-zone') return player[location.zone].map((cardId) => ({ cardId, location }));
   return player.party.map((slot, position) => ({ cardId: slot.adventurerId, location: { kind: 'party', player: location.player, position } }));
@@ -83,11 +87,36 @@ function dynamicCardChoiceCandidates(state: GameState, ruleset: Ruleset, node: D
   if (predicateErrors.length) return { status: 'failed', error: `Dynamic card choice predicate is invalid: ${predicateErrors.join(' ')}` };
   const actorId = playerId(node.actor, context);
   const visibleSource = resolveSelectableCardSource(node.from, context);
-  if (!actorId || !visibleSource || sourceLocations(visibleSource).some((location) => location.player.playerId !== actorId)) return { status: 'failed', error: 'Dynamic card choice must resolve to the choosing actor\'s visible zones or party.' };
+  if (!actorId || !visibleSource) return { status: 'failed', error: 'Dynamic card choice actor or source could not be resolved.' };
+  for (const location of sourceLocations(visibleSource)) {
+    if (location.kind === 'shared-zone') {
+      const zone = state.zones[location.zoneId];
+      if (!zone || zone.visibility !== 'public') return { status: 'failed', error: 'Dynamic card choice shared zone must exist and be public.' };
+    } else if (location.player.playerId !== actorId) return { status: 'failed', error: 'Dynamic card choice must resolve to the choosing actor\'s visible zones or party.' };
+  }
   const predicate = node.predicate;
   const candidates = sourceLocations(visibleSource).flatMap((location) => candidatesAtLocation(state, actorId, location)).filter(({ cardId }) => !predicate || matchesCardPredicate(state, ruleset, cardId, predicate));
   if (new Set(candidates.map(({ cardId }) => cardId)).size !== candidates.length) return { status: 'failed', error: 'Dynamic card choice source resolves the same card more than once.' };
   return { status: 'ready', actorId, source: visibleSource, candidates };
+}
+
+function containsCombatFailure(node: EffectNode): boolean {
+  if (node.kind === 'mark-combat-failed') return true;
+  if (node.kind === 'sequence') return node.effects.some(containsCombatFailure);
+  if (node.kind === 'conditional') return containsCombatFailure(node.whenTrue) || Boolean(node.whenFalse && containsCombatFailure(node.whenFalse));
+  if (node.kind === 'choice') return node.options.some(({ effect }) => containsCombatFailure(effect));
+  if (node.kind === 'choose-card') return containsCombatFailure(node.effect) || Boolean(node.zeroCandidateEffect && containsCombatFailure(node.zeroCandidateEffect));
+  if (node.kind === 'random' || node.kind === 'roll-die') return node.outcomes.some(({ effect }) => containsCombatFailure(effect));
+  if (node.kind === 'request-counter-consent') return Object.values(node.outcomes).some(containsCombatFailure);
+  return false;
+}
+
+/** Owner-authoritative CPU hint for a reward program whose first operation is an unpaid combat-failure gate. */
+export function effectStartsWithUnpayableCombatFailureGate(state: GameState, ruleset: Ruleset, effect: EffectDefinition, context: EffectContext): boolean {
+  const node = effect.body;
+  if (node.kind !== 'choose-card' || !node.zeroCandidateEffect || !containsCombatFailure(node.zeroCandidateEffect)) return false;
+  const candidates = dynamicCardChoiceCandidates(state, ruleset, node, context);
+  return candidates.status === 'ready' && candidates.candidates.length === 0;
 }
 const noPreviewUncertainty = (): EffectPreviewUncertainty => ({ usesRandomness: false, observesHiddenInformation: false });
 const mergePreviewUncertainty = (values: readonly EffectPreviewUncertainty[]): EffectPreviewUncertainty => values.reduce((merged, value) => ({ usesRandomness: merged.usesRandomness || value.usesRandomness, observesHiddenInformation: merged.observesHiddenInformation || value.observesHiddenInformation }), noPreviewUncertainty());
@@ -104,9 +133,11 @@ function locationIsVisibleToViewer(location: EffectCardLocation, state: GameStat
   return location.kind !== 'player-zone' || location.zone !== 'drawPile';
 }
 
-function selectableSourceIsVisibleToViewer(source: EffectSelectableCardSource, context: EffectContext, viewerId: string): boolean {
+function selectableSourceIsVisibleToViewer(source: EffectSelectableCardSource, state: GameState, context: EffectContext, viewerId: string): boolean {
   const resolved = resolveSelectableCardSource(source, context);
-  return Boolean(resolved && sourceLocations(resolved).every((location) => location.player.playerId === viewerId));
+  return Boolean(resolved && sourceLocations(resolved).every((location) => location.kind === 'shared-zone'
+    ? state.zones[location.zoneId]?.visibility === 'public'
+    : location.player.playerId === viewerId));
 }
 
 /** Conservative metadata for deciding whether speculative effect execution is safe to expose in a PlayerView-derived query. */
@@ -119,8 +150,9 @@ export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameSta
   ]);
   if (node.kind === 'choice') return mergePreviewUncertainty(node.options.map(({ effect }) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
   if (node.kind === 'choose-card') return mergePreviewUncertainty([
-    { usesRandomness: false, observesHiddenInformation: !selectableSourceIsVisibleToViewer(node.from, context, viewerId) },
+    { usesRandomness: false, observesHiddenInformation: !selectableSourceIsVisibleToViewer(node.from, state, context, viewerId) },
     inspectEffectPreviewUncertainty(node.effect, state, context, viewerId),
+    ...(node.zeroCandidateEffect ? [inspectEffectPreviewUncertainty(node.zeroCandidateEffect, state, context, viewerId)] : []),
   ]);
   if (node.kind === 'random' || node.kind === 'roll-die') return mergePreviewUncertainty([
     { usesRandomness: true, observesHiddenInformation: false },
@@ -128,6 +160,7 @@ export function inspectEffectPreviewUncertainty(node: EffectNode, state: GameSta
   ]);
   if (node.kind === 'request-counter-consent') return mergePreviewUncertainty(Object.values(node.outcomes).map((effect) => inspectEffectPreviewUncertainty(effect, state, context, viewerId)));
   if (node.kind === 'draw') return { usesRandomness: false, observesHiddenInformation: typeof node.count !== 'number' || node.count > 0 };
+  if (node.kind === 'draw-shared-deck') return { usesRandomness: false, observesHiddenInformation: node.count > 0 };
   if (node.kind === 'grant-combat-reward') return { usesRandomness: false, observesHiddenInformation: node.rewards.some((reward) => reward.kind === 'draw' && reward.count > 0) };
   if (node.kind === 'refresh-supply-row') return { usesRandomness: false, observesHiddenInformation: true };
   if (node.kind === 'enforce-team-capacity') return { usesRandomness: false, observesHiddenInformation: true };
@@ -173,7 +206,7 @@ function suspensionContinuations(nodes: readonly EffectNode[], target: { kind: S
     const current = target.kind === 'choice' && node.choiceId === target.id
       ? [{ match: { kind: 'choice' as const, node }, remaining }]
       : [];
-    return [...current, ...suspensionContinuations([node.effect, ...remaining], target)];
+    return [...current, ...suspensionContinuations([node.effect, ...remaining], target), ...(node.zeroCandidateEffect ? suspensionContinuations([node.zeroCandidateEffect, ...remaining], target) : [])];
   }
   if (node.kind === 'random' || node.kind === 'roll-die') {
     return node.outcomes.flatMap(({ effect }) => suspensionContinuations([effect, ...remaining], target));
@@ -215,7 +248,7 @@ export function validatePendingChoiceAgainstEffect(pending: import('@guildmaster
     });
     const expectedActorId = playerId(node.actor, pending.context);
     const expectedSource = resolveSelectableCardSource(node.from, pending.context);
-    if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || sourceLocations(expectedSource).some((location) => location.player.playerId !== expectedActorId) || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
+    if (!valid || !expectedActorId || expectedActorId !== pending.actorId || !expectedSource || sourceLocations(expectedSource).some((location) => location.kind !== 'shared-zone' && location.player.playerId !== expectedActorId) || JSON.stringify(pending.source) !== JSON.stringify(expectedSource)) return 'Dynamic card choice actor, source, or options do not match their registered effect program.';
   }
   return JSON.stringify(candidates[0]!.remaining) === JSON.stringify(pending.remaining)
     ? undefined
@@ -243,6 +276,14 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
       const resolved = dynamicCardChoiceCandidates(state, ruleset, node, context);
       if (resolved.status !== 'ready') return { status: 'failed', events, error: resolved.error };
       const { actorId, source: visibleSource, candidates } = resolved;
+      if (!candidates.length && node.zeroCandidateBehavior === 'skip') {
+        domainEvent(state, events, 'EFFECT_CHOICE_SKIPPED', 'Effect card choice had no legal candidates.');
+        continue;
+      }
+      if (!candidates.length && node.zeroCandidateEffect) {
+        domainEvent(state, events, 'EFFECT_ZERO_CANDIDATE_RESOLVED', 'Effect card choice resolved its zero-candidate outcome.');
+        return runNodes(state, ruleset, [node.zeroCandidateEffect, ...nodes.slice(index + 1)], context, executionId, events);
+      }
       if (!candidates.length && !node.skipOptionId) return { status: 'failed', events, error: 'Dynamic card choice has no legal candidates.' };
       if (node.skipOptionId && candidates.some(({ cardId }) => cardId === node.skipOptionId)) return { status: 'failed', events, error: 'Dynamic card choice skip option collides with a candidate card ID.' };
       const options: { id: string; effect: EffectNode; context?: EffectContext }[] = candidates.map(({ cardId, location }) => ({
@@ -268,6 +309,22 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     if (node.kind === 'request-counter-consent') { const ownerId = playerId(node.counterOwner, context); if (!ownerId) return { status: 'failed', events, error: 'Counter consent owner could not be resolved.' }; const registry = { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) }; const result = evaluateCounterConsent(state, ruleset, { schemaVersion: 1, action: 'request', actorId: context.controllerId, requestId: node.requestId, executionId, counterOwnerId: ownerId, policy: node.policy, registry }); if (result.status !== 'ready') return { status: 'failed', events, error: `${result.reason}: ${result.error}` }; counterConsentEvent(state, events, result.evaluation); if (result.evaluation.status === 'accepted') { const policy = ruleset.modules.find(({ id }) => id === node.policy.moduleId)?.counterConsentPolicies?.find(({ policyId }) => policyId === node.policy.policyId); const counter = state.players.find(({ id }) => id === ownerId)?.counters.find(({ resourceId }) => resourceId === policy?.resourceId); if (!counter) return { status: 'failed', events, error: 'Counter consent target disappeared.' }; counter.visibility = 'public'; return runNodes(state, ruleset, [node.outcomes.accepted, ...nodes.slice(index + 1)], context, executionId, events); } state.effectState.pendingCounterConsent = { schemaVersion: 1, executionId, requestId: node.requestId, policy: structuredClone(node.policy), counterOwnerId: ownerId, requesterId: context.controllerId, requiredActorIds: [...result.evaluation.requiredActorIds], acceptedActorIds: [], status: 'pending', outcomes: structuredClone(node.outcomes), remaining: nodes.slice(index + 1), context: structuredClone(context), registry }; return { status: 'suspended', events }; }
     if (node.kind === 'grant-combat-reward') { const recipient = playerId(node.recipient, context); if (!recipient) return { status: 'failed', events, error: 'Combat reward recipient could not be resolved.' }; const rewards: EffectNode[] = node.rewards.map((reward) => reward.kind === 'draw' ? { kind: 'draw', player: { kind: 'player-id', playerId: recipient }, count: reward.count } : reward.kind === 'purchase-bonus' ? { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'player-id', playerId: recipient } }, amount: reward.amount } : reward.kind === 'combat-bonus' ? { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'player-id', playerId: recipient } }, amount: reward.amount } : { kind: 'modify-value', target: { kind: 'player-counter', player: { kind: 'player-id', playerId: recipient }, resourceId: reward.resourceId }, amount: reward.amount }); const result = runNodes(state, ruleset, rewards, context, executionId, events); if (result.status !== 'completed') return result; domainEvent(state, events, 'COMBAT_REWARD_GRANTED', 'Effect granted a data-driven combat reward.'); continue; }
     if (node.kind === 'draw') { const id = playerId(node.player, context); const count = numberValue(node.count, state, ruleset, context); if (!id || count === undefined) return { status: 'failed', events, error: 'Draw player or count could not be resolved.' }; drawCards(state, id, count, events); continue; }
+    if (node.kind === 'draw-shared-deck') {
+      const id = playerId(node.player, context);
+      const source = state.zones[node.sourceZoneId];
+      if (!id) return { status: 'failed', events, error: 'Shared-deck draw player could not be resolved.' };
+      if (!source || source.kind !== 'orderedDeck') return { status: 'failed', events, error: 'Shared-deck draw source must be an ordered deck.' };
+      const recipient = getPlayer(state, id);
+      for (let remaining = node.count; remaining > 0; remaining -= 1) {
+        const cardId = source.cardIds.pop();
+        if (!cardId) break;
+        recipient[node.destination].push(cardId);
+        state.cards[cardId]!.ownerId = id;
+        domainEvent(state, events, 'SHARED_DECK_CARD_DRAWN', `${recipient.name} 從公共牌庫取得一張牌。`);
+      }
+      continue;
+    }
+    if (node.kind === 'mark-combat-failed') { domainEvent(state, events, 'COMBAT_FAILED', `Combat failed: ${node.reasonCode}.`, { payload: { schemaVersion: 1, kind: 'combat-failure', reasonCode: node.reasonCode } }); continue; }
     if (node.kind === 'refresh-supply-row') { const refresh = evaluateSupplyRowRefresh(state, ruleset, node.refreshPolicyId); if (refresh.status !== 'ready') return { status: refresh.status, events, error: refresh.error }; const evaluation = refresh.evaluation; const policy = ruleset.modules.flatMap((module) => module.supplyRowRefreshPolicies ?? []).find((entry) => entry.refreshPolicyId === node.refreshPolicyId)!; const config = ruleset.modules.flatMap((module) => module.supplyRowConfigurations ?? []).find((entry) => entry.moduleId === evaluation.configuration.moduleId && entry.configurationId === evaluation.configuration.configurationId)!; const row = getZone(state, evaluation.targetRowZoneId).cardIds; const destination = getZone(state, evaluation.destinationZoneId).cardIds; const moved = policy.ordering.startsWith('reverse') ? [...evaluation.rowCardIds].reverse() : evaluation.rowCardIds; for (const cardId of evaluation.rowCardIds) { const index = row.indexOf(cardId); if (index < 0) return { status: 'failed', events, error: 'Refresh row changed during evaluation.' }; row.splice(index, 1); } if (policy.ordering.endsWith('top')) destination.push(...moved); else destination.unshift(...moved); if (policy.refill) refillSupplyConfiguration(state, ruleset, config, events); domainEvent(state, events, 'SUPPLY_ROW_REFRESHED', `Supply row refreshed by ${node.refreshPolicyId}.`); continue; }
     if (node.kind === 'enforce-team-capacity') {
       const enforcement = evaluateTeamCapacityEnforcement(state, ruleset, node.policyId);

@@ -25,6 +25,9 @@ import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
 import { applyBondCompletion, checkEndConditions } from './bond-completion.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
+import { evaluateEquipmentDeparture } from '../rules/equipment-departure-evaluator.js';
+import { evaluateCombatParticipantDeparture } from '../rules/combat-participant-departure-evaluator.js';
+import { applyCombatParticipantDeparture } from './combat-participant-departure.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
@@ -83,6 +86,10 @@ function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: 
   const player = getPlayer(state, envelope.actorId); const targetId = (envelope.command as Extract<GameCommand, { type: 'ATTACK_TARGET' }>).targetId;
   const target = state.enemyTargets[targetId];
   if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
+  if (events.some(({ type }) => type === 'COMBAT_FAILED')) {
+    if (target.status !== 'available') return { code: 'INVALID_COMMAND', message: 'Failed combat target must remain available.' };
+    return undefined;
+  }
   const outcome = fixedCombatOutcome(events);
   if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
   const attackResolution = fixedAttackResolution(events);
@@ -187,12 +194,28 @@ function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, c
     const continuity = evaluateMonsterDefeatContinuity(state, ruleset, target.targetId, combat.evaluation.outcome.kind);
     if (continuity.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${continuity.reason}: ${continuity.error}` };
   }
-  const prefix = attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat);
+  const prefix = attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
   if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
+  const participantPreview = player.party.slice(0, prefix.slotCount);
+  const participantDeparture = evaluateCombatParticipantDeparture(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, participantCardIds: participantPreview.map(({ adventurerId }) => adventurerId) });
+  if (participantDeparture.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${participantDeparture.reason}: ${participantDeparture.error}` };
+  const equipmentDepartures = new Map<string, ReturnType<typeof evaluateEquipmentDeparture>>();
+  for (const slot of participantPreview) {
+    if (!slot.equipmentId || combat.evaluation.equipmentSuppressed) continue;
+    const departure = evaluateEquipmentDeparture(state, ruleset, { schemaVersion: 1, playerId: player.id, adventurerId: slot.adventurerId, equipmentCardId: slot.equipmentId, cause: 'combat-discard' });
+    if (departure.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${departure.reason}: ${departure.error}` };
+    equipmentDepartures.set(slot.equipmentId, departure);
+  }
   const participants = player.party.splice(0, prefix.slotCount);
+  applyCombatParticipantDeparture(state, player, participants.map(({ adventurerId }) => adventurerId), participantDeparture.evaluation, events, commandId);
   for (const slot of participants) {
-    player.discardPile.push(slot.adventurerId);
-    if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
+    if (slot.equipmentId) {
+      const departure = equipmentDepartures.get(slot.equipmentId);
+      if (departure?.status === 'ready' && departure.evaluation.disposition === 'remove-from-game') {
+        state.removedCards.push(slot.equipmentId);
+        event(state, events, 'EQUIPMENT_REMOVED_FROM_GAME', `${getDefinition(ruleset.registry, state, slot.equipmentId).name} 因配戴者在戰鬥中棄置而移出遊戲（${departure.evaluation.reasonCode}）。`, commandId);
+      } else player.discardPile.push(slot.equipmentId);
+    }
   }
   event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
   if (attackResolution?.status === 'ready') {
