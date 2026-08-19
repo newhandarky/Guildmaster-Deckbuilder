@@ -21,6 +21,8 @@ blob-report/
 !.env.example
 .envrc
 *.local
+/opencode.json
+/opencode.jsonG
 *.pem
 *.key
 credentials.json
