@@ -79,6 +79,27 @@ describe('resumable post-command pipeline', () => {
     expect(completed.error).toBeUndefined(); expect(completed.state.revision).toBe(1); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(3);
   });
 
+  it('allows an explicitly selected other player to resolve a post-command choice', () => {
+    const crossPlayerChoice: EffectDefinition['body'] = {
+      kind: 'choice',
+      choiceId: 'left-player-choice',
+      actor: { kind: 'context-player', key: 'leftPlayer' },
+      options: [{ id: 'accept', effect: modify(2) }],
+    };
+    const ruleset = rules(module('test:cross-player', [hook('test:cross-player', 'choose', 'command-after', 1, crossPlayerChoice)]));
+    const initial = game(ruleset);
+    const suspended = dispatch(initial, ruleset, end(initial));
+    expect(suspended.error).toBeUndefined();
+    expect(suspended.state.effectState.pendingChoice?.actorId).toBe('p2');
+    expect(getLegalCommands(suspended.state, ruleset, 'p1')).toEqual([]);
+    const command = getLegalCommands(suspended.state, ruleset, 'p2').find(({ type }) => type === 'RESOLVE_EFFECT_CHOICE');
+    if (!command || command.type !== 'RESOLVE_EFFECT_CHOICE') throw new Error('Expected the cross-player choice command.');
+    const completed = dispatch(roundTrip(suspended.state, ruleset), ruleset, envelope(suspended.state, 'p2', command));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state).toMatchObject({ revision: 1, phase: 'combat' });
+    expect(completed.state.players[0]!.turnPurchaseBonus).toBe(2);
+  });
+
   it('advances across multiple facts from the exact event-after cursor', () => {
     const ruleset = rules(
       module('test:first', [hook('test:first', 'choice', 'event-after', 1, choose(), 'COMBAT_EVALUATED')]),

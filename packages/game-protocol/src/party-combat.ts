@@ -31,6 +31,7 @@ export type PartyCombatEvaluation = {
   members: readonly {
     adventurerId: string;
     equipmentId?: string;
+    equipmentIds?: readonly string[];
     printedCombat: number;
     equipmentCombat: number;
     modifierCombat: number;

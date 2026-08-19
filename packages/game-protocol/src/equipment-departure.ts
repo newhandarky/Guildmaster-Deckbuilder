@@ -10,7 +10,8 @@ export type EquipmentDeparturePolicy = {
   priority: number;
   equipmentDefinitionIds: readonly string[];
   cause: EquipmentDepartureCause;
-  disposition: 'remove-from-game';
+  disposition: 'discard' | 'remove-from-game';
+  rewards?: readonly { kind: 'draw'; count: number }[] | undefined;
   reasonCode: string;
 };
 
@@ -27,6 +28,7 @@ export type EquipmentDepartureEvaluation = {
   disposition: 'discard' | 'remove-from-game';
   appliedPolicy?: { moduleId: string; policyId: string };
   reasonCode: string;
+  rewards: readonly { kind: 'draw'; count: number }[];
   registry: { rulesetVersion: string; modules: readonly { id: string; version: string }[] };
 };
 
@@ -39,7 +41,8 @@ export const EquipmentDeparturePolicySchema: z.ZodType<EquipmentDeparturePolicy>
   priority: z.number().finite().int().safe(),
   equipmentDefinitionIds: z.array(canonicalId).min(1),
   cause,
-  disposition: z.literal('remove-from-game'),
+  disposition: z.enum(['discard', 'remove-from-game']),
+  rewards: z.array(z.object({ kind: z.literal('draw'), count: z.number().finite().int().positive() }).strict()).max(8).optional(),
   reasonCode: canonicalId,
 }).strict();
 export const EquipmentDepartureInputSchema: z.ZodType<EquipmentDepartureInput> = z.object({

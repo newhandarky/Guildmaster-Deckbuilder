@@ -195,7 +195,7 @@ test('explicit helper composition reaches PlayerView and persisted Snapshot iden
     expect.objectContaining({ id: 'base:rules' }),
     expect.objectContaining({
       id: 'base:helpers',
-      version: '1.1.0',
+      version: '1.2.0',
       compositionFingerprint: expect.any(String),
     }),
   ]);
@@ -245,7 +245,7 @@ test('provisional foundation mode is explicit, visibly limited, and restored by 
   await expect(entry.getByText(/內部測試模式：卡牌名稱使用中性代號/)).toBeVisible();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
 
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('已接入首批物資與十項卡牌效果');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('10 項已驗證卡牌效果');
   await expect(page.getByText('基礎候選數值測試 · 單機人機對戰')).toBeVisible();
   const persistedPackId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.contentPacks[0].id);
   expect(persistedPackId).toBe('base:provisional-foundation');
@@ -265,7 +265,7 @@ test('helper advanced rules are provisional-only and restore from pack/module id
   await helpers.check();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('helper-panel')).toBeVisible();
-  await expect(page.getByTestId('provisional-content-warning')).toContainText('協助者 01／06／07／08／09 效果已啟用');
+  await expect(page.getByTestId('provisional-content-warning')).toContainText('12/12 張協助者');
   await page.reload();
   await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
   await expect(page.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
@@ -360,7 +360,7 @@ test('empty adventurer and item supplies show approved copy while monsters remai
   await openGame(page, '/?e2eScenario=empty-partial-supplies');
   await expect(page.getByText('目前沒有冒險者可以雇用')).toBeVisible();
   await expect(page.getByText('目前沒有道具、裝備可以販售')).toBeVisible();
-  const monsterRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔物區/ }) });
+  const monsterRow = page.locator('[data-zone-id="base:monster-row"]');
   await expect(monsterRow.getByRole('button')).toHaveCount(3);
   await expect(monsterRow).not.toContainText(/沒有|耗盡/);
   await expect(page.getByTestId('end-phase')).toBeEnabled();

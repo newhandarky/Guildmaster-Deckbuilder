@@ -1,5 +1,6 @@
 import { isFiniteJsonValue, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
+import { attachedCardIds } from '../model/attachments.js';
 import type { Ruleset, SupplyKind } from './ruleset.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
@@ -118,7 +119,7 @@ export function validateSupplyContinuityState(state: GameState, ruleset: Ruleset
   const anchorIds = Object.values(state.cards).filter((card) => getDefinition(ruleset.registry, state, card.id).tags?.includes(policy.cycleAnchorTag)).map(({ id }) => id);
   if (anchorIds.length !== policy.targetSize) errors.push(`SUPPLY_CONTINUITY_VIOLATION: active state must contain exactly ${policy.targetSize} cycle anchors.`);
   for (const player of state.players) {
-    const playerCards = [...player.drawPile, ...player.hand, ...player.discardPile, ...player.playArea, ...player.party.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])];
+    const playerCards = [...player.drawPile, ...player.hand, ...player.discardPile, ...player.playArea, ...player.party.flatMap((slot) => [slot.adventurerId, ...attachedCardIds(slot)])];
     for (const cardId of anchorIds) if (playerCards.includes(cardId)) errors.push(`SUPPLY_CONTINUITY_VIOLATION: cycle anchor ${cardId} cannot enter a player-owned zone.`);
   }
   for (const cardId of anchorIds) if (!row.cardIds.includes(cardId) && !deck.cardIds.includes(cardId)) errors.push(`SUPPLY_CONTINUITY_VIOLATION: cycle anchor ${cardId} must remain in the monster supply cycle.`);

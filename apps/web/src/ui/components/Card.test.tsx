@@ -4,6 +4,7 @@ import type { CardDefinition, CardInstance } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
 import { buildCardVisualModel } from '../cards/card-visual-model.js';
 import { Card } from './Card.js';
+import { CardPresentationImage } from './CardPresentationImage.js';
 
 const instance: CardInstance = { id: 'card-1', definitionId: 'demo:adventurer/one' };
 const definition: CardDefinition = {
@@ -39,5 +40,16 @@ describe('Card CSS visual contract', () => {
     expect(markup).toContain('aria-label="職業：遠程"');
     expect(markup).toContain('aria-label="印刷戰力 3"');
     expect(markup).not.toMatch(/[⚔🛡◆✦◈]/u);
+  });
+
+  it('loads remote presentation artwork without a referrer and keeps the CSS fallback in the DOM', () => {
+    const markup = renderToStaticMarkup(<CardPresentationImage
+      art={{ key: 'remote', altText: '遠端自定義圖片', src: 'https://assets.example.test/card.png' }}
+      sizes="146px"
+      placeholderAccessible
+    />);
+    expect(markup).toContain('referrerPolicy="no-referrer"');
+    expect(markup).toContain('data-image-fallback="hidden"');
+    expect(markup).toContain('card-fallback-scene');
   });
 });

@@ -1,23 +1,17 @@
 import { CommandEnvelopeSchema, type CommandEnvelope, type DomainEvent, type EngineError, type EngineResult, type GameCommand, type GameState, type PendingCommandContinuation, type Phase, type PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer, isPartyMemberCard } from '../model/factories.js';
-import { getCombatPrefix, getPurchasePower } from '../queries/legal-commands.js';
+import { getPurchasePower } from '../queries/legal-commands.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
-import { attachTargets } from './create-game.js';
-import { refillSupply } from './supply.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { resumeEffectChoice, resumeEffectCounterConsent } from '../effects/executor.js';
 import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
 import { beginPostCommandPipeline, resumePostCommandPipeline, resumePostCommandCounterConsent } from './post-command-pipeline.js';
-import { evaluateCombat } from '../rules/combat-evaluator.js';
-import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { evaluateEquipmentEligibility } from '../rules/equipment-eligibility-evaluator.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
-import { beginCombatRewardPipeline, resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
-import { applyEnemyTargetDamageEvaluation, defeatEnemyTarget, removeEnemyTarget } from './encounter-resolution.js';
+import { resumeCombatRewardPipeline, resumeCombatRewardCounterConsent } from './combat-reward-pipeline.js';
 import { validateGameStateInvariants, validateRulesetGameStateInvariants } from './state-invariants.js';
 import { evaluateCounterConsent } from '../rules/counter-consent-evaluator.js';
-import { evaluateMonsterDefeatContinuity, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
-import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
+import { validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
 import { beginCardUseEffectPipeline, resumeCardUseEffectChoice, resumeCardUseEffectCounterConsent } from './card-use-effect-pipeline.js';
 import { createTurnFactLedger } from './create-game.js';
 import { dispatchBondSetup } from './bond-setup.js';
@@ -25,9 +19,10 @@ import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
 import { applyBondCompletion, checkEndConditions } from './bond-completion.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
-import { evaluateEquipmentDeparture } from '../rules/equipment-departure-evaluator.js';
-import { evaluateCombatParticipantDeparture } from '../rules/combat-participant-departure-evaluator.js';
-import { applyCombatParticipantDeparture } from './combat-participant-departure.js';
+import { pushDiscard } from '../rules/discard-redirect-evaluator.js';
+import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
+import { evaluateAttachment } from '../rules/attachment-evaluator.js';
+import { attackTarget, finishAttackAfterRewards } from './combat-command.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
@@ -43,77 +38,6 @@ function combinations(ids: readonly string[], count: number, limit = 257): strin
 function requirePhase(state: GameState, phases: readonly Phase[]): EngineError | undefined { return phases.includes(state.phase) ? undefined : { code: 'INVALID_COMMAND', message: `目前是 ${state.phase}，無法執行此操作。` }; }
 function resolveItem(player: PlayerState, effect: string | undefined): void { if (effect === 'purchase+2') player.turnPurchaseBonus += 2; if (effect === 'combat+2') player.turnCombatBonus += 2; }
 
-function fixedCombatOutcome(events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined { const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload; return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined; }
-function fixedAttackResolution(events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined { const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload; return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined; }
-
-function finalizeAttackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, targetId: string, outcome: 'defeat-target' | 'remove-target', events: DomainEvent[], commandId: string): EngineError | undefined {
-  const target = state.enemyTargets[targetId];
-  if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: 'Combat target disappeared before final disposition.' };
-  const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
-  const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
-  const monsterContinuity = target.kind === 'monster' ? evaluateMonsterDefeatContinuity(state, ruleset, targetId, outcome) : undefined;
-  if (monsterContinuity?.status === 'failed') return { code: 'INVALID_COMMAND', message: `${monsterContinuity.reason}: ${monsterContinuity.error}` };
-  if (encounter?.resolutionPolicy) {
-    const resolution = outcome === 'remove-target'
-      ? removeEnemyTarget(state, ruleset, { kind: 'remove-enemy-target', targetId, policy: encounter.resolutionPolicy }, events)
-      : defeatEnemyTarget(state, ruleset, { kind: 'defeat-enemy-target', targetId, policy: encounter.resolutionPolicy }, events);
-    if (!resolution.ok) return { code: 'INVALID_COMMAND', message: resolution.error };
-  } else {
-    if (target.zoneId) removeFrom(getZone(state, target.zoneId).cardIds, target.cardInstanceId);
-    if (outcome === 'remove-target') {
-      target.status = 'removed';
-      state.removedCards.push(target.cardInstanceId);
-      event(state, events, 'ENEMY_REMOVED', `${definition.name} 的討伐結果被替代為移出遊戲。`, commandId);
-    } else {
-      target.status = 'defeated';
-      if (monsterContinuity?.status === 'ready' && monsterContinuity.recycle) getZone(state, baseZoneIds.monsterDeck).cardIds.unshift(target.cardInstanceId);
-      else player.discardPile.push(target.cardInstanceId);
-    }
-  }
-  return undefined;
-}
-
-function refillAttackTargetSupply(state: GameState, ruleset: Ruleset, targetKind: string, events: DomainEvent[]): EngineError | undefined {
-  if (targetKind === 'monster' || targetKind === 'boss') {
-    try { refillSupply(state, ruleset, targetKind, events); attachTargets(state); }
-    catch (error) { return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : `${targetKind} supply refill failed.` }; }
-  }
-  if (targetKind === 'monster') { const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return { code: 'INVALID_COMMAND', message: continuityErrors.join(' ') }; }
-  return undefined;
-}
-
-function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope, events: DomainEvent[]): EngineError | undefined {
-  const player = getPlayer(state, envelope.actorId); const targetId = (envelope.command as Extract<GameCommand, { type: 'ATTACK_TARGET' }>).targetId;
-  const target = state.enemyTargets[targetId];
-  if (!target) return { code: 'INVALID_COMMAND', message: 'Combat reward target disappeared.' };
-  if (events.some(({ type }) => type === 'COMBAT_FAILED')) {
-    if (target.status !== 'available') return { code: 'INVALID_COMMAND', message: 'Failed combat target must remain available.' };
-    return undefined;
-  }
-  const outcome = fixedCombatOutcome(events);
-  if (!outcome) return { code: 'INVALID_COMMAND', message: 'Committed combat evaluation is missing.' };
-  const attackResolution = fixedAttackResolution(events);
-  let terminalStatus: 'defeated' | 'removed';
-  if (attackResolution) {
-    const expectedStatus = attackResolution.damage.input.lethalOutcome ?? 'defeated';
-    if (!attackResolution.damage.lethal || target.status !== expectedStatus || target.health?.current !== 0) return { code: 'INVALID_COMMAND', message: 'Committed health-target attack resolution is incomplete or inconsistent.' };
-    terminalStatus = expectedStatus;
-  } else {
-    const dispositionError = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId);
-    if (dispositionError) return dispositionError;
-    terminalStatus = outcome === 'remove-target' ? 'removed' : 'defeated';
-  }
-  const refillError = refillAttackTargetSupply(state, ruleset, target.kind, events);
-  if (refillError) return refillError;
-  if (terminalStatus === 'removed') return undefined;
-  const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
-  if (target.kind === 'boss') player.history.defeatedBosses += 1;
-  else player.history.defeatedMonsters += 1;
-  if (target.kind === 'boss') facts(state, player.id).bossesDefeated += 1;
-  else facts(state, player.id).monstersDefeated += 1;
-  facts(state, player.id).combatResolved = true;
-  event(state, events, 'ENEMY_DEFEATED', `${player.name} 討伐了 ${definition.name}。`, envelope.commandId); checkEndConditions(state, ruleset, events, envelope.commandId); return undefined;
-}
 
 function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'PLAY_ADVENTURER' }>, events: DomainEvent[], commandId: string, fixedCandidates?: readonly string[]): EngineError | undefined {
   const phaseError = requirePhase(state, ['action1', 'action2']);
@@ -131,7 +55,7 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
     for (const slot of displaced) {
       const index = player.party.indexOf(slot!); player.party.splice(index, 1);
       player.discardPile.push(slot!.adventurerId);
-      if (slot!.equipmentId) player.discardPile.push(slot!.equipmentId);
+      player.discardPile.push(...attachedCardIds(slot!));
       const policy = fixedCandidates ? undefined : { moduleId: overflow!.evaluation.policy!.moduleId, policyId: overflow!.evaluation.policy!.policyId };
       event(state, events, 'PARTY_MEMBER_DISCARDED', `${player.name} 的隊伍容量 policy 移出成員。`, commandId, { schemaVersion: 1, kind: 'team-overflow', ...(policy ? { policy } : {}), candidateIds: [...candidates] });
     }
@@ -148,12 +72,34 @@ function equipItem(state: GameState, ruleset: Ruleset, player: PlayerState, comm
   const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: player.id, equipmentCardId: command.cardId, adventurerId: command.adventurerId });
   if (eligibility.status !== 'ready') return { code: 'INVALID_COMMAND', message: eligibility.error };
   if (!eligibility.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該裝備不符合資格限制：${eligibility.evaluation.rejectionReasonCodes.join(', ')}。` };
-  if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該物資不在手牌中。' };
   const slot = player.party.find((candidate) => candidate.adventurerId === command.adventurerId);
   if (!slot) return { code: 'INVALID_COMMAND', message: '找不到指定的隊伍冒險者。' };
-  if (slot.equipmentId) player.discardPile.push(slot.equipmentId);
-  slot.equipmentId = command.cardId;
+  const attachment = evaluateAttachment(state, ruleset, { schemaVersion: 1, playerId: player.id, cardId: command.cardId, adventurerId: command.adventurerId });
+  if (attachment.status !== 'ready' || !attachment.evaluation.eligible) return { code: 'INVALID_COMMAND', message: attachment.status === 'ready' ? `該卡不可附著：${attachment.evaluation.reasonCode}。` : attachment.error };
+  const current = attachedCardIds(slot);
+  if (attachment.evaluation.capacity > 1 && attachment.evaluation.requiresReplacement) return { code: 'INVALID_COMMAND', message: '附件欄已滿，請明確選擇要替換的附件。' };
+  if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該物資不在手牌中。' };
+  if (attachment.evaluation.capacity === 1 && current[0]) player.discardPile.push(current[0]);
+  setAttachedCardIds(slot, attachment.evaluation.capacity === 1 ? [command.cardId] : [...current, command.cardId]);
   event(state, events, 'EQUIPMENT_ATTACHED', `${player.name} 配戴了一件裝備。`, commandId);
+  return undefined;
+}
+
+function attachCard(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'ATTACH_CARD' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
+  const phaseError = requirePhase(state, ['action1', 'action2']);
+  if (phaseError) return phaseError;
+  const evaluation = evaluateAttachment(state, ruleset, { schemaVersion: 1, playerId: player.id, cardId: command.cardId, adventurerId: command.adventurerId });
+  if (evaluation.status !== 'ready' || !evaluation.evaluation.eligible) return { code: 'INVALID_COMMAND', message: evaluation.status === 'ready' ? `該卡不可附著：${evaluation.evaluation.reasonCode}。` : evaluation.error };
+  const slot = player.party.find(({ adventurerId }) => adventurerId === command.adventurerId)!;
+  const current = attachedCardIds(slot);
+  if (evaluation.evaluation.requiresReplacement) {
+    if (!command.replaceCardId || !current.includes(command.replaceCardId)) return { code: 'INVALID_COMMAND', message: '附件欄已滿，必須選擇目前配戴的一張卡替換。' };
+  } else if (command.replaceCardId) return { code: 'INVALID_COMMAND', message: '附件欄未滿時不可指定替換。' };
+  if (!removeFrom(player.hand, command.cardId)) return { code: 'INVALID_COMMAND', message: '該卡不在手牌中。' };
+  const next = command.replaceCardId ? current.map((id) => id === command.replaceCardId ? command.cardId : id) : [...current, command.cardId];
+  if (command.replaceCardId) player.discardPile.push(command.replaceCardId);
+  setAttachedCardIds(slot, next);
+  event(state, events, 'CARD_ATTACHED', `${player.name} 將一張卡附著到隊伍成員。`, commandId);
   return undefined;
 }
 
@@ -167,6 +113,7 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, enve
   if (definition.tags?.includes('playtest:effects-disabled')) return { code: 'INVALID_COMMAND', message: '此卡效果尚未啟用，不能作為空白道具使用。' };
   player.playArea.push(command.cardId);
   facts(state, player.id).itemsUsed += 1;
+  facts(state, player.id).actionPhaseItemsUsed = (facts(state, player.id).actionPhaseItemsUsed ?? 0) + 1;
   resolveItem(player, definition.itemEffect);
   if (definition.useEffect) {
     const result = beginCardUseEffectPipeline(state, ruleset, envelope, resolutionEnvelopes, rollbackState, events, factStart, definition.useEffect, { controllerId: player.id, cardRefs: { source: command.cardId } });
@@ -176,63 +123,6 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, enve
   }
   event(state, events, 'ITEM_USED', `${player.name} 使用了道具；休息階段才會棄置。`, envelope.commandId);
   return undefined;
-}
-
-function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'ATTACK_TARGET' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
-  const phaseError = requirePhase(state, ['combat']);
-  if (phaseError) return phaseError;
-  const target = state.enemyTargets[command.targetId];
-  if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: '該敵方目標不可討伐。' };
-  const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
-  if (encounter?.status === 'finished') return { code: 'INVALID_COMMAND', message: '該敵方 encounter 已完成。' };
-  const attackResolution = target.health ? evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }) : undefined;
-  if (attackResolution && attackResolution.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${attackResolution.reason}: ${attackResolution.error}` };
-  const combat = attackResolution?.status === 'ready' ? { status: 'ready' as const, evaluation: attackResolution.evaluation.combat } : evaluateCombat(state, ruleset, player.id, command.targetId);
-  if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
-  if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
-  if (!target.health && target.kind === 'monster') {
-    const continuity = evaluateMonsterDefeatContinuity(state, ruleset, target.targetId, combat.evaluation.outcome.kind);
-    if (continuity.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${continuity.reason}: ${continuity.error}` };
-  }
-  const prefix = attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
-  if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
-  const participantPreview = player.party.slice(0, prefix.slotCount);
-  const participantDeparture = evaluateCombatParticipantDeparture(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, participantCardIds: participantPreview.map(({ adventurerId }) => adventurerId) });
-  if (participantDeparture.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${participantDeparture.reason}: ${participantDeparture.error}` };
-  const equipmentDepartures = new Map<string, ReturnType<typeof evaluateEquipmentDeparture>>();
-  for (const slot of participantPreview) {
-    if (!slot.equipmentId || combat.evaluation.equipmentSuppressed) continue;
-    const departure = evaluateEquipmentDeparture(state, ruleset, { schemaVersion: 1, playerId: player.id, adventurerId: slot.adventurerId, equipmentCardId: slot.equipmentId, cause: 'combat-discard' });
-    if (departure.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${departure.reason}: ${departure.error}` };
-    equipmentDepartures.set(slot.equipmentId, departure);
-  }
-  const participants = player.party.splice(0, prefix.slotCount);
-  applyCombatParticipantDeparture(state, player, participants.map(({ adventurerId }) => adventurerId), participantDeparture.evaluation, events, commandId);
-  for (const slot of participants) {
-    if (slot.equipmentId) {
-      const departure = equipmentDepartures.get(slot.equipmentId);
-      if (departure?.status === 'ready' && departure.evaluation.disposition === 'remove-from-game') {
-        state.removedCards.push(slot.equipmentId);
-        event(state, events, 'EQUIPMENT_REMOVED_FROM_GAME', `${getDefinition(ruleset.registry, state, slot.equipmentId).name} 因配戴者在戰鬥中棄置而移出遊戲（${departure.evaluation.reasonCode}）。`, commandId);
-      } else player.discardPile.push(slot.equipmentId);
-    }
-  }
-  event(state, events, 'COMBAT_EVALUATED', `討伐需求為 ${combat.evaluation.requiredCombat}；套用規則：${combat.evaluation.appliedRules.map(({ moduleId, ruleId }) => `${moduleId}/${ruleId}`).join(', ') || 'none'}。`, commandId, { schemaVersion: 1, kind: 'combat-evaluation', evaluation: structuredClone(combat.evaluation) });
-  if (attackResolution?.status === 'ready') {
-    event(state, events, 'ATTACK_RESOLUTION_EVALUATED', `Attack resolution policy ${attackResolution.evaluation.policy.moduleId}/${attackResolution.evaluation.policy.policyId} fixed ${attackResolution.evaluation.damage.actualDamage} damage.`, commandId, { schemaVersion: 1, kind: 'attack-resolution', evaluation: structuredClone(attackResolution.evaluation) });
-    const applied = applyEnemyTargetDamageEvaluation(state, ruleset, attackResolution.evaluation.damage, events);
-    if (!applied.ok) return { code: 'INVALID_COMMAND', message: applied.error };
-    if (!attackResolution.evaluation.damage.lethal) return undefined;
-  }
-  if (combat.evaluation.outcome.kind === 'remove-target') {
-    return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
-  }
-  const rewards = evaluateCombatRewards(state, ruleset, player.id, command.targetId);
-  if (rewards.status !== 'ready') return { code: 'INVALID_COMMAND', message: rewards.error };
-  const pipeline = beginCombatRewardPipeline(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, structuredClone(state), events, 0, rewards.evaluation, { controllerId: player.id, playerRefs: { recipient: player.id, defeatedBy: player.id }, cardRefs: { target: target.cardInstanceId } });
-  if (pipeline.status === 'suspended') return undefined;
-  if (pipeline.status !== 'completed') return { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Combat reward policy failed.' };
-  return finishAttackAfterRewards(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId, actorId: player.id, expectedRevision: state.revision, command }, events);
 }
 
 function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'BUY_CARD' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
@@ -252,8 +142,11 @@ function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, comman
   if (definition.type === 'adventurer') facts(state, player.id).adventurersRecruited += 1;
   if (definition.type === 'equipment') facts(state, player.id).equipmentBought += 1;
   if (definition.type === 'item') facts(state, player.id).itemsBought += 1;
-  player.discardPile.push(command.cardId);
+  const monsterCardsInHand = player.hand.filter((cardId) => getDefinition(ruleset.registry, state, cardId).type === 'monster').length;
+  facts(state, player.id).monstersUsedForPurchase = Math.max(facts(state, player.id).monstersUsedForPurchase ?? 0, monsterCardsInHand);
+  const destination = pushDiscard(state, ruleset, player.id, command.cardId);
   event(state, events, 'CARD_ACQUIRED', `${player.name} 取得了 ${definition.name}。`, commandId);
+  if (destination.id !== player.id) event(state, events, 'CARD_DISCARD_REDIRECTED', `${definition.name} 改置於 ${destination.name} 的棄牌堆。`, commandId);
   return undefined;
 }
 
@@ -262,8 +155,9 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
   switch (envelope.command.type) {
     case 'PLAY_ADVENTURER': return playAdventurer(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'EQUIP_ITEM': return equipItem(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'ATTACH_CARD': return attachCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'USE_ITEM': return applyItem(state, ruleset, player, envelope, resolutionEnvelopes, events, rollbackState, factStart);
-    case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope.command, events, envelope.commandId);
+    case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope as CommandEnvelope & { command: Extract<GameCommand, { type: 'ATTACK_TARGET' }> }, events, rollbackState);
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'REFRESH_MARKET': { const message = applyMarketRefresh(state, ruleset, player, envelope.command, events, envelope.commandId); if (!message) facts(state, player.id).marketRefreshed = true; return message ? { code: 'INVALID_COMMAND', message } : undefined; }
     case 'SELECT_BONDS': return { code: 'INVALID_COMMAND', message: 'Bond setup commands are only valid during setup.' };
@@ -291,6 +185,14 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
   const parsedEnvelope = CommandEnvelopeSchema.safeParse(envelope);
   if (!parsedEnvelope.success) return fail(state, 'INVALID_COMMAND', `Malformed command envelope: ${parsedEnvelope.error.issues[0]?.message ?? 'invalid input'}.`);
   envelope = parsedEnvelope.data;
+  if (envelope.command.type === 'RESOLVE_EFFECT_ORDER') {
+    const order = state.effectState.pendingChoice?.order;
+    const resolution = order?.resolutions.find((candidate) =>
+      JSON.stringify(candidate.orderedCardIds) === JSON.stringify(envelope.command.type === 'RESOLVE_EFFECT_ORDER' ? envelope.command.orderedCardIds : [])
+      && candidate.removeCardId === (envelope.command.type === 'RESOLVE_EFFECT_ORDER' ? envelope.command.removeCardId : undefined));
+    if (!order || !resolution || state.effectState.pendingChoice?.executionId !== envelope.command.executionId || state.effectState.pendingChoice.choiceId !== envelope.command.orderId) return fail(state, 'INVALID_COMMAND', 'No matching pending effect order.');
+    envelope = { ...envelope, command: { type: 'RESOLVE_EFFECT_CHOICE', executionId: envelope.command.executionId, choiceId: envelope.command.orderId, optionId: resolution.optionId } };
+  }
   const stateErrors = [...validateGameStateInvariants(state), ...validateRulesetGameStateInvariants(state, ruleset)]; if (stateErrors.length) return fail(state, 'INVALID_COMMAND', `Invalid game state: ${stateErrors.join(' ')}`);
   const registryError = validateRulesetStateCompatibility(state, ruleset); if (registryError) return fail(state, 'INVALID_COMMAND', registryError);
   const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) return fail(state, 'INVALID_COMMAND', continuityErrors.join(' '));
@@ -397,6 +299,22 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
       if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
       nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
     }
+    if (continuation.kind === 'combat-departure-choice') {
+      if (resolution.type !== 'RESOLVE_EFFECT_CHOICE') return fail(state, 'INVALID_COMMAND', 'Combat departure replacement requires its matching effect choice.');
+      const choice = nextState.effectState.pendingChoice; const selected = continuation.optionCandidateIds[resolution.optionId];
+      const candidateIds = continuation.candidates.map(({ candidateId }) => candidateId);
+      if (!choice || !selected || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision || continuation.envelope.actorId !== envelope.actorId || new Set(selected).size !== selected.length || selected.some((id) => !candidateIds.includes(id))) return fail(state, 'INVALID_COMMAND', 'No matching pending combat departure replacement choice.');
+      delete nextState.effectState.pendingChoice; delete nextState.effectState.pendingCommand;
+      const events = [...continuation.events]; const factStart = events.length; const player = getPlayer(nextState, envelope.actorId);
+      const error = attackTarget(nextState, ruleset, player, continuation.envelope, events, continuation.rollbackState, selected);
+      if (error) return { state: structuredClone(continuation.rollbackState), events: [], error };
+      const reducerContinuation = pendingCommandFor(nextState);
+      if (reducerContinuation?.kind === 'combat-reward') { reducerContinuation.rollbackState = structuredClone(continuation.rollbackState); reducerContinuation.factStart = factStart; return { state: nextState, events }; }
+      const pipeline = beginPostCommandPipeline(nextState, ruleset, continuation.envelope, structuredClone(continuation.rollbackState), events.slice(factStart), events);
+      if (pipeline.status === 'failed' || pipeline.status === 'unsupported') return { state: structuredClone(continuation.rollbackState), events: [], error: { code: 'INVALID_COMMAND', message: pipeline.error ?? 'Post-command lifecycle failed.' } };
+      if (pipeline.status === 'suspended') return { state: nextState, events: pipeline.events };
+      nextState.revision += 1; nextState.eventLogCursor += pipeline.events.length; return { state: nextState, events: pipeline.events };
+    }
     if (continuation.kind === 'card-use-effect' || continuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Unexpected specialized command continuation branch.');
     if (!pending || continuation.envelope.gameId !== state.gameId || continuation.envelope.expectedRevision !== state.revision) return fail(state, 'INVALID_COMMAND', '待處理 command continuation 不相容。');
     if (resolution.type === 'RESOLVE_EFFECT_CHOICE') { const choice = nextState.effectState.pendingChoice; if (!choice || choice.actorId !== envelope.actorId || choice.executionId !== resolution.executionId || choice.choiceId !== resolution.choiceId || !choice.options.some((option) => option.id === resolution.optionId)) return fail(state, 'INVALID_COMMAND', 'No matching pending command-before effect choice.'); }
@@ -407,7 +325,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     const resolutionEnvelopes = [...(continuation.resolutionEnvelopes ?? []), structuredClone(envelope)];
     if (resumed.status === 'suspended') {
       const nextContinuation = nextState.effectState.pendingCommand;
-      if (!nextContinuation || nextContinuation.kind === 'team-overflow' || nextContinuation.kind === 'card-use-effect' || nextContinuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Command-before continuation changed kind while suspended.');
+      if (!nextContinuation || nextContinuation.kind === 'team-overflow' || nextContinuation.kind === 'combat-departure-choice' || nextContinuation.kind === 'card-use-effect' || nextContinuation.kind === 'combat-reward') return fail(state, 'INVALID_COMMAND', 'Command-before continuation changed kind while suspended.');
       nextContinuation.events = structuredClone(events);
       nextContinuation.resolutionEnvelopes = resolutionEnvelopes;
       return { state: nextState, events };
@@ -480,6 +398,7 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
     nextState.effectState.pendingCommand.events = structuredClone(pendingEvents);
     return { state: nextState, events: pendingEvents };
   }
+  if (nextState.effectState.pendingCommand?.kind === 'combat-departure-choice') return { state: nextState, events };
   if (nextState.effectState.pendingCommand?.kind === 'combat-reward') { nextState.effectState.pendingCommand.rollbackState = structuredClone(rollback); nextState.effectState.pendingCommand.factStart = factStart; return { state: nextState, events }; }
   if (nextState.effectState.pendingCommand?.kind === 'card-use-effect') return { state: nextState, events: [...nextState.effectState.pendingCommand.events] };
   const pipeline = beginPostCommandPipeline(nextState, ruleset, envelope, rollback, events.slice(factStart), events);

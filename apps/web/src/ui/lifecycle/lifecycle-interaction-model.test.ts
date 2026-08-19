@@ -96,6 +96,34 @@ describe('lifecycle interaction model', () => {
     expect(model).toMatchObject({ kind: 'waiting', reason: 'diagnostic' });
   });
 
+  it('renders private deck-order commands with visible card names and preserves the authoritative permutation', () => {
+    const orderCommands: GameCommand[] = [
+      { type: 'RESOLVE_EFFECT_ORDER', executionId: 'order-execution', orderId: 'top-three', orderedCardIds: ['card-b', 'card-c'], removeCardId: 'card-a' },
+      { type: 'RESOLVE_EFFECT_ORDER', executionId: 'order-execution', orderId: 'top-three', orderedCardIds: ['card-a', 'card-b', 'card-c'] },
+    ];
+    const model = buildLifecycleInteractionModel(view({
+      decisionPrompt: { schemaVersion: 1, decisionKind: 'choose-order', choiceId: 'top-three', minSelections: 1, maxSelections: 1, options: [], order: { kind: 'player-deck-top', cardIds: ['card-a', 'card-b', 'card-c'], mayRemove: true } },
+    }), orderCommands, [], createLifecycleCopyResolver({ choices: [{ choiceId: 'top-three', title: '整理牌庫', description: '由底至頂放回。' }] }), (_choiceId, cardId) => ({ 'card-a': '甲', 'card-b': '乙', 'card-c': '丙' })[cardId]);
+    expect(model).toMatchObject({ kind: 'choice', title: '整理牌庫', actions: [
+      { label: '移除「甲」；由底至頂：乙 → 丙', command: orderCommands[0] },
+      { label: '由底至頂：甲 → 乙 → 丙', command: orderCommands[1] },
+    ] });
+  });
+
+  it('labels party ordering as party positions rather than a deck-top operation', () => {
+    const orderCommands: GameCommand[] = [
+      { type: 'RESOLVE_EFFECT_ORDER', executionId: 'party-execution', orderId: 'party-order', orderedCardIds: ['card-b', 'card-a'] },
+      { type: 'RESOLVE_EFFECT_ORDER', executionId: 'party-execution', orderId: 'party-order', orderedCardIds: ['card-a', 'card-b'] },
+    ];
+    const model = buildLifecycleInteractionModel(view({
+      decisionPrompt: { schemaVersion: 1, decisionKind: 'choose-order', choiceId: 'party-order', minSelections: 1, maxSelections: 1, options: [], order: { kind: 'party', cardIds: ['card-a', 'card-b'], mayRemove: false } },
+    }), orderCommands, [], createLifecycleCopyResolver({ choices: [{ choiceId: 'party-order', title: '調整隊伍', description: '選擇新的位置。' }] }), (_choiceId, cardId) => ({ 'card-a': '甲', 'card-b': '乙' })[cardId]);
+    expect(model).toMatchObject({ kind: 'choice', actions: [
+      { label: '隊伍順序：乙 → 甲', command: orderCommands[0] },
+      { label: '隊伍順序：甲 → 乙', command: orderCommands[1] },
+    ] });
+  });
+
   it('maps only exact consent commands in the stable action order', () => {
     const commands: GameCommand[] = [
       { type: 'EXPIRE_COUNTER_CONSENT', requestId: 'request' },

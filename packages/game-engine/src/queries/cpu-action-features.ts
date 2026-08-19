@@ -4,12 +4,22 @@ import { getLegalCommands } from './legal-commands.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
 import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
-import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modifier-evaluator.js';
 import { evaluatePartyCombat } from '../rules/party-combat-modifier-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { evaluateEquipmentDeparture } from '../rules/equipment-departure-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { effectStartsWithUnpayableCombatFailureGate } from '../effects/executor.js';
+import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
+import { attachmentCombat } from '../rules/attachment-evaluator.js';
+import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modifier-evaluator.js';
+
+function attachedContribution(state: GameState, ruleset: Ruleset, playerId: string, adventurerId: string, cardId: string): number {
+  const base = attachmentCombat(state, ruleset, playerId, adventurerId, cardId);
+  if (getDefinition(ruleset.registry, state, cardId).type !== 'equipment') return base;
+  const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId, equipmentCardId: cardId, adventurerId });
+  if (modifiers.status !== 'ready') throw new Error(`CPU action features require valid equipment combat modifiers: ${modifiers.error}`);
+  return base + modifiers.evaluation.powerBonus;
+}
 
 function blank(command: GameCommand): CpuActionFeature {
   return { schemaVersion: 1, command: structuredClone(command), honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0 };
@@ -41,12 +51,6 @@ function candidateSets(values: readonly string[], count: number, limit = 257): s
   return results;
 }
 
-function equipmentCombat(state: GameState, ruleset: Ruleset, playerId: string, adventurerId: string, equipmentId: string): number {
-  const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId, equipmentCardId: equipmentId, adventurerId });
-  if (modifiers.status !== 'ready') throw new Error(`CPU action features require valid equipment combat modifiers: ${modifiers.error}`);
-  return (getDefinition(ruleset.registry, state, equipmentId).combat ?? 0) + modifiers.evaluation.powerBonus;
-}
-
 /** Public, deterministic features for a legal command; this query never mutates state or advances RNG. */
 export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId: string): CpuActionFeature[] {
   return getLegalCommands(state, ruleset, actorId).map((command) => {
@@ -67,13 +71,14 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         const consumed = player.party.slice(0, prefix.slotCount);
         feature.partyCombatLoss = partyCombatTotal(state, ruleset, actorId, command.targetId, combat.evaluation.equipmentSuppressed)
           - partyCombatAfterRemoving(state, ruleset, actorId, consumed.map(({ adventurerId }) => adventurerId), command.targetId, combat.evaluation.equipmentSuppressed);
-        feature.equipmentLoss = consumed.filter(({ equipmentId }) => equipmentId !== undefined).length;
+        feature.equipmentLoss = consumed.flatMap(attachedCardIds).length;
         feature.equipmentRemoval = consumed.reduce((count, slot) => {
-          if (!slot.equipmentId) return count;
           if (combat.evaluation.equipmentSuppressed) return count;
-          const departure = evaluateEquipmentDeparture(state, ruleset, { schemaVersion: 1, playerId: actorId, adventurerId: slot.adventurerId, equipmentCardId: slot.equipmentId, cause: 'combat-discard' });
-          if (departure.status !== 'ready') throw new Error(`CPU action features require valid equipment departure policies: ${departure.reason}: ${departure.error}`);
-          return count + (departure.evaluation.disposition === 'remove-from-game' ? 1 : 0);
+          return count + attachedCardIds(slot).filter((equipmentCardId) => {
+            const departure = evaluateEquipmentDeparture(state, ruleset, { schemaVersion: 1, playerId: actorId, adventurerId: slot.adventurerId, equipmentCardId, cause: 'combat-discard' });
+            if (departure.status !== 'ready') throw new Error(`CPU action features require valid equipment departure policies: ${departure.reason}: ${departure.error}`);
+            return departure.evaluation.disposition === 'remove-from-game';
+          }).length;
         }, 0);
         const rewards = evaluateCombatRewards(state, ruleset, actorId, command.targetId);
         if (rewards.status !== 'ready') throw new Error(`CPU action features require valid combat rewards: ${rewards.error}`);
@@ -106,7 +111,7 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         if (choices.length > 256) throw new Error('CPU action features do not support team overflow choices above the authoritative 256-option budget.');
         const outcomes = choices.map((removedIds) => {
           const afterCombat = partyCombatAfterRemoving(preview, ruleset, actorId, removedIds);
-          const equipmentLoss = removedIds.filter((cardId) => previewPlayer.party.find(({ adventurerId }) => adventurerId === cardId)?.equipmentId !== undefined).length;
+          const equipmentLoss = removedIds.reduce((count, cardId) => count + attachedCardIds(previewPlayer.party.find(({ adventurerId }) => adventurerId === cardId)!).length, 0);
           return { removedIds, partyCombatLoss: combatWithIncoming - afterCombat, equipmentLoss };
         }).sort((left, right) => left.partyCombatLoss - right.partyCombatLoss || left.equipmentLoss - right.equipmentLoss || JSON.stringify(left.removedIds).localeCompare(JSON.stringify(right.removedIds)));
         const selected = outcomes[0];
@@ -116,17 +121,26 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         feature.overflowLoss = selected.removedIds.length;
       }
     }
-    if (command.type === 'EQUIP_ITEM') {
+    if (command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD') {
       const previewState = structuredClone(state);
       const previewSlot = previewState.players.find(({ id }) => id === actorId)?.party.find(({ adventurerId }) => adventurerId === command.adventurerId);
       if (!previewSlot) throw new Error(`CPU action features require an existing equipment target ${command.adventurerId}.`);
-      const replacedEquipmentId = previewSlot.equipmentId;
-      if (replacedEquipmentId) {
-        feature.partyCombatLoss = equipmentCombat(state, ruleset, actorId, command.adventurerId, replacedEquipmentId);
+      const beforeCombat = partyCombatTotal(state, ruleset, actorId);
+      const current = attachedCardIds(previewSlot);
+      const replacedCardId = command.type === 'EQUIP_ITEM' ? current[0] : command.replaceCardId;
+      if (replacedCardId) feature.partyCombatLoss = attachedContribution(state, ruleset, actorId, command.adventurerId, replacedCardId);
+      if (command.type === 'EQUIP_ITEM' && current[0]) {
         feature.equipmentLoss = 1;
+        setAttachedCardIds(previewSlot, [command.cardId]);
+      } else if (command.type === 'ATTACH_CARD' && command.replaceCardId) {
+        feature.equipmentLoss = 1;
+        setAttachedCardIds(previewSlot, current.map((id) => id === command.replaceCardId ? command.cardId : id));
+      } else {
+        setAttachedCardIds(previewSlot, [...current, command.cardId]);
       }
-      previewSlot.equipmentId = command.cardId;
-      feature.partyCombatGain = equipmentCombat(previewState, ruleset, actorId, command.adventurerId, command.cardId);
+      const afterCombat = partyCombatTotal(previewState, ruleset, actorId);
+      feature.partyCombatGain = attachedContribution(previewState, ruleset, actorId, command.adventurerId, command.cardId);
+      if (!replacedCardId && afterCombat < beforeCombat) feature.partyCombatLoss += beforeCombat - afterCombat;
     }
     if (command.type === 'USE_ITEM') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);

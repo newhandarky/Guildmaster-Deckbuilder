@@ -4,6 +4,8 @@ import { nextSeat } from '../model/seats.js';
 import type { Ruleset } from './ruleset.js';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { evaluatePartyCombat } from './party-combat-modifier-evaluator.js';
+import { attachedCardIds } from '../model/attachments.js';
+import { enemyAttachmentCombat } from './enemy-attachment-evaluator.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type CombatEvaluationResult =
@@ -67,7 +69,9 @@ export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: str
   if (!ordered) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active combat rules require distinct explicit priorities.' };
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);
   if (definition.combat === undefined || !Number.isFinite(definition.combat)) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Combat target ${targetId} has no finite combat requirement.` };
-  let requiredCombat = definition.combat + continuous.evaluation.active.filter((effect) => effect.target === 'combat-modifier').reduce((sum, effect) => sum + effect.amount, 0);
+  let requiredCombat = definition.combat + enemyAttachmentCombat(state, ruleset, target) + continuous.evaluation.active.filter((effect) => effect.target === 'combat-modifier').reduce((sum, effect) => sum + effect.amount, 0);
+  const temporaryModifiers = (state.temporaryTargetModifiers ?? []).filter(({ targetCardId }) => targetCardId === target.cardInstanceId);
+  requiredCombat += temporaryModifiers.reduce((sum, modifier) => sum + modifier.amount, 0);
   const restrictions: string[] = [];
   const equipmentSuppressionReasonCodes: string[] = [];
   let maximumPartySlots: number | undefined;
@@ -100,7 +104,7 @@ export function evaluateCombat(state: GameState, ruleset: Ruleset, playerId: str
       equipmentSuppressionReasonCodes,
       restrictionReasonCodes: restrictions,
       outcome,
-      appliedRules: ordered.map((rule) => ({ moduleId: rule.moduleId, ruleId: rule.ruleId })),
+      appliedRules: [...ordered.map((rule) => ({ moduleId: rule.moduleId, ruleId: rule.ruleId })), ...temporaryModifiers.map(({ moduleId, modifierId }) => ({ moduleId, ruleId: modifierId }))],
       registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) }
     }
   };
@@ -122,9 +126,17 @@ export function evaluateCombatPartyPrefix(state: GameState, ruleset: Ruleset, pl
     const slot = player.party[index]!;
     participantCardIds.push(slot.adventurerId);
     power += partyCombat.evaluation.members[index]!.effectiveCombat;
-    if (slot.equipmentId) participantCardIds.push(slot.equipmentId);
+    participantCardIds.push(...attachedCardIds(slot));
     if (!Number.isFinite(power)) return undefined;
-    if (power >= requiredCombat) return { slotCount: index + 1, power, participantCardIds };
+    const reservePolicies = ruleset.modules.flatMap((module) => module.combatReserveContributionPolicies ?? []).sort((left, right) => left.priority - right.priority);
+    if (reservePolicies.some((policy, policyIndex) => policyIndex > 0 && policy.priority === reservePolicies[policyIndex - 1]!.priority)) return undefined;
+    const reservePower = player.party.slice(index + 1).reduce((sum, reserveSlot, offset) => {
+      const sourceIndex = index + 1 + offset;
+      if (sourceIndex === 0) return sum;
+      const matches = reservePolicies.filter((policy) => policy.sourceDefinitionIds.includes(state.cards[reserveSlot.adventurerId]?.definitionId ?? ''));
+      return sum + (matches.length ? partyCombat.evaluation.members[sourceIndex]!.effectiveCombat : 0);
+    }, 0);
+    if (power + reservePower >= requiredCombat) return { slotCount: index + 1, power: power + reservePower, participantCardIds };
   }
   return undefined;
 }

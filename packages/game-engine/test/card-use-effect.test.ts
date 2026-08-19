@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EFFECT_CARD_PREDICATE_LIMITS, type CommandEnvelope, type ContentPack, type DomainEvent, type EffectCardPredicate, type EffectConcreteCardLocation, type EffectDefinition, type GameCommand, type LifecycleHook } from '@guildmaster/game-protocol';
-import { createContentRegistry, createGame, createRuleset, dispatch, envelope, getLegalCommands, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createContentRegistry, createGame, createRuleset, dispatch, envelope, executeEffect, getLegalCommands, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseZoneIds } from '../src/model/zones.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule } from '../src/rules/ruleset.js';
@@ -25,6 +25,30 @@ const drawItemPack: ContentPack = {
 };
 
 const drawItemRuleset = createRuleset([drawItemPack], [baseRulesModule]);
+
+const sourceAwareItemPack: ContentPack = {
+  ...drawItemPack,
+  manifest: { ...drawItemPack.manifest, id: 'test:source-aware-item', version: '1', hash: 'source-aware-item-v1' },
+  definitions: drawItemPack.definitions.map((definition) => definition.id === 'test:item/ration'
+    ? {
+        ...definition,
+        useEffect: {
+          schemaVersion: 1,
+          effectId: 'test:item/source-aware',
+          body: {
+            kind: 'conditional',
+            condition: {
+              kind: 'has-card-at',
+              card: { kind: 'context-card', key: 'source' },
+              location: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'playArea' },
+            },
+            whenTrue: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 1 },
+          },
+        },
+      }
+    : definition),
+};
+const sourceAwareItemRuleset = createRuleset([sourceAwareItemPack], [baseRulesModule]);
 
 const disabledItemPack: ContentPack = {
   ...testPack,
@@ -183,6 +207,26 @@ const postCommandChoiceHook: LifecycleHook = {
 const postCommandChoiceModule: RulesModule = { id: 'test:card-use-post-command', version: '1', getPartyLimit: (_state, _player, limit) => limit, onSupplyDepleted: () => 'handled', lifecycleHooks: [postCommandChoiceHook] };
 
 describe('data-driven card use effects', () => {
+  it('binds the selected item as source while repeating its use effect', () => {
+    const state = createGame({ gameId: 'repeat-source-binding', seed: 29, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, sourceAwareItemRuleset);
+    const player = state.players[0]!;
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/ration')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== itemId);
+    for (const candidate of state.players) for (const zone of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) candidate[zone] = candidate[zone].filter((cardId) => cardId !== itemId);
+    player.hand.push(itemId); state.cards[itemId]!.ownerId = player.id;
+    const outerSource = player.party[0]!.adventurerId;
+    const repeated: EffectDefinition = {
+      schemaVersion: 1,
+      effectId: 'test:repeat-selected-item',
+      body: { kind: 'repeat-item-use-effect', card: { kind: 'context-card', key: 'selected' }, player: { kind: 'controller' }, times: 2 },
+    };
+
+    const result = executeEffect(state, sourceAwareItemRuleset, repeated, { controllerId: player.id, cardRefs: { selected: itemId, source: outerSource } }, 'repeat-source-binding');
+
+    expect(result.status).toBe('completed');
+    expect(state.players[0]!.playArea).toContain(itemId);
+    expect(state.players[0]!.turnCombatBonus).toBe(2);
+  });
   it('never exposes or accepts an effects-disabled item as a blank use action', () => {
     const state = createGame({ gameId: 'disabled-item', seed: 7, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, disabledItemRuleset);
     const player = state.players[0]!;
@@ -208,6 +252,13 @@ describe('data-driven card use effects', () => {
         ? { ...definition, itemEffect: 'combat+2' as const }
         : definition),
     }])).toThrow(/cannot declare both legacy itemEffect and useEffect/);
+    expect(() => createContentRegistry([{
+      ...drawItemPack,
+      manifest: { ...drawItemPack.manifest, id: 'test:recursive-item-use', hash: 'recursive-item-use' },
+      definitions: drawItemPack.definitions.map((definition) => definition.id === 'test:item/ration'
+        ? { ...definition, useEffect: { schemaVersion: 1 as const, effectId: 'test:recursive-item-use', body: { kind: 'repeat-item-use-effect' as const, card: { kind: 'context-card' as const, key: 'source' }, player: { kind: 'controller' as const }, times: 2 } } }
+        : definition),
+    }])).toThrow(/cannot recursively invoke repeat-item-use-effect/);
 
     const hiddenDrawPileEffect = {
       kind: 'choose-card',

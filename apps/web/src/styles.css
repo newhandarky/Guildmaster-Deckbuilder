@@ -211,6 +211,11 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .game-card__frame::before { inset-block-start: 1.3%; }
 .game-card__frame::after { inset-block-end: 1.3%; }
 .card-art-placeholder {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   isolation: isolate;
   overflow: hidden;
   background:

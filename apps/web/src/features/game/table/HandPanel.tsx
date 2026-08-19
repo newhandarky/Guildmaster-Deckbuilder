@@ -3,8 +3,10 @@ import type { PresentationResolver } from '@guildmaster/presentation-core';
 import { Card } from '../../../ui/components/Card.js';
 import {
   buildCardVisualModel,
+  cardActionMenu,
   commandAction,
   equipmentSelectionAction,
+  type AttachableCommand,
   type CardVisualViewModel,
 } from '../../../ui/cards/card-visual-model.js';
 
@@ -14,7 +16,7 @@ type Props = {
   cards: Readonly<Record<string, CardInstance>>;
   presentation: PresentationResolver;
   legalCommands: readonly GameCommand[];
-  legalEquipCommands: readonly Extract<GameCommand, { type: 'EQUIP_ITEM' }>[];
+  legalEquipCommands: readonly AttachableCommand[];
   equipmentCardId?: string | undefined;
   onInspect: (card: CardVisualViewModel, trigger: HTMLButtonElement) => void;
 };
@@ -40,13 +42,18 @@ export function HandPanel({
             (command.type === 'PLAY_ADVENTURER' || command.type === 'USE_ITEM') && command.cardId === cardId,
         );
         const equipmentCommands = legalEquipCommands.filter((command) => command.cardId === cardId);
-        const action = exactCommand
+        const directAction = exactCommand
           ? commandAction(
             `${exactCommand.type}:${cardId}`,
             exactCommand.type === 'PLAY_ADVENTURER' ? '加入隊伍' : '使用道具',
             exactCommand,
           )
-          : equipmentSelectionAction(cardId, equipmentCommands);
+          : undefined;
+        const attachmentAction = equipmentSelectionAction(cardId, equipmentCommands);
+        const action = cardActionMenu(`actions:${cardId}`, [
+          ...(directAction ? [directAction] : []),
+          ...(attachmentAction ? [attachmentAction] : []),
+        ]);
         const card = buildCardVisualModel({
           instance,
           definition,

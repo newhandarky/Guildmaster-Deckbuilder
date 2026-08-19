@@ -1,5 +1,6 @@
 import { EquipmentEligibilityInputSchema, type EquipmentCombatModifierEvaluation, type EquipmentCombatModifierRule, type EquipmentEligibilityCondition, type EquipmentEligibilityInput, type GameState } from '@guildmaster/game-protocol';
 import { getDefinition, getPlayer } from '../model/factories.js';
+import { attachedCardIds } from '../model/attachments.js';
 import type { Ruleset } from './ruleset.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
@@ -48,7 +49,7 @@ export function evaluateEquipmentCombatModifiers(state: GameState, ruleset: Rule
   const player = state.players.find(({ id }) => id === input.playerId);
   const slot = player?.party.find(({ adventurerId }) => adventurerId === input.adventurerId);
   const equipment = state.cards[input.equipmentCardId];
-  if (!player || !slot || slot.equipmentId !== input.equipmentCardId || !equipment || getDefinition(ruleset.registry, state, input.equipmentCardId).type !== 'equipment') return { status: 'failed', reason: 'INVALID_INPUT', error: 'Equipment combat modifier input does not name an attached equipment/adventurer pair.' };
+  if (!player || !slot || !attachedCardIds(slot).includes(input.equipmentCardId) || !equipment || getDefinition(ruleset.registry, state, input.equipmentCardId).type !== 'equipment') return { status: 'failed', reason: 'INVALID_INPUT', error: 'Equipment combat modifier input does not name an attached equipment/adventurer pair.' };
   const active = ruleset.modules.flatMap((module) => module.equipmentCombatModifierRules ?? []).filter((rule) => matches(rule.when, state, ruleset, input));
   const ordered = order(active);
   if (!ordered) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active equipment combat modifier rules require distinct explicit priorities.' };

@@ -140,7 +140,10 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
           <button type="button" className="icon-button opponent-details-close" aria-label={`關閉 ${open.name} 的公開資訊`} onClick={closeAllDetails}>×</button>
           <h2>{open.name} 的公開隊伍</h2>
           <p>已擊敗：魔王 {open.defeatedBosses} · 魔物 {open.defeatedMonsters}</p>
-          <ol>{open.party.map((member) => <li key={member.adventurerId}><strong>{nameFor(member.adventurerId)}</strong> · 有效戰力 {member.effectiveCombat}{member.equipmentId ? ` · 裝備：${nameFor(member.equipmentId)}` : ''}</li>)}</ol>
+          <ol>{open.party.map((member) => {
+            const attachments = member.equipmentIds ?? (member.equipmentId ? [member.equipmentId] : []);
+            return <li key={member.adventurerId}><strong>{nameFor(member.adventurerId)}</strong> · 有效戰力 {member.effectiveCombat}{attachments.length ? ` · 附件：${attachments.map(nameFor).join('、')}` : ''}</li>;
+          })}</ol>
           <p>已公開羈絆：{open.bonds.length ? open.bonds.map(({ bondId }) => { const bond = bondDefinitions.find(({ id }) => id === bondId); return `${bond?.name ?? bondId}（${bond?.honor ?? 0} 榮譽）`; }).join('、') : '無'}</p>
           {open.counters.length ? <p>公開 counter：{open.counters.map(({ resourceId, amount }) => `${resourceId} ${amount}`).join('、')}</p> : null}
         </aside> : null}

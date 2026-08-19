@@ -22,6 +22,7 @@ import type {
 } from '@guildmaster/game-protocol';
 import type { Ruleset } from './ruleset.js';
 import { rulesModuleRegistryIdentity } from './rules-module-composition.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 type ValidEncounter = { encounter: EnemyEncounterState; targets: EnemyTargetState[]; policy: EncounterResolutionPolicy; registry: EncounterRegistryFingerprint };
 type ValidationResult = { ok: true; value: ValidEncounter } | { ok: false; failure: EncounterEvaluationFailure };
@@ -50,7 +51,7 @@ function locateCard(state: GameState, cardId: string): string[] {
   state.removedCards.forEach((candidate) => { if (candidate === cardId) locations.push('removed'); });
   for (const player of state.players) {
     for (const zone of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) player[zone].forEach((candidate) => { if (candidate === cardId) locations.push(`player:${player.id}:${zone}`); });
-    player.party.forEach((slot, index) => { if (slot.adventurerId === cardId) locations.push(`player:${player.id}:party:${index}`); if (slot.equipmentId === cardId) locations.push(`player:${player.id}:equipment:${index}`); });
+    player.party.forEach((slot, index) => { if (slot.adventurerId === cardId) locations.push(`player:${player.id}:party:${index}`); if (attachedCardIds(slot).includes(cardId)) locations.push(`player:${player.id}:equipment:${index}`); });
   }
   for (const target of Object.values(state.enemyTargets)) {
     if (!terminal(target) && target.cardInstanceId === cardId) locations.push(`target:${target.targetId}:card`);

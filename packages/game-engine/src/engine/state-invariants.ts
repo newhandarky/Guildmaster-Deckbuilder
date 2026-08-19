@@ -1,5 +1,6 @@
 import { isFiniteJsonValue, type GameState } from '@guildmaster/game-protocol';
 import type { Ruleset } from '../rules/ruleset.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 const duplicates = (values: readonly string[]): string[] => {
   const seen = new Set<string>();
@@ -16,6 +17,8 @@ export function validateGameStateInvariants(state: GameState): string[] {
   if (!playerIds.includes(state.activePlayerId)) errors.push('Active player must exist.');
   if (!playerIds.includes(state.startingPlayerId)) errors.push('Starting player must exist.');
   if (!state.turnFacts || state.turnFacts.playerId !== state.activePlayerId) errors.push('Turn fact ledger must belong to the active player.');
+  if (state.turnFacts?.effectUses && Object.entries(state.turnFacts.effectUses).some(([usageId, count]) => !usageId.trim() || !Number.isInteger(count) || count < 0)) errors.push('Turn effect use ledger is invalid.');
+  if (state.turnFacts?.enemyCardPurchaseBonusPerCard !== undefined && (!Number.isInteger(state.turnFacts.enemyCardPurchaseBonusPerCard) || !Number.isFinite(state.turnFacts.enemyCardPurchaseBonusPerCard))) errors.push('Turn enemy-card purchase bonus is invalid.');
   if (state.status === 'setup') {
     const setup = state.bondSetup;
     if (!setup || setup.currentActorId !== state.activePlayerId || !playerIds.includes(setup.currentActorId)) errors.push('Bond setup must identify the active actor.');
@@ -60,7 +63,9 @@ export function validateGameStateInvariants(state: GameState): string[] {
     }
     player.party.forEach((slot, index) => {
       addLocation(slot.adventurerId, `player:${player.id}:party:${index}`);
-      if (slot.equipmentId) addLocation(slot.equipmentId, `player:${player.id}:equipment:${index}`);
+      const attachments = attachedCardIds(slot);
+      if (duplicates(attachments).length) errors.push(`Player ${player.id} party slot ${index} contains duplicate attachments.`);
+      for (const cardId of attachments) addLocation(cardId, `player:${player.id}:equipment:${index}`);
     });
   }
   const consent = state.effectState.pendingCounterConsent;
@@ -68,6 +73,19 @@ export function validateGameStateInvariants(state: GameState): string[] {
     if (state.effectState.pendingChoice) errors.push('Counter consent and effect choice cannot be pending together.');
     if (!playerIds.includes(consent.counterOwnerId) || consent.requesterId !== consent.counterOwnerId || consent.context.controllerId !== consent.requesterId) errors.push('Pending counter consent has an invalid owner, requester, or context.');
     if (!consent.requiredActorIds.length || duplicates(consent.requiredActorIds).length || duplicates(consent.acceptedActorIds).length || consent.requiredActorIds.includes(consent.requesterId) || consent.acceptedActorIds.some((id) => !consent.requiredActorIds.includes(id)) || consent.requiredActorIds.some((id) => !playerIds.includes(id)) || consent.requiredActorIds.every((id) => consent.acceptedActorIds.includes(id))) errors.push('Pending counter consent responder sets are invalid.');
+  }
+  const order = state.effectState.pendingChoice?.order;
+  if (order) {
+    const choice = state.effectState.pendingChoice!; const owner = state.players.find(({ id }) => id === order.playerId);
+    const currentCardIds = order.kind === 'party' ? owner?.party.map(({ adventurerId }) => adventurerId) : owner?.drawPile.slice(-order.cardIds.length);
+    if (choice.decisionKind !== 'choose-order' || choice.actorId !== order.playerId || !owner || !order.cardIds.length || duplicates(order.cardIds).length || JSON.stringify(currentCardIds) !== JSON.stringify(order.cardIds)) errors.push('Pending order owner or candidate cards are invalid.');
+    if (order.kind === 'party' && order.mayRemove) errors.push('Pending party order cannot remove a member.');
+    if (!order.resolutions.length || duplicates(order.resolutions.map(({ optionId }) => optionId)).length || JSON.stringify(choice.options.map(({ id }) => id)) !== JSON.stringify(order.resolutions.map(({ optionId }) => optionId))) errors.push('Pending order options are invalid.');
+    const inspected = [...order.cardIds].sort();
+    for (const resolution of order.resolutions) {
+      const selected = [...resolution.orderedCardIds, ...(resolution.removeCardId ? [resolution.removeCardId] : [])];
+      if ((!order.mayRemove && resolution.removeCardId) || duplicates(selected).length || JSON.stringify([...selected].sort()) !== JSON.stringify(inspected)) errors.push(`Pending order resolution ${resolution.optionId} is not an exact permutation.`);
+    }
   }
   if (duplicates(state.removedCards).length) errors.push('Removed cards contains duplicate IDs.');
   for (const cardId of state.removedCards) addLocation(cardId, 'removed');
@@ -103,6 +121,12 @@ export function validateGameStateInvariants(state: GameState): string[] {
       } else addLocation(target.cardInstanceId, `target:${targetId}:card`);
       for (const cardId of target.attachments) addLocation(cardId, `target:${targetId}:attachment`);
     } else if (target.attachments.length) errors.push(`Terminal target ${targetId} retains attachments.`);
+  }
+
+  const modifierIds = new Set<string>();
+  for (const modifier of state.temporaryTargetModifiers ?? []) {
+    if (!modifier.modifierId.trim() || modifierIds.has(modifier.modifierId) || !modifier.moduleId.trim() || !state.cards[modifier.targetCardId] || !Number.isFinite(modifier.amount) || !Number.isInteger(modifier.amount) || !state.players.some(({ id }) => id === modifier.expiresAtTurnEndPlayerId)) errors.push(`Temporary target modifier ${modifier.modifierId || '<empty>'} is invalid.`);
+    modifierIds.add(modifier.modifierId);
   }
 
   for (const cardId of Object.keys(state.cards)) {

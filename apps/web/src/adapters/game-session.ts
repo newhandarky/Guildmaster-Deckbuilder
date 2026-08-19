@@ -27,7 +27,7 @@ export type SessionPersistenceStatus = {
 
 export type SessionEntrySummary = {
   schemaVersion: 3;
-  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
+  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full' | 'custom-adventurers-full';
   advancedRules: { helpers: boolean };
   contentPackId: string;
   canContinue: boolean;

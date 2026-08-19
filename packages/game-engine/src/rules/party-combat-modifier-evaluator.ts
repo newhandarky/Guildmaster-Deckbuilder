@@ -1,5 +1,7 @@
 import { PartyCombatEvaluationInputSchema, type GameState, type PartyCombatCondition, type PartyCombatEvaluation, type PartyCombatEvaluationInput, type PartyCombatModifierRule } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
+import { attachedCardIds } from '../model/attachments.js';
+import { attachmentCombat } from './attachment-evaluator.js';
 import { evaluateEquipmentCombatModifiers } from './equipment-combat-modifier-evaluator.js';
 import { validateRulesetStateCompatibility, type Ruleset } from './ruleset.js';
 
@@ -50,12 +52,17 @@ export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: P
   for (let subjectIndex = 0; subjectIndex < player.party.length; subjectIndex += 1) {
     const slot = player.party[subjectIndex]!;
     const adventurer = getDefinition(ruleset.registry, state, slot.adventurerId);
-    const equipment = slot.equipmentId && !input.equipmentSuppressed ? getDefinition(ruleset.registry, state, slot.equipmentId) : undefined;
-    const equipmentModifiers = slot.equipmentId && !input.equipmentSuppressed
-      ? evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId: input.playerId, equipmentCardId: slot.equipmentId, adventurerId: slot.adventurerId })
-      : undefined;
-    if (equipmentModifiers?.status === 'unsupported') return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: equipmentModifiers.error };
-    if (equipmentModifiers?.status === 'failed') return { status: 'failed', reason: equipmentModifiers.reason === 'INVALID_COMBAT_VALUE' ? 'INVALID_COMBAT_VALUE' : 'INVALID_INPUT', error: equipmentModifiers.error };
+    const attachmentIds = input.equipmentSuppressed ? [] : attachedCardIds(slot);
+    let equipmentCombat = 0;
+    for (const attachmentId of attachmentIds) {
+      const definition = getDefinition(ruleset.registry, state, attachmentId);
+      equipmentCombat += attachmentCombat(state, ruleset, input.playerId, slot.adventurerId, attachmentId);
+      if (definition.type !== 'equipment') continue;
+      const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId: input.playerId, equipmentCardId: attachmentId, adventurerId: slot.adventurerId });
+      if (modifiers.status === 'unsupported') return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: modifiers.error };
+      if (modifiers.status === 'failed') return { status: 'failed', reason: modifiers.reason === 'INVALID_COMBAT_VALUE' ? 'INVALID_COMBAT_VALUE' : 'INVALID_INPUT', error: modifiers.error };
+      equipmentCombat += modifiers.evaluation.powerBonus;
+    }
     const appliedRules: PartyCombatEvaluation['members'][number]['appliedRules'][number][] = [];
     for (const rule of ordered) {
       player.party.forEach((sourceSlot, sourceIndex) => {
@@ -65,11 +72,12 @@ export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: P
       });
     }
     const printedCombat = adventurer.combat ?? 0;
-    const equipmentCombat = (equipment?.combat ?? 0) + (equipmentModifiers?.evaluation.powerBonus ?? 0);
     const modifierCombat = appliedRules.reduce((sum, rule) => sum + rule.amount, 0);
-    const effectiveCombat = Math.max(0, printedCombat + equipmentCombat + modifierCombat);
+    const subtotal = Math.max(0, printedCombat + equipmentCombat + modifierCombat);
+    const multiplier = state.turnFacts?.playerId === input.playerId ? state.turnFacts.partyCombatMultipliers?.find(({ definitionId }) => definitionId === adventurer.id) : undefined;
+    const effectiveCombat = multiplier ? Math.floor(subtotal * multiplier.numerator / multiplier.denominator) : subtotal;
     if (![printedCombat, equipmentCombat, modifierCombat, effectiveCombat].every(Number.isSafeInteger)) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Party combat overflowed for ${slot.adventurerId}.` };
-    members.push({ adventurerId: slot.adventurerId, ...(slot.equipmentId ? { equipmentId: slot.equipmentId } : {}), printedCombat, equipmentCombat, modifierCombat, effectiveCombat, appliedRules });
+    members.push({ adventurerId: slot.adventurerId, ...(attachmentIds.length === 1 ? { equipmentId: attachmentIds[0] } : {}), ...(attachmentIds.length > 1 ? { equipmentIds: attachmentIds } : {}), printedCombat, equipmentCombat, modifierCombat, effectiveCombat, appliedRules });
   }
   return { status: 'ready', evaluation: { schemaVersion: 1, members, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } } };
 }

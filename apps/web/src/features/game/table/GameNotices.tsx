@@ -1,10 +1,11 @@
 import type { EngineError, GameStatus } from '@guildmaster/game-protocol';
 import type { SessionPersistenceStatus } from '../../../adapters/game-session.js';
+import { webModeEffectSummary, type WebContentMode } from '../../../app/ruleset.js';
 
 type Props = {
   status: GameStatus;
   persistence: SessionPersistenceStatus;
-  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
+  contentMode: WebContentMode;
   helpersEnabled: boolean;
   error?: EngineError | undefined;
 };
@@ -22,7 +23,7 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
   return <>
     {recoveryCopy ? <aside className="warning" data-testid="save-recovery-notice" role="status">{recoveryCopy}</aside> : null}
     {contentMode === 'provisional-playtest'
-      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：已接入首批物資與十項卡牌效果；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。{helpersEnabled ? '協助者 01／06／07／08／09 效果已啟用，其餘協助者僅測試輪替。' : ''}</aside>
+      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：{webModeEffectSummary.foundation}；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。{helpersEnabled ? `目前已啟用 ${webModeEffectSummary.helpers} 的效果，其餘協助者僅測試輪替。` : ''}</aside>
       : null}
     {persistence.recovery?.reasonCode === 'helper-rules-upgraded'
       ? <aside className="warning" data-testid="helper-upgrade-recovery-notice" role="status">協助者規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
@@ -31,7 +32,10 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
       ? <aside className="warning" data-testid="card-rules-upgrade-recovery-notice" role="status">卡牌效果規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
       : null}
     {contentMode === 'provisional-original-full'
-      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：已啟用十四項物資效果、起始裝備、候選冒險者 02／04／05／09／10／15／20／24／27、候選魔物 01／02／03／06／09／10／11／14，以及候選魔王 01／02／03／05／06／08／09／10／11 的規則與擊敗獎勵；其餘效果仍依問卷逐批實作。數位逐種類配比不代表官方完整卡表。</aside>
+      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：能力矩陣目前通過 {webModeEffectSummary.full}；其餘效果保持停用。數位逐種類配比不代表官方完整卡表。</aside>
+      : null}
+    {contentMode === 'custom-adventurers-full'
+      ? <aside className="warning" data-testid="custom-adventurer-content-warning" role="status">自定義冒險者公開測試：已替換五名起始成員與完整冒險者供應；{webModeEffectSummary.custom}。未通過能力矩陣驗證的技能只套用印刷數值。遠端圖片失敗或缺圖時會自動顯示 placeholder，不影響遊戲規則。</aside>
       : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">

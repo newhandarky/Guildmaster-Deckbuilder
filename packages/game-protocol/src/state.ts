@@ -6,7 +6,8 @@ export type GameStatus = 'setup' | 'playing' | 'finalRound' | 'finished' | 'pend
 export type PlayerKind = 'human' | 'ai';
 export type ZoneId = string;
 
-export type PartySlot = { adventurerId: string; equipmentId?: string };
+/** `equipmentId` is retained only for v2 Snapshot migration. New state writes `equipmentIds`. */
+export type PartySlot = { adventurerId: string; equipmentIds?: string[]; equipmentId?: string };
 export type BondState = { bondId: string; completed: boolean };
 export type PlayerCounterState = { resourceId: string; amount: number; visibility: 'public' | 'ownerOnly' | 'allPlayersByConsent'; sourceRefs?: string[] };
 export type PlayerState = {
@@ -37,11 +38,18 @@ export type TurnFactLedger = {
   adventurersRecruited: number; adventurersAddedToParty: number;
   itemsBought: number; equipmentBought: number; purchasePowerSpent: number;
   extraCardsDrawn: number; itemsUsed: number; bossesDefeated: number; monstersDefeated: number;
+  actionPhaseItemsUsed?: number; lastCombatParticipantCount?: number;
+  lastCombatDiscardedEquipment?: number; lastCombatDiscardedNonStarterProfessions?: string[];
+  monstersUsedForPurchase?: number;
+  effectUses?: Record<string, number>;
+  enemyCardPurchaseBonusPerCard?: number;
+  partyCombatMultipliers?: { definitionId: string; numerator: number; denominator: number; rounding: 'floor' }[];
   marketRefreshed: boolean; combatResolved: boolean; combatSkipped: boolean;
 };
-export type PlayerDecisionKind = 'choose-effect-option' | 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card';
-export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string }[] };
-export type PublicOpponentPartyMember = { adventurerId: string; equipmentId?: string; effectiveCombat: number };
+export type TemporaryTargetModifier = { modifierId: string; moduleId: string; targetCardId: string; amount: number; expiresAtTurnEndPlayerId: string };
+export type PlayerDecisionKind = 'choose-effect-option' | 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card' | 'choose-order';
+export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string }[]; order?: { kind: 'player-deck-top' | 'party'; cardIds: readonly string[]; mayRemove: boolean } };
+export type PublicOpponentPartyMember = { adventurerId: string; equipmentIds?: string[]; equipmentId?: string; effectiveCombat: number };
 export type OpponentPlayerView = { id: string; name: string; kind: PlayerKind; seatIndex: number; isActive: boolean; handCount: number; partyCount: number; discardCount: number; partyCombat: number; party: PublicOpponentPartyMember[]; defeatedBosses: number; defeatedMonsters: number; bonds: BondState[]; counters: PlayerCounterState[] };
 
 export type GameState = {
@@ -53,6 +61,7 @@ export type GameState = {
   setupSelections?: Record<string, SetupSelectionState>;
   bondSetup?: BondSetupState; turnFacts?: TurnFactLedger;
   enemyTargets: Record<string, EnemyTargetState>; enemyEncounters: EnemyEncounterState[];
+  temporaryTargetModifiers?: TemporaryTargetModifier[];
   removedCards: string[]; moduleState: Record<string, unknown>; effectState: EffectExecutionState; endState?: EndState; eventLogCursor: number;
 };
 

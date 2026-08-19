@@ -7,6 +7,8 @@ import type { Ruleset } from '../rules/ruleset.js';
 import { refillConfiguredSupplyRows } from './supply.js';
 import { assertGameStateInvariants, assertRulesetGameStateInvariants } from './state-invariants.js';
 import { supplyContinuityPolicyFor, validateSupplyContinuityState } from '../rules/supply-continuity-evaluator.js';
+import { dispatchLifecycle } from '../effects/lifecycle-dispatcher.js';
+import { attachTargets } from './target-supply.js';
 export type GamePlayerConfig = { id: string; name: string; kind: PlayerKind };
 export type CreateGameConfig = { gameId: string; seed: number; players: readonly GamePlayerConfig[]; startingPlayerId?: string };
 export function createTurnFactLedger(playerId: string): TurnFactLedger {
@@ -97,12 +99,21 @@ export function createGame(config: CreateGameConfig, ruleset: Ruleset): GameStat
   if ('partyDefinitionIds' in starter) partyDefinitionIds = starter.partyDefinitionIds;
   else partyDefinitionIds = Array.from({ length: 5 }, () => starter.adventurerDefinitionId);
   for (const player of state.players) { for (const definitionId of shuffle(state, [...partyDefinitionIds])) player.party.push({ adventurerId: createCard(state, definitionId, player.id).id }); for (let count = 0; count < 4; count += 1) player.hand.push(createCard(state, ruleset.registry.starter.summonStoneDefinitionId, player.id).id); player.hand.push(createCard(state, ruleset.registry.starter.crystalDefinitionId, player.id).id); }
-  refillConfiguredSupplyRows(state, ruleset, events); attachTargets(state); assertGameStateInvariants(state); assertRulesetGameStateInvariants(state, ruleset);
+  refillConfiguredSupplyRows(state, ruleset, events); attachTargets(state, ruleset);
+  if (state.status === 'playing') {
+    const startIndex = state.players.findIndex(({ id }) => id === state.startingPlayerId);
+    const order = Array.from(
+      { length: state.players.length },
+      (_, offset) => state.players[(startIndex + offset) % state.players.length]!.id,
+    );
+    const lifecycle = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'game-start', actorId: state.startingPlayerId, phase: state.phase }, {
+      controllerId: state.startingPlayerId,
+      playerRefs: Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`draftPlayer${index}`, order[index] ?? order.at(-1)!])),
+    });
+    if (lifecycle.status === 'failed' || lifecycle.status === 'unsupported') throw new Error(`Game-start lifecycle failed: ${lifecycle.error ?? lifecycle.reason}.`);
+  }
+  assertGameStateInvariants(state); assertRulesetGameStateInvariants(state, ruleset);
   const continuityErrors = validateSupplyContinuityState(state, ruleset); if (continuityErrors.length) throw new Error(continuityErrors.join(' '));
   return state;
 }
-export function attachTargets(state: GameState): void {
-  const encounter = state.enemyEncounters.find(({ encounterId }) => encounterId === 'base:enemies'); if (!encounter) throw new Error('Missing base enemy encounter.');
-  const rows: [string, string, string][] = [...state.zones[baseZoneIds.monsterRow]!.cardIds.map((id) => [id, 'monster', baseZoneIds.monsterRow] as [string, string, string]), ...state.zones[baseZoneIds.bossRow]!.cardIds.map((id) => [id, 'boss', baseZoneIds.bossRow] as [string, string, string])];
-  for (const [cardInstanceId, kind, zoneId] of rows) if (!Object.values(state.enemyTargets).some((target) => target.cardInstanceId === cardInstanceId && target.status !== 'defeated' && target.status !== 'removed')) { let sequence = Object.keys(state.enemyTargets).length + 1; while (state.enemyTargets[`base:target-${sequence}`]) sequence += 1; const targetId = `base:target-${sequence}`; state.enemyTargets[targetId] = { targetId, cardInstanceId, kind, status: 'available', parentEncounterId: encounter.encounterId, zoneId, attachments: [], moduleState: {} }; encounter.targetIds.push(targetId); }
-}
+export { attachTargets } from './target-supply.js';

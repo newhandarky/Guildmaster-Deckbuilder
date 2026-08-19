@@ -39,6 +39,7 @@ export function CardPresentationImage({ art, sizes, placeholderAccessible = fals
       height={art.height}
       loading="lazy"
       decoding="async"
+      referrerPolicy="no-referrer"
       style={{ objectPosition: art.objectPosition ?? '50% 50%' }}
       onError={() => setFailedSource(art.src)}
     /> : null}

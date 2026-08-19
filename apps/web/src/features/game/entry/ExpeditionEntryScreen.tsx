@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SessionEntrySummary, SessionPersistenceStatus } from '../../../adapters/game-session.js';
-import { webContentModeOptions, type WebContentMode, type WebGameSetup } from '../../../app/ruleset.js';
+import { webContentModeOptions, webModeEffectSummary, type WebContentMode, type WebGameSetup } from '../../../app/ruleset.js';
 import { phaseDisplayName } from '../table/phase-copy.js';
 
 type Props = {
@@ -96,21 +96,21 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
             checked={selectedMode === mode}
             onChange={() => {
               setSelectedMode(mode);
-              if (mode !== 'provisional-playtest') setHelpersEnabled(mode === 'provisional-original-full');
+              if (mode !== 'provisional-playtest') setHelpersEnabled(mode === 'provisional-original-full' || mode === 'custom-adventurers-full');
             }}
           />
           <span><strong>{option.label}</strong><small>{option.description}</small>{option.warning ? <small className="content-mode-warning">{option.warning}</small> : null}</span>
         </label>)}
       </fieldset>
 
-      {selectedMode === 'provisional-original-full' ? <p className="notice">完整四人模式固定啟用協助者規則。</p> : selectedMode === 'provisional-playtest'
+      {selectedMode === 'provisional-original-full' || selectedMode === 'custom-adventurers-full' ? <p className="notice">完整四人模式固定啟用協助者規則。</p> : selectedMode === 'provisional-playtest'
         ? <fieldset className="advanced-rules-picker">
             <legend>進階規則</legend>
             <label className={helpersEnabled ? 'content-mode-option content-mode-option-selected' : 'content-mode-option'}>
               <input type="checkbox" checked={helpersEnabled} onChange={(event) => setHelpersEnabled(event.currentTarget.checked)} />
               <span>
                 <strong>協助者進階規則</strong>
-                <small>依本局種子抽選協助者；目前已啟用候選協助者 01／06／07／08／09 的效果。</small>
+                <small>依本局種子抽選協助者；目前已啟用 {webModeEffectSummary.helpers} 的效果。</small>
               </span>
             </label>
           </fieldset>

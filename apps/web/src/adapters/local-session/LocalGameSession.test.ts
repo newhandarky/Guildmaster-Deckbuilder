@@ -101,7 +101,7 @@ function seedPendingConsentSave(ruleset: ReturnType<typeof createRuleset>): void
 
 function chooseExpeditionHumanCommand(update: SessionUpdate): SessionUpdate['legalCommands'][number] | undefined {
   const legal = update.legalCommands;
-  const choice = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESPOND_COUNTER_CONSENT');
+  const choice = legal.find(({ type }) => type === 'SELECT_BONDS' || type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESOLVE_EFFECT_ORDER' || type === 'RESPOND_COUNTER_CONSENT');
   if (choice) return choice;
   const availableBoss = Object.values(update.view.enemyTargets).find(({ kind, status }) => kind === 'boss' && status === 'available');
   const bossCombat = availableBoss ? update.definitions[update.view.cards[availableBoss.cardInstanceId]?.definitionId ?? '']?.combat ?? Number.POSITIVE_INFINITY : 0;
@@ -115,7 +115,7 @@ function chooseExpeditionHumanCommand(update: SessionUpdate): SessionUpdate['leg
   if (bossAttack) return bossAttack;
   if (update.view.phase === 'combat' && needsBossPower && (partyCombat >= bossCombat - 3 || update.view.self.history.defeatedMonsters >= 10)) return legal.find(({ type }) => type === 'END_PHASE');
   if (attacks[0]) return attacks[0];
-  for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
+  for (const type of ['PLAY_ADVENTURER', 'EQUIP_ITEM', 'ATTACH_CARD', 'USE_ITEM'] as const) { const command = legal.find((candidate) => candidate.type === type); if (command) return command; }
   const buys = legal.filter((command): command is Extract<SessionUpdate['legalCommands'][number], { type: 'BUY_CARD' }> => command.type === 'BUY_CARD').sort((left, right) => {
     const value = (cardId: string) => { const definition = update.definitions[update.view.cards[cardId]?.definitionId ?? '']; return (needsBossPower ? (definition?.combat ?? 0) * 10_000 : 0) + (definition?.honor ?? 0) * 100 + (definition?.combat ?? 0) * 12 + (definition?.purchasePower ?? 0) * 18 - (definition?.cost ?? 0) * 6; };
     return value(right.cardId) - value(left.cardId);
@@ -144,12 +144,33 @@ async function driveDeterministicExpedition(
       }
     }
     if (update.cpu.status === 'blocked') throw new Error(update.cpu.diagnostic);
-    if (update.view.activePlayerId === update.view.viewerId || update.legalCommands.length) {
+    if (update.legalCommands.length) {
       const command = chooseExpeditionHumanCommand(update);
-      if (!command) throw new Error(`Human has no legal command at revision ${update.view.revision}.`);
+      if (!command) {
+        throw new Error(`Human has no legal command at revision ${update.view.revision}: ${JSON.stringify({
+          activePlayerId: update.view.activePlayerId,
+          viewerId: update.view.viewerId,
+          phase: update.view.phase,
+          legalCommands: update.legalCommands,
+          cpu: update.cpu,
+        })}`);
+      }
+      const beforeSubmit = { revision: update.view.revision, phase: update.view.phase, activePlayerId: update.view.activePlayerId, command };
       update = session.submit(command);
-    } else update = session.stepCpu();
-    if (update.error) throw new Error(`${update.error.code}: ${update.error.message}`);
+      if (update.error) throw new Error(`${update.error.code}: ${update.error.message}; ${JSON.stringify(beforeSubmit)}`);
+    } else if (update.cpu.status === 'ready') {
+      const beforeCpu = { revision: update.view.revision, phase: update.view.phase, activePlayerId: update.view.activePlayerId, cpu: update.cpu };
+      update = session.stepCpu();
+      if (update.error) throw new Error(`${update.error.code}: ${update.error.message}; ${JSON.stringify(beforeCpu)}`);
+    }
+    else {
+      throw new Error(`Neither the human nor CPU scheduler can advance revision ${update.view.revision}: ${JSON.stringify({
+        activePlayerId: update.view.activePlayerId,
+        viewerId: update.view.viewerId,
+        phase: update.view.phase,
+        cpu: update.cpu,
+      })}`);
+    }
     if ((steps + 1) % options.yieldEverySteps === 0) await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
   }
   return { session, update, steps };
@@ -178,6 +199,27 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.view).toMatchObject({ status: 'playing', activePlayerId: 'human-1', revision: 4 });
     expect(update.cpu.decisions).toHaveLength(3);
     expect(update.cpu.decisions.every(({ command, reasonCode }) => command.type === 'SELECT_BONDS' && reasonCode === 'KEEP_HIGHEST_BOND_VALUE')).toBe(true);
+  });
+
+  it('starts and restores the custom-adventurer mode as one human plus three CPU players', () => {
+    const ruleset = createWebRuleset(undefined, 'custom-adventurers-full');
+    const session = new LocalGameSession(ruleset);
+    const initial = session.current();
+    expect(initial.entrySummary).toMatchObject({ contentMode: 'custom-adventurers-full', advancedRules: { helpers: true } });
+    expect(initial.view.opponents).toHaveLength(3);
+    expect(Object.values(initial.definitions).filter(({ type }) => type === 'adventurer')).toHaveLength(43);
+    expect(initial.view.self.party.every(({ adventurerId }) => initial.view.cards[adventurerId]!.definitionId.startsWith('custom:starter/'))).toBe(true);
+    const humanChoice = initial.legalCommands.find(({ type }) => type === 'SELECT_BONDS');
+    if (!humanChoice) throw new Error('Expected custom-mode human bond setup command.');
+    const saved = session.submit(humanChoice);
+    expect(saved.error).toBeUndefined();
+    const restored = new LocalGameSession(ruleset).current();
+    expect(restored).toMatchObject({
+      entrySummary: { contentMode: 'custom-adventurers-full', canContinue: true },
+      persistence: { state: 'restored', replayHistoryComplete: true },
+      cpu: { status: 'ready', nextActorId: 'ai-1' },
+    });
+    expect(restored.view.opponents).toHaveLength(3);
   });
 
   it('rejects the previous full-pack identity in Snapshot and Replay', () => {
@@ -426,7 +468,7 @@ describe('LocalGameSession transactional boundary', () => {
           expectedRevision: state.revision,
           command,
         });
-        if (result.error) throw new Error(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message}`);
+        if (result.error) throw new Error(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message} ${JSON.stringify({ phase: state.phase, actorId, command, helper: state.zones['base:helper-active']?.cardIds.map((id) => state.cards[id]?.definitionId), pendingChoice: state.effectState.pendingChoice?.choiceId, player: state.players.find(({ id }) => id === actorId) })}`);
         state = result.state;
         if (state.round > 250) throw new Error(`Seed ${seed} exceeded 250 rounds: ${JSON.stringify({ activePlayerId: state.activePlayerId, phase: state.phase, bossTargets: Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'boss' && status === 'available').map(({ cardInstanceId }) => state.cards[cardInstanceId]?.definitionId), adventurerRow: state.zones['base:adventurer-row']?.cardIds.map((id) => state.cards[id]?.definitionId), players: state.players.map((player) => ({ id: player.id, history: player.history, party: player.party.map(({ adventurerId, equipmentId }) => [state.cards[adventurerId]?.definitionId, equipmentId ? state.cards[equipmentId]?.definitionId : null]), hand: player.hand.map((id) => state.cards[id]?.definitionId), draw: player.drawPile.map((id) => state.cards[id]?.definitionId), discard: player.discardPile.map((id) => state.cards[id]?.definitionId) })) })}`);
       }

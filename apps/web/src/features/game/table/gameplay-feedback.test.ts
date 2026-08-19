@@ -20,7 +20,7 @@ describe('desktop gameplay feedback view model', () => {
       { type: 'ATTACK_TARGET', targetId: 'monster-1' },
       { type: 'END_PHASE', phase: 'combat' },
     ];
-    expect(buildLegalActionSummary(commands)).toBe('目前有 1 張裝備可選擇配戴對象、1 個目標可討伐；也可以結束階段。');
+    expect(buildLegalActionSummary(commands)).toBe('目前有 1 張卡牌可選擇附著對象、1 個目標可討伐；也可以結束階段。');
   });
 
   it('keeps lifecycle choices and no-extra-action states explicit', () => {

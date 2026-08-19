@@ -12,6 +12,8 @@ import {
   getLegalCommands,
   getPartyLimit,
   getPurchasePower,
+  restoreSnapshot,
+  serializeSnapshot,
   type Ruleset,
 } from '@guildmaster/game-engine';
 import {
@@ -34,6 +36,7 @@ function helperRuleset(): Ruleset {
 function gameWithActiveHelper(ruleset: Ruleset, definitionId: string) {
   for (let seed = 1; seed <= 512; seed += 1) {
     const state = createGame({ gameId: `active-${definitionId}-${seed}`, seed, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+    if (state.effectState.pendingChoice) continue;
     const active = state.zones[baseHelperZoneIds.active]!.cardIds;
     const deck = state.zones[baseHelperZoneIds.deck]!.cardIds;
     const selected = [...active, ...deck];
@@ -64,8 +67,8 @@ describe('provisional helper content extension', () => {
     expect(baseProvisionalHelpersContentPack.definitions).toHaveLength(12);
     expect(baseProvisionalHelpersContentPack.definitions.every(({ name, type, copies, tags }) =>
       /^候選協助者 \d{2}$/.test(name) && type === 'helper' && copies === 1 && tags?.includes('playtest:helper'))).toBe(true);
-    expect(baseProvisionalHelpersContentPack.manifest).toMatchObject({ version: '0.2.0' });
-    expect(baseHelpersRulesModule.version).toBe('1.1.0');
+    expect(baseProvisionalHelpersContentPack.manifest).toMatchObject({ version: '0.3.0' });
+    expect(baseHelpersRulesModule.version).toBe('1.2.0');
     expect(baseProvisionalHelpersContentPack.definitions.filter(({ tags }) => tags?.includes('playtest:effect-enabled')).map(({ id }) => id))
       .toEqual(enabledBaseHelperDefinitionIds);
     expect(baseProvisionalHelpersContentPack.definitions.filter(({ id }) => !enabledBaseHelperDefinitionIds.includes(id as (typeof enabledBaseHelperDefinitionIds)[number]))
@@ -138,6 +141,160 @@ describe('provisional helper content extension', () => {
       expect(result.error).toBeUndefined();
       expect(result.state.players[0]!.hand).toHaveLength(expected);
     }
+  });
+
+  it.each([
+    ['base:helper/helper-02', 'item'],
+    ['base:helper/helper-10', 'equipment'],
+  ] as const)('recovers the declared card type at rest for %s through Snapshot', (helperId, cardType) => {
+    const ruleset = helperRuleset();
+    const state = gameWithActiveHelper(ruleset, helperId);
+    const player = state.players[0]!;
+    const source = ['base:item-row', 'base:item-deck'].flatMap((zoneId) => state.zones[zoneId]!.cardIds)
+      .find((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === cardType)!;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== source);
+    player.discardPile.push(source); state.cards[source]!.ownerId = player.id; state.phase = 'rest';
+    const ended = dispatch(state, ruleset, envelope(state, player.id, { type: 'END_PHASE', phase: 'rest' }, `${helperId}:rest`));
+    expect(ended.error).toBeUndefined(); expect(ended.state.effectState.pendingChoice?.decisionKind).toBe('recover-card');
+    const restored = restoreSnapshot(serializeSnapshot(ended.state), ruleset);
+    const choice = getLegalCommands(restored, ruleset, player.id).find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === source)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, player.id, choice, `${helperId}:recover`));
+    expect(completed.error).toBeUndefined(); expect(completed.state.players[0]!.hand).toContain(source);
+  });
+
+  it('grants helper 04 purchase power equal to party size only after a defeat', () => {
+    const ruleset = helperRuleset(); const state = gameWithActiveHelper(ruleset, 'base:helper/helper-04');
+    state.phase = 'action2'; state.turnFacts!.monstersDefeated = 1;
+    const partySize = state.players[0]!.party.length;
+    const completed = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action2' }, 'helper-04-purchase'));
+    expect(completed.error).toBeUndefined(); expect(completed.state.phase).toBe('purchase'); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(partySize);
+  });
+
+  it('publicly reveals consecutive enemies for helper 03 and leaves the first non-enemy on top', () => {
+    const ruleset = helperRuleset(); const state = gameWithActiveHelper(ruleset, 'base:helper/helper-03'); const player = state.players[0]!;
+    const bossSource = state.zones['base:boss-deck']!.cardIds[0]!;
+    const monsterSource = [...state.zones['base:monster-row']!.cardIds, ...state.zones['base:monster-deck']!.cardIds].find((cardId) =>
+      !ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.tags?.includes('base:supply-cycle-anchor'))!;
+    const itemSource = [...state.zones['base:item-row']!.cardIds, ...state.zones['base:item-deck']!.cardIds]
+      .find((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === 'item')!;
+    const [boss, monster, item] = ['fixture-helper03-boss', 'fixture-helper03-monster', 'fixture-helper03-item'];
+    for (const [cardId, sourceId] of [[boss, bossSource], [monster, monsterSource], [item, itemSource]] as const)
+      state.cards[cardId] = { ...structuredClone(state.cards[sourceId]!), id: cardId, ownerId: player.id };
+    player.drawPile = [item, monster, boss]; state.phase = 'action2';
+    const completed = dispatch(state, ruleset, envelope(state, player.id, { type: 'END_PHASE', phase: 'action2' }, 'helper-03-reveal'));
+    expect(completed.error).toBeUndefined(); expect(completed.state.phase).toBe('purchase');
+    expect(completed.state.players[0]!.hand).toEqual(expect.arrayContaining([boss, monster]));
+    expect(completed.state.players[0]!.drawPile.at(-1)).toBe(item);
+    expect(completed.events.filter(({ type }) => type === 'CARD_REVEALED')).toHaveLength(3);
+    expect(restoreSnapshot(serializeSnapshot(completed.state), ruleset)).toEqual(completed.state);
+  });
+
+  it.each([
+    ['base:helper/helper-05', 'recover-card'],
+    ['base:helper/helper-11', 'transfer-card'],
+  ] as const)('runs %s at the next player turn start without leaking or duplicating cards', (helperId, decisionKind) => {
+    const ruleset = helperRuleset(); const state = gameWithActiveHelper(ruleset, helperId);
+    const nextPlayer = state.players[1]!;
+    let selected: string;
+    if (helperId.endsWith('05')) {
+      selected = state.zones['base:adventurer-deck']!.cardIds.pop()!;
+      nextPlayer.discardPile.push(selected); state.cards[selected]!.ownerId = nextPlayer.id;
+    } else selected = nextPlayer.hand[0]!;
+    state.phase = 'rest';
+    const ended = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'rest' }, `${helperId}:turn-start`));
+    expect(ended.error).toBeUndefined(); expect(ended.state.activePlayerId).toBe('p2'); expect(ended.state.effectState.pendingChoice?.decisionKind).toBe(decisionKind);
+    const choice = getLegalCommands(ended.state, ruleset, 'p2').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === selected)!;
+    const completed = dispatch(ended.state, ruleset, envelope(ended.state, 'p2', choice, `${helperId}:resolve`));
+    expect(completed.error).toBeUndefined();
+    if (helperId.endsWith('05')) expect(completed.state.players[1]!.hand).toContain(selected);
+    else { expect(completed.state.players[0]!.hand).toContain(selected); expect(completed.state.cards[selected]!.ownerId).toBe('p1'); }
+  });
+
+  it('runs helper 12 public deck selection and leftward draft through Snapshot without leaking hidden cards', () => {
+    const ruleset = helperRuleset();
+    let state: ReturnType<typeof createGame> | undefined;
+    for (let seed = 1; seed <= 512; seed += 1) {
+      const candidate = createGame({ gameId: `helper-12-initial-${seed}`, seed, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+      const activeId = candidate.zones[baseHelperZoneIds.active]!.cardIds[0];
+      if (activeId && candidate.cards[activeId]!.definitionId === 'base:helper/helper-12') { state = candidate; break; }
+    }
+    if (!state) throw new Error('A deterministic seed must start with helper 12 within the test budget.');
+    const initial = structuredClone(state);
+    expect(state.effectState.pendingChoice).toMatchObject({ actorId: 'p1', decisionKind: 'choose-effect-option' });
+
+    const forged = dispatch(state, ruleset, envelope(state, 'p1', {
+      type: 'RESOLVE_EFFECT_CHOICE',
+      executionId: state.effectState.pendingChoice!.executionId,
+      choiceId: state.effectState.pendingChoice!.choiceId,
+      optionId: 'forged-deck',
+    }, 'helper-12-forged'));
+    expect(forged.error).toBeDefined();
+    expect(forged.state).toEqual(initial);
+
+    const chooseDeck = getLegalCommands(state, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === 'item-deck')!;
+    const revealed = dispatch(state, ruleset, envelope(state, 'p1', chooseDeck, 'helper-12-deck'));
+    expect(revealed.error).toBeUndefined();
+    expect(revealed.state.zones[baseHelperZoneIds.draft]!.cardIds).toHaveLength(2);
+    expect(revealed.state.effectState.pendingChoice).toMatchObject({ actorId: 'p1', decisionKind: 'draft-card' });
+    const firstCard = revealed.state.zones[baseHelperZoneIds.draft]!.cardIds[0]!;
+    const firstChoice = getLegalCommands(revealed.state, ruleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === firstCard)!;
+    const firstPick = dispatch(revealed.state, ruleset, envelope(revealed.state, 'p1', firstChoice, 'helper-12-p1'));
+    expect(firstPick.error).toBeUndefined();
+    expect(firstPick.state.players[0]!.hand).toContain(firstCard);
+
+    const restored = restoreSnapshot(serializeSnapshot(firstPick.state), ruleset);
+    expect(restored.effectState.pendingChoice).toMatchObject({ actorId: 'p2', decisionKind: 'draft-card' });
+    const secondCard = restored.zones[baseHelperZoneIds.draft]!.cardIds[0]!;
+    const secondChoice = getLegalCommands(restored, ruleset, 'p2').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === secondCard)!;
+    const completed = dispatch(restored, ruleset, envelope(restored, 'p2', secondChoice, 'helper-12-p2'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.effectState.pendingChoice).toBeUndefined();
+    expect(completed.state.effectState.pendingLifecycle).toBeUndefined();
+    expect(completed.state.zones[baseHelperZoneIds.draft]!.cardIds).toEqual([]);
+    expect(completed.state.players[1]!.hand).toContain(secondCard);
+    expect(completed.state.cards[firstCard]!.ownerId).toBe('p1');
+    expect(completed.state.cards[secondCard]!.ownerId).toBe('p2');
+  });
+
+  it('starts helper 12 only after the final private bond selection completes', () => {
+    const bondedFoundation = {
+      ...baseProvisionalFoundationContentPack,
+      bonds: Array.from({ length: 14 }, (_, index) => ({ id: `test:bond/${index + 1}`, name: `Bond ${index + 1}`, honor: 1, requiredBosses: 99 })),
+    };
+    const ruleset = createRuleset(
+      [bondedFoundation, baseProvisionalHelpersContentPack],
+      [baseRulesModule, baseHelpersRulesModule],
+      { allowProvisionalPlaytest: true },
+    );
+    let state: ReturnType<typeof createGame> | undefined;
+    for (let seed = 1; seed <= 512; seed += 1) {
+      const candidate = createGame({ gameId: `helper-12-bonds-${seed}`, seed, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, ruleset);
+      const active = candidate.zones[baseHelperZoneIds.active]!.cardIds;
+      const deck = candidate.zones[baseHelperZoneIds.deck]!.cardIds;
+      const helper12 = [...active, ...deck].find((cardId) => candidate.cards[cardId]!.definitionId === 'base:helper/helper-12');
+      if (!helper12) continue;
+      if (active[0] !== helper12) {
+        const current = active[0]!;
+        deck.splice(deck.indexOf(helper12), 1, current);
+        active[0] = helper12;
+      }
+      state = candidate;
+      break;
+    }
+    if (!state) throw new Error('A deterministic setup must select helper 12 within the test budget.');
+    expect(state.status).toBe('setup');
+    expect(state.effectState.pendingChoice).toBeUndefined();
+    for (let selection = 0; selection < 2; selection += 1) {
+      const actorId = state.bondSetup!.currentActorId;
+      const command = getLegalCommands(state, ruleset, actorId).find((candidate) => candidate.type === 'SELECT_BONDS')!;
+      const result = dispatch(state, ruleset, envelope(state, actorId, command, `helper-12-bond-${selection + 1}`));
+      expect(result.error).toBeUndefined();
+      state = result.state;
+    }
+    expect(state.status).toBe('playing');
+    expect(state.bondSetup).toBeUndefined();
+    expect(state.effectState.pendingChoice).toMatchObject({ actorId: 'p1', decisionKind: 'choose-effect-option' });
+    expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
   });
 
   it('switches purchase and rest evaluators immediately after a Boss rotates helper 01 to helper 07', () => {

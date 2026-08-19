@@ -31,27 +31,47 @@ describe('full provisional original-derived pack', () => {
     const enabled = baseProvisionalOriginalFullContentPack.definitions.filter(({ tags }) => tags?.includes('playtest:effect-enabled'));
     expect(enabled.map(({ id }) => id).sort()).toEqual([
       'base:adventurer/adventurer-02',
+      'base:adventurer/adventurer-01',
       'base:adventurer/adventurer-04',
       'base:adventurer/adventurer-05',
+      'base:adventurer/adventurer-06',
+      'base:adventurer/adventurer-07',
+      'base:adventurer/adventurer-08',
       'base:adventurer/adventurer-09',
       'base:adventurer/adventurer-10',
+      'base:adventurer/adventurer-11',
+      'base:adventurer/adventurer-12',
+      'base:adventurer/adventurer-13',
+      'base:adventurer/adventurer-14',
       'base:adventurer/adventurer-15',
+      'base:adventurer/adventurer-16',
+      'base:adventurer/adventurer-17',
+      'base:adventurer/adventurer-18',
+      'base:adventurer/adventurer-19',
       'base:adventurer/adventurer-20',
+      'base:adventurer/adventurer-21',
+      'base:adventurer/adventurer-22',
+      'base:adventurer/adventurer-23',
       'base:adventurer/adventurer-24',
+      'base:adventurer/adventurer-25',
+      'base:adventurer/adventurer-26',
       'base:adventurer/adventurer-27',
-      ...['01', '02', '03', '05', '06', '08', '09', '10', '11'].map((id) => `base:boss/boss-${id}`),
-      ...['01','02','03','04','05','07','08','10','12','13','15','17','18','25','27'].map((id) => `base:resource/resource-${id}`),
-      ...['01', '02', '03', '06', '09', '10', '11', '14'].map((id) => `base:monster/monster-${id}`),
+      'base:adventurer/adventurer-28',
+      'base:adventurer/adventurer-29',
+      'base:adventurer/adventurer-30',
+      ...['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].map((id) => `base:boss/boss-${id}`),
+      ...['01','02','03','04','05','06','07','08','10','12','13','14','15','16','17','18','19','20','21','23','24','25','26','27','28'].map((id) => `base:resource/resource-${id}`),
+      ...['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14'].map((id) => `base:monster/monster-${id}`),
     ].sort());
-    expect(enabled.every((definition) => definition.useEffect || definition.equipmentEventTriggers || definition.type === 'monster' || ['01', '02', '03', '05', '06', '08', '09', '10', '11'].some((id) => definition.id === `base:boss/boss-${id}`) || ['02', '04', '05', '09', '10', '15', '20', '24', '27'].some((id) => definition.id === `base:adventurer/adventurer-${id}`) || ['02', '03', '07', '12', '25'].some((id) => definition.id === `base:resource/resource-${id}`))).toBe(true);
+    expect(enabled.every((definition) => definition.useEffect || definition.equipmentEventTriggers || definition.type === 'monster' || ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].some((id) => definition.id === `base:boss/boss-${id}`) || ['01', '02', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30'].some((id) => definition.id === `base:adventurer/adventurer-${id}`) || ['02', '03', '06', '07', '12', '14', '16', '19', '20', '21', '24', '25'].some((id) => definition.id === `base:resource/resource-${id}`))).toBe(true);
     expect(baseProvisionalOriginalFullCapabilityMatrix).toHaveLength(baseProvisionalOriginalFullContentPack.definitions.length + baseProvisionalOriginalFullContentPack.bonds!.length);
     const enabledEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'enabled');
-    expect(enabledEntries).toHaveLength(41);
+    expect(enabledEntries).toHaveLength(109);
     expect(enabledEntries.every(({ requiredCapabilities, cpuResolver, testIds, blocker }) => requiredCapabilities.length > 0 && cpuResolver !== 'none-effect-disabled' && testIds.length >= 3 && blocker === undefined)).toBe(true);
     const blockedEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked');
     expect(blockedEntries.every(({ blocker, evidenceReference, testIds }) => blocker !== undefined && evidenceReference.length > 0 && testIds.length > 0)).toBe(true);
     expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond')).toHaveLength(30);
-    expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond').every(({ blocker }) => blocker === 'unverified-bond-condition')).toBe(true);
+    expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond').every(({ effectStatus, blocker, requiredCapabilities }) => effectStatus === 'enabled' && blocker === undefined && requiredCapabilities.includes('bond-condition-rules'))).toBe(true);
     expect(baseProvisionalOriginalFullCapabilityMatrix.every((entry) => entry.requiredCapabilities.every((capability) => baseProvisionalOriginalFullCapabilityRegistry.engineCapabilities.includes(capability as never)) && baseProvisionalOriginalFullCapabilityRegistry.cpuResolvers.includes(entry.cpuResolver as never) && entry.testIds.every((testId) => baseProvisionalOriginalFullCapabilityRegistry.testIds.includes(testId as never)))).toBe(true);
     expect(enabledEntries.every(({ effectPaths, decisionKinds }) => effectPaths.length === decisionKinds.length)).toBe(true);
     for (const id of ['01', '02', '09', '14']) {
@@ -65,9 +85,12 @@ describe('full provisional original-derived pack', () => {
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-02')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['equipment-eligibility']), testIds: expect.arrayContaining(['engine:equipment-eligibility']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-09')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['equipment-combat-modifier']), testIds: expect.arrayContaining(['engine:equipment-combat-modifier']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-09')?.requiredCapabilities).not.toContain('equipment-eligibility');
-    for (const id of ['04', '10', '15', '20', '24', '27']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['party-combat-modifier']), testIds: expect.arrayContaining(['engine:party-combat-modifier']) });
+    for (const id of ['04', '10', '14', '15', '20', '24', '27']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['party-combat-modifier']), testIds: expect.arrayContaining(['engine:party-combat-modifier']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-05')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['purchase-cost-modifier']), testIds: expect.arrayContaining(['engine:purchase-cost-modifier']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:resource/resource-12')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['equipment-departure-policy']), testIds: expect.arrayContaining(['engine:equipment-departure-policy']) });
+    for (const id of ['22', '25', '29']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['attachment-policy']), testIds: expect.arrayContaining(['engine:attachment-policy']) });
+    for (const id of ['19', '21']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['combat-departure-replacement-policy']), testIds: expect.arrayContaining(['engine:combat-departure-replacement-policy']), decisionKinds: ['choose-party-member'] });
+    for (const id of ['04', '07']) expect(enabledEntries.find(({ contentId }) => contentId === `base:boss/boss-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['enemy-attachment-policy', 'combat-reward-policy']), testIds: expect.arrayContaining(['engine:enemy-attachment-policy']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:boss/boss-05')).toMatchObject({ decisionKinds: ['choose-market-card', 'choose-market-card'], requiredCapabilities: expect.arrayContaining(['combat-evaluator', 'combat-reward-policy', 'public-row-card-choice', 'typed-player-view-choice']), cpuResolver: 'base:cpu-balanced/effect-card-choice' });
     for (const id of ['01', '08', '11']) expect(enabledEntries.find(({ contentId }) => contentId === `base:boss/boss-${id}`)).toMatchObject({ decisionKinds: ['choose-market-card', 'choose-market-card'], requiredCapabilities: expect.arrayContaining(['combat-evaluator', 'combat-reward-policy', 'public-row-card-choice', 'typed-player-view-choice']), cpuResolver: 'base:cpu-balanced/effect-card-choice' });
     for (const id of ['06', '09']) expect(enabledEntries.find(({ contentId }) => contentId === `base:boss/boss-${id}`)).toMatchObject({ decisionKinds: [], requiredCapabilities: expect.arrayContaining(['combat-evaluator', 'combat-reward-policy', 'shared-deck-draw']), cpuResolver: 'base:cpu-balanced/legal-command-scoring' });

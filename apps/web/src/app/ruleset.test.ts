@@ -132,6 +132,59 @@ describe('web content modes', () => {
     expect(webGameSetupFromSnapshot(['base:provisional-original-full', 'base:provisional-original-full-helpers'], ['base:rules', 'base:provisional-original-full-rules', 'base:helpers'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: true } });
   });
 
+  it('creates a four-player custom-adventurer ruleset with an exact replacement roster and restorable identity', () => {
+    const ruleset = createWebRuleset(undefined, 'custom-adventurers-full');
+    const packIds = ruleset.registry.packs.map(({ id }) => id);
+    const moduleIds = ruleset.modules.map(({ id }) => id);
+
+    expect(packIds).toEqual([
+      'base:provisional-original-full',
+      'custom:adventurers-full',
+      'custom:adventurers-full-helpers',
+    ]);
+    expect(moduleIds).toEqual([
+      'base:rules',
+      'base:helpers',
+      'custom:adventurers-full-rules',
+    ]);
+    expect(webContentModeFromPackIds(packIds)).toBe('custom-adventurers-full');
+    expect(webGameSetupFromSnapshot(packIds, moduleIds)).toEqual({
+      contentMode: 'custom-adventurers-full',
+      advancedRules: { helpers: true },
+    });
+
+    const adventurerDefinitions = Object.values(ruleset.registry.definitions)
+      .filter(({ type }) => type === 'adventurer');
+    expect(adventurerDefinitions).toHaveLength(43);
+    expect(adventurerDefinitions.every(({ id }) => id.startsWith('custom:adventurer/'))).toBe(true);
+    expect('partyDefinitionIds' in ruleset.registry.starter ? ruleset.registry.starter.partyDefinitionIds : []).toEqual([
+      'custom:starter/support',
+      'custom:starter/melee',
+      'custom:starter/mage',
+      'custom:starter/tank',
+      'custom:starter/ranged',
+    ]);
+
+    const state = createGame({
+      gameId: 'custom-adventurers-four-player',
+      seed: 20260818,
+      players: [
+        { id: 'human-1', name: '你', kind: 'human' },
+        { id: 'ai-1', name: 'CPU 1', kind: 'ai' },
+        { id: 'ai-2', name: 'CPU 2', kind: 'ai' },
+        { id: 'ai-3', name: 'CPU 3', kind: 'ai' },
+      ],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    expect(state.players).toHaveLength(4);
+    expect(state.players.every(({ party }) => party.every(({ adventurerId }) => state.cards[adventurerId]!.definitionId.startsWith('custom:starter/')))).toBe(true);
+    expect([
+      ...state.zones['base:adventurer-deck']!.cardIds,
+      ...state.zones['base:adventurer-row']!.cardIds,
+    ]).toHaveLength(86);
+    expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
+  });
+
   it('keeps helper-off provisional registry identity and definition count unchanged', () => {
     const direct = createRuleset([baseProvisionalFoundationContentPack], [baseRulesModule], { allowProvisionalPlaytest: true });
     const web = createWebRuleset(undefined, { contentMode: 'provisional-playtest', advancedRules: { helpers: false } });

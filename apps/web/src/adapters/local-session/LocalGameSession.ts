@@ -4,6 +4,7 @@ import { stableJsonFingerprint, type CommandEnvelope, type DomainEvent, type Eng
 import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 import { auditCpuReplay } from './cpu-replay-audit.js';
+import { webContentModeFromPackIds } from '../../app/content-mode.js';
 
 const localGameIdPattern = /^local-(\d+)$/;
 
@@ -97,7 +98,10 @@ export class LocalGameSession {
     return createGame(this.initialConfig, this.ruleset);
   }
 
-  private isFourPlayerMode(): boolean { return this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full'); }
+  private isFourPlayerMode(): boolean {
+    const mode = webContentModeFromPackIds(this.ruleset.registry.packs.map(({ id }) => id));
+    return mode === 'provisional-original-full' || mode === 'custom-adventurers-full';
+  }
 
   private assertPlayerAuthority(state: GameState, initialConfig?: ReplayInitialConfig): void {
     if (!this.isFourPlayerMode()) return;
@@ -130,10 +134,10 @@ export class LocalGameSession {
     const oldFull = state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full') && !(state.contentPacks?.some(({ id }) => id === 'base:provisional-original-full-helpers'));
     const currentFull = this.ruleset.registry.packs.some(({ id }) => id === 'base:provisional-original-full-helpers');
     if (oldPack && oldModule && currentPack && currentModule || Boolean(oldFull && currentFull)) return { reasonCode: 'helper-rules-upgraded', previousPackVersion: '0.1.0', previousModuleVersion: '1.0.0' };
-    const previousFullPack = state.contentPacks?.find(({ id, version }) => id === 'base:provisional-original-full' && ['0.4.0', '0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.9.0', '0.10.0', '0.11.0'].includes(version));
-    const previousFullModule = state.rulesModules?.find(({ id, version }) => id === 'base:provisional-original-full-rules' && ['1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '2.0.0', '2.1.0'].includes(version));
-    const currentFullPack = this.ruleset.registry.packs.some(({ id, version }) => id === 'base:provisional-original-full' && version === '0.12.0');
-    const currentFullModule = this.ruleset.modules.some(({ id, version }) => id === 'base:provisional-original-full-rules' && version === '2.2.0');
+    const previousFullPack = state.contentPacks?.find(({ id, version }) => id === 'base:provisional-original-full' && ['0.4.0', '0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.9.0', '0.10.0', '0.11.0', '0.12.0', '0.13.0', '0.14.0', '0.15.0', '0.16.0', '0.17.0'].includes(version));
+    const previousFullModule = state.rulesModules?.find(({ id, version }) => id === 'base:provisional-original-full-rules' && ['1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0'].includes(version));
+    const currentFullPack = this.ruleset.registry.packs.some(({ id, version }) => id === 'base:provisional-original-full' && version === '0.18.0');
+    const currentFullModule = this.ruleset.modules.some(({ id, version }) => id === 'base:provisional-original-full-rules' && version === '2.8.0');
     return previousFullPack && previousFullModule && currentFullPack && currentFullModule
       ? { reasonCode: 'card-rules-upgraded', previousPackVersion: previousFullPack.version, previousModuleVersion: previousFullModule.version }
       : undefined;
@@ -312,7 +316,7 @@ export class LocalGameSession {
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
       entrySummary: {
         schemaVersion: 3,
-        contentMode: basePack.id === 'base:provisional-original-full' ? 'provisional-original-full' : basePack.contentStatus === 'provisional-playtest' ? 'provisional-playtest' : 'demo',
+        contentMode: webContentModeFromPackIds(this.ruleset.registry.packs.map(({ id }) => id)),
         advancedRules: { helpers: this.ruleset.modules.some(({ id }) => id === 'base:helpers') },
         contentPackId: basePack.id,
         canContinue: this.persistenceState === 'restored',

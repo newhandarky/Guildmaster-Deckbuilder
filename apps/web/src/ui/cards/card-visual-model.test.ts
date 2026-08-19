@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardDefinition, CardInstance, GameCommand } from '@guildmaster/game-protocol';
 import type { PresentationViewModel } from '@guildmaster/presentation-core';
-import { buildCardVisualModel, cardAccessibleName, commandAction, equipmentSelectionAction, isCardActionCurrent } from './card-visual-model.js';
+import { buildCardVisualModel, cardAccessibleName, cardActionMenu, commandAction, equipmentSelectionAction, isCardActionCurrent } from './card-visual-model.js';
 
 const instance: CardInstance = { id: 'card-1', definitionId: 'demo:adventurer/one' };
 const presentation: PresentationViewModel = {
@@ -192,5 +192,19 @@ describe('card visual model', () => {
     const action = equipmentSelectionAction('equipment-1', [first, second]);
     expect(isCardActionCurrent(action, [second, first])).toBe(true);
     expect(isCardActionCurrent(action, [first])).toBe(false);
+  });
+
+  it('keeps play and attachment commands simultaneously reachable for attachable adventurers', () => {
+    const play = commandAction('play', '加入隊伍', { type: 'PLAY_ADVENTURER', cardId: instance.id });
+    const attach = equipmentSelectionAction(instance.id, [
+      { type: 'ATTACH_CARD', cardId: instance.id, adventurerId: 'adventurer-2' },
+    ])!;
+    const action = cardActionMenu('adventurer-actions', [play, attach]);
+    const model = buildCardVisualModel({ instance, definition: definition(), presentation, interactionState: 'legal', action });
+
+    expect(action).toMatchObject({ kind: 'action-menu', actions: [play, attach] });
+    expect(cardAccessibleName(model)).toContain('動作：加入隊伍、選擇配戴對象');
+    expect(isCardActionCurrent(action, [play.command, ...attach.commands])).toBe(true);
+    expect(isCardActionCurrent(action, [play.command])).toBe(false);
   });
 });

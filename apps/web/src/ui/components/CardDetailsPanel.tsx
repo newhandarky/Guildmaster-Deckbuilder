@@ -101,7 +101,9 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
         </details> : null}
       </div>
       <footer className="card-details-footer">
-        {card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
+        {card.action?.kind === 'action-menu'
+          ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
+          : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
         <button type="button" onClick={close}>關閉</button>
       </footer>
     </article> : null}

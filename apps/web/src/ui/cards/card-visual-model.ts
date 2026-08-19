@@ -10,6 +10,8 @@ import {
 } from './card-appearance.js';
 import type { CardIconKey } from './card-icons.js';
 
+export type AttachableCommand = Extract<GameCommand, { type: 'EQUIP_ITEM' | 'ATTACH_CARD' }>;
+
 export type CardTemplate = 'character' | 'standard' | 'supply' | 'enemy' | 'boss' | 'full-art';
 export type CardInteractionState = 'default' | 'legal' | 'selected' | 'target' | 'unavailable';
 export type CardMetricKind = 'cost' | 'combat' | 'purchasePower' | 'honor';
@@ -34,15 +36,22 @@ export type CardCornerSlot = {
   accessibleLabel: string;
 };
 
-export type CardAction =
+export type DirectCardAction =
   | { kind: 'command'; id: string; label: string; command: GameCommand }
   | {
       kind: 'select-equipment';
       id: string;
       label: string;
       equipmentCardId: string;
-      commands: readonly Extract<GameCommand, { type: 'EQUIP_ITEM' }>[];
+      commands: readonly AttachableCommand[];
     };
+
+export type CardAction = DirectCardAction | {
+  kind: 'action-menu';
+  id: string;
+  label: string;
+  actions: readonly DirectCardAction[];
+};
 
 export type CardVisualViewModel = {
   instanceId?: string;
@@ -203,23 +212,31 @@ export function buildCardVisualModel({
   };
 }
 
-export function commandAction(id: string, label: string, command: GameCommand): CardAction {
+export function commandAction(id: string, label: string, command: GameCommand): Extract<DirectCardAction, { kind: 'command' }> {
   return { kind: 'command', id, label, command };
 }
 
 export function equipmentSelectionAction(
   cardId: string,
-  commands: readonly Extract<GameCommand, { type: 'EQUIP_ITEM' }>[],
-): CardAction | undefined {
+  commands: readonly AttachableCommand[],
+): Extract<DirectCardAction, { kind: 'select-equipment' }> | undefined {
   return commands.length > 0
     ? { kind: 'select-equipment', id: `select-equipment:${cardId}`, label: '選擇配戴對象', equipmentCardId: cardId, commands: [...commands] }
     : undefined;
 }
 
+export function cardActionMenu(id: string, actions: readonly DirectCardAction[]): CardAction | undefined {
+  if (actions.length === 0) return undefined;
+  if (actions.length === 1) return actions[0];
+  return { kind: 'action-menu', id, label: '選擇動作', actions: [...actions] };
+}
+
 /** Gives inspectable cards a concise name without implying that opening details executes the action. */
 export function cardAccessibleName(card: CardVisualViewModel): string {
   const metricSummary = card.detailMetrics.map((metric) => `${metric.label} ${metric.value}`).join('，');
-  const actionSummary = card.action ? `，動作：${card.action.label}` : '';
+  const actionSummary = card.action
+    ? `，動作：${card.action.kind === 'action-menu' ? card.action.actions.map(({ label }) => label).join('、') : card.action.label}`
+    : '';
   return `${card.displayName}，${card.cardTypeLabel}${metricSummary ? `，${metricSummary}` : ''}，${card.stateDescription}${actionSummary}，開啟卡牌詳情`;
 }
 
@@ -230,14 +247,15 @@ function commandFingerprint(command: GameCommand): string {
 /** Keeps details actions tied to the current authoritative legal-command set, even before a transaction commits. */
 export function isCardActionCurrent(action: CardAction | undefined, legalCommands: readonly GameCommand[]): boolean {
   if (!action) return true;
+  if (action.kind === 'action-menu') return action.actions.every((candidate) => isCardActionCurrent(candidate, legalCommands));
   if (action.kind === 'command') {
     const expected = commandFingerprint(action.command);
     return legalCommands.some((command) => commandFingerprint(command) === expected);
   }
   const expected = action.commands.map(commandFingerprint).sort();
   const current = legalCommands
-    .filter((command): command is Extract<GameCommand, { type: 'EQUIP_ITEM' }> =>
-      command.type === 'EQUIP_ITEM' && command.cardId === action.equipmentCardId)
+    .filter((command): command is AttachableCommand =>
+      (command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD') && command.cardId === action.equipmentCardId)
     .map(commandFingerprint)
     .sort();
   return JSON.stringify(current) === JSON.stringify(expected);

@@ -4,6 +4,7 @@ import { evaluateEncounterCompletion, evaluateEnemyTargetDamage, evaluateEnemyTa
 import type { Ruleset } from '../rules/ruleset.js';
 import { validateRulesetStateCompatibility } from '../rules/ruleset.js';
 import { validateGameStateInvariants } from './state-invariants.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 type CreateEncounterNode = Extract<import('@guildmaster/game-protocol').EffectNode, { kind: 'create-enemy-encounter' }>;
 type CreateTargetNode = Extract<import('@guildmaster/game-protocol').EffectNode, { kind: 'create-enemy-target' }>;
@@ -55,7 +56,7 @@ function cardLocations(state: GameState, cardId: string): string[] {
   state.removedCards.forEach((candidate) => { if (candidate === cardId) locations.push('removed'); });
   for (const player of state.players) {
     for (const zone of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) player[zone].forEach((candidate) => { if (candidate === cardId) locations.push(`player:${player.id}:${zone}`); });
-    player.party.forEach((slot, index) => { if (slot.adventurerId === cardId) locations.push(`player:${player.id}:party:${index}`); if (slot.equipmentId === cardId) locations.push(`player:${player.id}:equipment:${index}`); });
+    player.party.forEach((slot, index) => { if (slot.adventurerId === cardId) locations.push(`player:${player.id}:party:${index}`); if (attachedCardIds(slot).includes(cardId)) locations.push(`player:${player.id}:equipment:${index}`); });
   }
   for (const target of Object.values(state.enemyTargets)) if (target.status !== 'defeated' && target.status !== 'removed') {
     if (target.cardInstanceId === cardId) locations.push(`target:${target.targetId}:card`);

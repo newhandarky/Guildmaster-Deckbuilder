@@ -59,6 +59,43 @@ describe('core abstraction contracts', () => {
     expect(getScoreboard(state, ruleset).find((row) => row.playerId === 'p1')!.honor).toBe(7);
   });
 
+  it('rotates game-start player references from a non-first starting seat', () => {
+    const gameStartModule: RulesModule = {
+      id: 'test:game-start-order',
+      version: '1',
+      getPartyLimit: (_state, _player, limit) => limit,
+      onSupplyDepleted: () => 'handled',
+      lifecycleHooks: [{
+        schemaVersion: 1,
+        moduleId: 'test:game-start-order',
+        hookId: 'choose-starting-seat',
+        point: 'game-start',
+        kind: 'trigger',
+        priority: 1,
+        effect: {
+          schemaVersion: 1,
+          effectId: 'test:game-start-order/choose-starting-seat',
+          body: {
+            kind: 'choice',
+            choiceId: 'test:game-start-order/choice',
+            actor: { kind: 'context-player', key: 'draftPlayer0' },
+            options: [{ id: 'continue', effect: { kind: 'draw', player: { kind: 'controller' }, count: 0 } }],
+          },
+        },
+      }],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, gameStartModule]);
+    const state = createGame({
+      gameId: 'non-first-game-start',
+      seed: 23,
+      players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'human' }, { id: 'p3', name: 'P3', kind: 'ai' }],
+      startingPlayerId: 'p2',
+    }, ruleset);
+
+    expect(state.effectState.pendingChoice?.actorId).toBe('p2');
+    expect(state.effectState.pendingLifecycle?.context.playerRefs).toMatchObject({ draftPlayer0: 'p2', draftPlayer1: 'p3', draftPlayer2: 'p1' });
+  });
+
   it('validates Content Pack dependencies, conflicts, and replacements', () => {
     const missingDependency: ContentPack = { manifest: { id: 'test:missing', version: '1', hash: 'a', dependencies: ['not-installed'] }, definitions: [] };
     const conflict: ContentPack = { manifest: { id: 'test:conflict', version: '1', hash: 'b', conflicts: ['test:content'] }, definitions: [] };
@@ -70,6 +107,18 @@ describe('core abstraction contracts', () => {
     expect(registry.replacementMap['test:adventurer/a']).toBe('test:adventurer/replacement');
     const higherPriority: ContentPack = { manifest: { id: 'test:replacement-high', version: '1', hash: 'd' }, definitions: [{ id: 'test:adventurer/replacement-high', name: '高優先替換', type: 'adventurer', copies: 1, source: 'test' }], replacements: [{ replacesDefinitionId: 'test:adventurer/a', replacementDefinitionId: 'test:adventurer/replacement-high', priority: 1 }] };
     expect(createContentRegistry([testPack, replacement, higherPriority]).replacementMap['test:adventurer/a']).toBe('test:adventurer/replacement-high');
+  });
+
+  it('resolves explicit starter definitions through the replacement map', () => {
+    const starterReplacement: ContentPack = {
+      manifest: { id: 'test:starter-replacement', version: '1', hash: 'starter-replacement' },
+      definitions: [{ id: 'test:starter/custom', name: '自定義起始成員', type: 'starter', copies: 1, combat: 2, source: 'test' }],
+      replacements: [{ replacesDefinitionId: 'test:starter/adventurer', replacementDefinitionId: 'test:starter/custom' }],
+    };
+    const ruleset = createRuleset([testPack, starterReplacement], [baseRulesModule]);
+    expect(ruleset.registry.starter).toMatchObject({ adventurerDefinitionId: 'test:starter/custom' });
+    const state = createGame({ gameId: 'starter-replacement', seed: 7, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset);
+    expect(state.players.every((player) => player.party.every(({ adventurerId }) => state.cards[adventurerId]!.definitionId === 'test:starter/custom'))).toBe(true);
   });
 
   it('rejects provisional playtest packs unless a caller explicitly opts in', () => {
