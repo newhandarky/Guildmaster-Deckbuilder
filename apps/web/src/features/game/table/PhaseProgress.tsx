@@ -2,7 +2,7 @@ import type { Phase } from '@guildmaster/game-protocol';
 import { buildPhaseProgress } from './gameplay-feedback.js';
 
 export function PhaseProgress({ phase }: { phase: Phase }) {
-  return <ol className="phase-progress" data-testid="phase-progress" aria-label="本回合階段">
+  return <ol className="phase-progress" data-testid="phase-progress" aria-label="本回合階段" tabIndex={0}>
     {buildPhaseProgress(phase).map((item) => <li
       className={`phase-step phase-step-${item.state}`}
       data-phase={item.phase}

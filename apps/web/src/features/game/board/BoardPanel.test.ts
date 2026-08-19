@@ -81,6 +81,7 @@ describe('public table simultaneous layout', () => {
     expect(markup).not.toContain('role="tab"');
     expect(markup).toContain('data-testid="encounter-area"');
     expect(markup).toContain('data-testid="tavern-area"');
+    expect(markup.match(/public-card-grid/g)?.length).toBeGreaterThanOrEqual(4);
     for (const zoneId of ['base:boss-row', 'base:monster-row', 'base:adventurer-row', 'base:item-row']) {
       expect(markup).toContain(`data-zone-id="${zoneId}"`);
     }

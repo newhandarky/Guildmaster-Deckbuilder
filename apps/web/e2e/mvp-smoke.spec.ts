@@ -572,7 +572,7 @@ test('art-first cards keep their desktop and mobile ratio without page overflow'
   await openGame(page, '/?e2eScenario=tagged-card-layout');
   const desktopCard = page.getByTestId('hand').getByRole('button').first();
   const desktopBox = await desktopCard.boundingBox();
-  expect(desktopBox?.width).toBeCloseTo(146, 0);
+  expect(desktopBox?.width).toBeCloseTo(77, 0);
   expect((desktopBox?.width ?? 0) / (desktopBox?.height ?? 1)).toBeCloseTo(63 / 88, 2);
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -812,6 +812,7 @@ test('restart clears an in-progress equipment selection', async ({ page }) => {
   await expect(page.locator('[data-card-state="target"]')).toHaveCount(5);
   await expect(page.getByRole('button', { name: '取消配戴' })).toBeVisible();
 
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   await page.getByRole('button', { name: '重新開始' }).click();
   await page.getByRole('button', { name: '確認重新開始' }).click();
   await expect(page.getByText('版本 0')).toBeVisible();
@@ -878,6 +879,8 @@ async function runCardAction(
 }
 
 async function openReplayDiagnostics(page: import('@playwright/test').Page): Promise<void> {
+  const moreButton = page.getByRole('button', { name: '更多', exact: true });
+  if (await moreButton.count() && await page.getByTestId('utility-drawer').count() === 0) await moreButton.click();
   const diagnostics = page.getByTestId('replay-diagnostics');
   if (await diagnostics.getAttribute('open') === null) {
     await diagnostics.locator('summary').click();

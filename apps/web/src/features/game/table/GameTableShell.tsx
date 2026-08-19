@@ -8,15 +8,15 @@ type Props = {
   party: ReactNode;
   hand: ReactNode;
   interaction: ReactNode;
-  activity: ReactNode;
+  utilities: ReactNode;
   details: ReactNode;
 };
 
 export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableShell(
-  { header, notices, playerStatus, publicTable, party, hand, interaction, activity, details },
+  { header, notices, playerStatus, publicTable, party, hand, interaction, utilities, details },
   ref,
 ) {
-  return <main ref={ref} className="app-shell" data-testid="game-app" tabIndex={-1}>
+  return <main ref={ref} className="app-shell game-app-shell" data-testid="game-app" tabIndex={-1}>
     <a className="skip-link" href="#primary-game-table">跳到主要牌桌</a>
     {header}
     {notices}
@@ -26,13 +26,13 @@ export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableS
         {publicTable}
         <div className="guild-area" data-testid="guild-area" role="region" aria-labelledby="guild-area-title">
           <h2 id="guild-area-title" className="area-title">你的公會區</h2>
-          {party}
-          {hand}
+          <div className="guild-party-column">{party}</div>
+          <div className="guild-hand-column">{hand}</div>
         </div>
       </div>
-      <div className="game-utility-column" data-testid="game-utility-column">
+      <div className="table-command-area" data-testid="table-command-area">
         {interaction}
-        {activity}
+        {utilities}
       </div>
     </div>
     {details}

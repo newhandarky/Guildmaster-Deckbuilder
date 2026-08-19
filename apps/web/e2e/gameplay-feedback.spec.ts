@@ -10,6 +10,7 @@ test('desktop table explains phase progress, legal actions, and card states', as
   await expect(progress.locator('[data-phase="action1"]')).toHaveAttribute('aria-current', 'step');
   await expect(page.getByTestId('legal-action-summary')).toHaveText('目前沒有額外卡牌動作，可以結束階段。');
 
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   const legend = page.getByTestId('card-state-legend');
   await expect(legend).toBeVisible();
   await expect(legend.getByRole('listitem')).toHaveCount(4);
@@ -31,9 +32,15 @@ test('accepted desktop actions advance feedback without duplicating the newest e
   await monsterRow.locator('[data-legal-action="true"]').first().click();
   await page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true }).click();
 
+  const compactLatest = page.getByTestId('compact-latest-event');
+  await expect(compactLatest).toContainText('討伐了');
+  await expect(compactLatest).toHaveAttribute('role', 'status');
+  await expect(compactLatest).toHaveAttribute('aria-live', 'polite');
+
+  await page.getByRole('button', { name: '事件', exact: true }).click();
   const latest = page.getByTestId('latest-event');
   await expect(latest).toContainText('討伐了');
-  await expect(latest).toHaveAttribute('role', 'status');
+  await expect(latest).not.toHaveAttribute('role', 'status');
   await expect(page.locator('.event-list')).not.toContainText('討伐了');
   await expect(page.locator('.event-list')).toContainText('結束階段');
 });

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FocusEvent } from 'react';
 import type { CardDefinition, CardInstance, Phase, PlayerView } from '@guildmaster/game-protocol';
 import type { PresentationResolver } from '@guildmaster/presentation-core';
+import { CompactPlayerSummary } from './CompactPlayerSummary.js';
+import { PlayerPublicDetails } from './PlayerPublicDetails.js';
 
 type OpponentSummary = PlayerView['opponents'][number];
 type BondDefinition = { id: string; name: string; honor: number };
@@ -11,6 +13,8 @@ type SelfSummary = {
   discardCount: number;
   turnPurchaseBonus: number;
   turnCombatBonus: number;
+  completedBondCount: number;
+  bondCount: number;
 };
 
 type Props = {
@@ -32,6 +36,7 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
   const [touchPinnedId, setTouchPinnedId] = useState<string>();
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const pointerFocusSuppressedRef = useRef(false);
+  const seatRefs = useRef(new Map<string, HTMLButtonElement>());
   const sortedOpponents = useMemo(() => [...opponents].sort((a, b) => a.seatIndex - b.seatIndex), [opponents]);
   const openId = suspendDetails ? undefined : hoveredId ?? focusedId ?? touchPinnedId;
   const open = opponents.find(({ id }) => id === openId);
@@ -40,11 +45,18 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
     if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
     hoverCloseTimerRef.current = undefined;
   };
-  const closeAllDetails = () => {
+  const closeAllDetails = (restoreFocusId?: string) => {
     clearHoverCloseTimer();
     setHoveredId(undefined);
     setFocusedId(undefined);
     setTouchPinnedId(undefined);
+    if (restoreFocusId) {
+      pointerFocusSuppressedRef.current = true;
+      window.requestAnimationFrame(() => {
+        seatRefs.current.get(restoreFocusId)?.focus();
+        pointerFocusSuppressedRef.current = false;
+      });
+    }
   };
 
   useEffect(() => {
@@ -78,17 +90,13 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
     if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
     setFocusedId((current) => current === opponentId ? undefined : current);
   };
-  const nameFor = (cardId: string) => {
-    const definitionId = cards[cardId]?.definitionId ?? '';
-    return presentation.resolve(definitionId).displayName || definitions[definitionId]?.name || '公開卡牌';
-  };
-
   return <section className="player-summary" data-testid="player-summary" aria-label="玩家座位資訊">
     <div className="self-seat">
       <h2>你的公會</h2>
       <span data-testid="human-card-count">手牌 {self.handCount} · 牌庫 {self.drawPileCount} · 棄牌 {self.discardCount}</span>
       <strong data-testid="phase-status">{phase === 'purchase' ? '購買階段' : '準備行動'}</strong>
       <span>道具加成：購買 +{self.turnPurchaseBonus}／戰力 +{self.turnCombatBonus}</span>
+      <span>羈絆 {self.completedBondCount}/{self.bondCount}</span>
     </div>
     {sortedOpponents.map((opponent, index) => {
       const expanded = openId === opponent.id;
@@ -105,8 +113,17 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
           if (event.pointerType === 'mouse') scheduleHoverClose(opponent.id);
         }}
         onBlur={(event) => onClusterBlur(event, opponent.id)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !expanded) return;
+          event.preventDefault();
+          closeAllDetails(opponent.id);
+        }}
       >
         <button
+          ref={(node) => {
+            if (node) seatRefs.current.set(opponent.id, node);
+            else seatRefs.current.delete(opponent.id);
+          }}
           id={`player-seat-${opponent.id}`}
           type="button"
           className={`player-seat${opponent.isActive ? ' player-seat-active' : ''}`}
@@ -132,21 +149,9 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
             setFocusedId(opponent.id);
           }}
         >
-          <strong>{opponent.name} · {opponent.kind === 'ai' ? 'CPU' : '真人'}{opponent.isActive ? ' · 行動中' : ''}</strong>
-          <span>手牌 {opponent.handCount} · 棄牌 {opponent.discardCount}</span>
-          <span>隊伍 {opponent.partyCount} · 公開戰力 {opponent.partyCombat} · 羈絆 {opponent.bonds.length}</span>
+          <CompactPlayerSummary opponent={opponent} expanded={expanded} />
         </button>
-        {expanded && open ? <aside id={`opponent-${open.id}`} className="opponent-details" role="dialog" aria-label={`${open.name} 的公開資訊`}>
-          <button type="button" className="icon-button opponent-details-close" aria-label={`關閉 ${open.name} 的公開資訊`} onClick={closeAllDetails}>×</button>
-          <h2>{open.name} 的公開隊伍</h2>
-          <p>已擊敗：魔王 {open.defeatedBosses} · 魔物 {open.defeatedMonsters}</p>
-          <ol>{open.party.map((member) => {
-            const attachments = member.equipmentIds ?? (member.equipmentId ? [member.equipmentId] : []);
-            return <li key={member.adventurerId}><strong>{nameFor(member.adventurerId)}</strong> · 有效戰力 {member.effectiveCombat}{attachments.length ? ` · 附件：${attachments.map(nameFor).join('、')}` : ''}</li>;
-          })}</ol>
-          <p>已公開羈絆：{open.bonds.length ? open.bonds.map(({ bondId }) => { const bond = bondDefinitions.find(({ id }) => id === bondId); return `${bond?.name ?? bondId}（${bond?.honor ?? 0} 榮譽）`; }).join('、') : '無'}</p>
-          {open.counters.length ? <p>公開 counter：{open.counters.map(({ resourceId, amount }) => `${resourceId} ${amount}`).join('、')}</p> : null}
-        </aside> : null}
+        {expanded && open ? <PlayerPublicDetails opponent={open} cards={cards} definitions={definitions} presentation={presentation} bondDefinitions={bondDefinitions} onClose={() => closeAllDetails(opponent.id)} /> : null}
       </div>;
     })}
   </section>;
