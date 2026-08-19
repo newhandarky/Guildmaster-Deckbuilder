@@ -18,7 +18,7 @@ type Props = {
 export function PartyPanel({ player, partyLimit, definitions, cardDefinitions, presentation, legalEquipCommands, onInspect, onCommand, equipCardId }: Props) {
   return <section className="party-panel" aria-labelledby="party-title">
     <h3 id="party-title">隊伍（{player.party.length}/{partyLimit}）</h3>
-    <div className="card-row" aria-label="隊伍卡片">
+    <div className="card-row party-card-row" aria-label="隊伍卡片">
     {player.party.map((slot, index) => {
       const definitionId = cardDefinitions[slot.adventurerId] ?? '';
       const commands = equipCardId

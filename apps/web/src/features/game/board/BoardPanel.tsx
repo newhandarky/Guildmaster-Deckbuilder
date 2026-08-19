@@ -45,7 +45,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
     const headingId = `${zoneId.replaceAll(':', '-')}-title`;
     return <section className="board-row board-zone" data-zone-id={zoneId} aria-labelledby={headingId}>
       <h3 id={headingId}>{title}</h3>
-      <div className="card-row" aria-label={`${title}卡片`}>{ids.map((id) => {
+      <div className="card-row public-card-grid" aria-label={`${title}卡片`}>{ids.map((id) => {
         const target = availableTargets.get(id);
         const definition = definitionFor(cards, definitions, id);
         const command = action === 'attack'
@@ -84,7 +84,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
         {helperZone ? <section className="board-row board-zone helper-panel" data-testid="helper-panel" data-zone-id="base:helper-active" aria-labelledby="helper-panel-title">
           <h3 id="helper-panel-title">目前協助者</h3>
           {helperCard
-            ? <div className="card-row" aria-label="目前協助者卡片"><Card card={helperCard} onInspect={onInspect} /></div>
+            ? <div className="card-row public-card-grid" aria-label="目前協助者卡片"><Card card={helperCard} onInspect={onInspect} /></div>
             : <p>目前沒有協助者在場。</p>}
           <p className="helper-retired-count">已離場 {cardsIn('base:helper-retired').length} 張</p>
         </section> : null}

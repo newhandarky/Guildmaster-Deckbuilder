@@ -48,8 +48,9 @@ test('desktop keyboard path reaches an exact card action and restores focus afte
   const action = page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true });
   await tabUntilFocused(page, 'Tab', action);
   await action.press('Space');
-  await expect(page.locator('.log')).toContainText('討伐了');
   await expect(page.getByTestId('interaction-hint')).toBeFocused();
+  await page.getByRole('button', { name: '事件', exact: true }).click();
+  await expect(page.locator('.log')).toContainText('討伐了');
 });
 
 test('scoreboard uses list semantics and hands focus to the new-expedition flow', async ({ page }) => {
@@ -85,8 +86,21 @@ test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }
   await expectNoAccessibilityViolations(page);
 });
 
+test('bond setup is announced as a focused non-modal blocking choice', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('button', { name: '開始新遠征' }).click();
+
+  const setup = page.getByRole('dialog', { name: '從七張私人羈絆保留五張' });
+  await expect(setup).toBeVisible();
+  await expect(setup).not.toHaveAttribute('aria-modal');
+  await expect(setup.getByRole('heading', { name: '從七張私人羈絆保留五張' })).toBeFocused();
+  await expectNoAccessibilityViolations(page);
+});
+
 test('expanded Replay diagnostics meet automated WCAG A/AA checks', async ({ page }) => {
   await openGame(page);
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   await page.getByTestId('replay-diagnostics').getByText('Replay 診斷（開發工具）').click();
   await expect(page.getByTestId('replay-runner')).toBeVisible();
   await expectNoAccessibilityViolations(page);
@@ -107,8 +121,22 @@ test('skip link reaches the primary table and primary controls expose visible fo
   await expect(endPhase).toHaveCSS('outline-width', '3px');
 });
 
+test('non-modal utility drawer closes from Escape outside the drawer and restores its trigger', async ({ page }) => {
+  await openGame(page);
+  const eventsTrigger = page.getByRole('button', { name: '事件', exact: true });
+  await eventsTrigger.click();
+  await expect(page.getByRole('button', { name: '關閉事件' })).toBeFocused();
+
+  await page.getByTestId('end-phase').focus();
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByTestId('utility-drawer')).toHaveCount(0);
+  await expect(eventsTrigger).toBeFocused();
+});
+
 test('restart requires confirmation, Escape restores focus, and the game remains unchanged', async ({ page }) => {
   await openGame(page);
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   const restart = page.getByRole('button', { name: '重新開始' });
   await restart.click();
   const confirm = page.getByRole('button', { name: '確認重新開始' });
@@ -126,13 +154,17 @@ test('mobile controls meet the 44px target baseline and remain inside the docume
   await openGame(page);
   const controls = [
     page.getByTestId('end-phase'),
-    page.getByRole('button', { name: '重新開始' }),
   ];
   for (const control of controls) {
     const box = await control.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
     expect(box?.width).toBeGreaterThanOrEqual(44);
   }
+  await page.getByRole('button', { name: '更多', exact: true }).click();
+  const restartBox = await page.getByRole('button', { name: '重新開始' }).boundingBox();
+  expect(restartBox?.height).toBeGreaterThanOrEqual(44);
+  expect(restartBox?.width).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press('Escape');
   await page.getByTestId('hand').getByRole('button').first().click();
   const close = page.getByRole('button', { name: '關閉卡牌詳情' });
   const closeBox = await close.boundingBox();

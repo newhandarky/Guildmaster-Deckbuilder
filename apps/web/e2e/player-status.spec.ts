@@ -1,6 +1,29 @@
 import { expect, test } from '@playwright/test';
 import { openGame } from './game-entry.js';
 
+test('compact opponent summaries expose only authorized counts, combat, and completed bonds', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/');
+  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('button', { name: '開始新遠征' }).click();
+
+  const seats = page.locator('.player-seat');
+  await expect(seats).toHaveCount(3);
+  for (const seat of await seats.all()) {
+    await expect(seat).toContainText(/手牌 \d+/);
+    await expect(seat).toContainText(/隊伍 \d+/);
+    await expect(seat).toContainText(/戰力 \d+/);
+    await expect(seat).toContainText(/羈絆 \d+\/5/);
+    await expect(seat.locator('[data-card-instance-id]')).toHaveCount(0);
+  }
+
+  await seats.first().hover();
+  const details = page.getByTestId('opponent-details');
+  await expect(details).toBeVisible();
+  await expect(details.locator('[data-card-instance-id]')).toHaveCount(0);
+  await expect(details).not.toContainText('手牌內容');
+});
+
 test('mouse hover opens, crosses into the panel, and closes without pinning on desktop click', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openGame(page);
@@ -47,10 +70,25 @@ test('keyboard focus keeps public details open inside the cluster and closes aft
   await openGame(page);
   const seat = page.locator('.player-seat').first();
   const details = page.locator('.opponent-details');
+  const close = details.getByRole('button', { name: /關閉.*公開資訊/ });
 
   await seat.focus();
   await expect(details).toBeVisible();
-  await details.getByRole('button', { name: /關閉.*公開資訊/ }).focus();
+  await close.focus();
+  await expect(details).toBeVisible();
+  await close.press('Enter');
+  await expect(details).toHaveCount(0);
+  await expect(seat).toBeFocused();
+
+  await page.getByTestId('game-play-column').focus();
+  await seat.focus();
+  await expect(details).toBeVisible();
+  await seat.press('Escape');
+  await expect(details).toHaveCount(0);
+  await expect(seat).toBeFocused();
+
+  await page.getByTestId('game-play-column').focus();
+  await seat.focus();
   await expect(details).toBeVisible();
   await page.getByTestId('game-play-column').focus();
   await expect(details).toHaveCount(0);

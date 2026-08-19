@@ -2,11 +2,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { openGame } from './game-entry.js';
 
 const viewportCases = [
+  { name: 'minimum phone width', width: 320, height: 568, cardWidth: 112 },
   { name: 'phone portrait', width: 390, height: 844, cardWidth: 112 },
   { name: 'phone landscape', width: 844, height: 390, cardWidth: 112 },
   { name: 'tablet portrait', width: 768, height: 1024, cardWidth: 146 },
-  { name: 'tablet landscape', width: 1024, height: 768, cardWidth: 146 },
-  { name: 'desktop', width: 1440, height: 900, cardWidth: 146 },
+  { name: 'tablet landscape', width: 1024, height: 768, cardWidth: 88 },
+  { name: 'desktop', width: 1440, height: 900, cardWidth: 86 },
 ] as const;
 
 for (const viewport of viewportCases) {
@@ -22,14 +23,11 @@ for (const viewport of viewportCases) {
     expect(cardBox?.width).toBeCloseTo(viewport.cardWidth, 0);
     expect((cardBox?.width ?? 0) / (cardBox?.height ?? 1)).toBeCloseTo(63 / 88, 2);
 
-    if (viewport.width >= 1180) {
-      const playBox = await page.getByTestId('game-play-column').boundingBox();
-      const activityBox = await page.getByTestId('activity-rail').boundingBox();
-      expect(activityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
-    } else {
-      const playBox = await page.getByTestId('game-play-column').boundingBox();
-      const activityBox = await page.getByTestId('activity-rail').boundingBox();
-      expect(activityBox?.y).toBeGreaterThanOrEqual((playBox?.y ?? 0) + (playBox?.height ?? 0));
+    await expect(page.getByTestId('game-utility-column')).toHaveCount(0);
+    await expect(page.getByTestId('activity-rail')).toBeHidden();
+    for (const row of await page.locator('.public-card-grid').all()) {
+      expect(await row.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      await expect(row).not.toHaveCSS('overflow-x', 'auto');
     }
   });
 }
@@ -43,7 +41,7 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
-test('card frame stays rectangular with a thin fixed outer border at 112px, 146px, and 252px', async ({ page }) => {
+test('card frame stays rectangular with a thin fixed outer border in compact, desktop, and details sizes', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openGame(page);
   const compactCard = page.getByTestId('hand').getByRole('button').first();
@@ -55,7 +53,7 @@ test('card frame stays rectangular with a thin fixed outer border at 112px, 146p
   const desktopCard = page.getByTestId('hand').getByRole('button').first();
   await expect(desktopCard).toHaveCSS('border-radius', '10px');
   await expect(desktopCard).toHaveCSS('border-top-width', '1px');
-  expect((await desktopCard.boundingBox())?.width).toBeCloseTo(146, 0);
+  expect((await desktopCard.boundingBox())?.width).toBeCloseTo(86, 0);
 
   await desktopCard.click();
   const detailsCard = page.locator('.card-details-art');
@@ -66,46 +64,80 @@ test('card frame stays rectangular with a thin fixed outer border at 112px, 146p
 
 for (const viewport of [
   { width: 1280, height: 720 },
+  { width: 1366, height: 768 },
   { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
 ]) {
-  test(`desktop utility column keeps controls beside the table without overlap at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`desktop central table stays visible without document overflow at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await openGame(page, '/?e2eScenario=optional-helper');
 
     const playBox = await page.getByTestId('game-play-column').boundingBox();
-    const utility = page.getByTestId('game-utility-column');
-    const utilityBox = await utility.boundingBox();
     const interactionBox = await page.getByTestId('interaction-rail').boundingBox();
-    const activityBox = await page.getByTestId('activity-rail').boundingBox();
     const helperBox = await page.getByTestId('helper-panel').boundingBox();
     const bossBox = await page.locator('[data-zone-id="base:boss-row"]').boundingBox();
     const monsterBox = await page.locator('[data-zone-id="base:monster-row"]').boundingBox();
     const recruitBox = await page.locator('[data-zone-id="base:adventurer-row"]').boundingBox();
     const storeBox = await page.locator('[data-zone-id="base:item-row"]').boundingBox();
-    const monsterRow = page.locator('[data-zone-id="base:monster-row"] .card-row');
 
-    expect(utilityBox?.width).toBeCloseTo(320, 0);
-    expect(utilityBox?.x).toBeGreaterThan((playBox?.x ?? 0) + (playBox?.width ?? 0));
-    if (viewport.width >= 1440) expect(helperBox?.y).toBeCloseTo(bossBox?.y ?? 0, 0);
+    expect(playBox?.width).toBeGreaterThan(1000);
+    expect(helperBox?.y).toBeCloseTo(bossBox?.y ?? 0, 0);
     expect(bossBox?.y).toBeCloseTo(monsterBox?.y ?? 0, 0);
     expect(recruitBox?.y).toBeCloseTo(storeBox?.y ?? 0, 0);
-    await expect(monsterRow).toHaveCSS('overflow-x', 'auto');
-    expect(rectanglesOverlap(interactionBox, activityBox)).toBe(false);
+    for (const zoneId of ['base:helper-active', 'base:boss-row', 'base:monster-row', 'base:adventurer-row', 'base:item-row']) {
+      const row = page.locator(`[data-zone-id="${zoneId}"] .card-row`);
+      await expect(row).not.toHaveCSS('overflow-x', 'auto');
+      expect(await row.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    }
 
     for (const row of await page.locator('.card-row:visible').all()) {
       expect(rectanglesOverlap(interactionBox, await row.boundingBox())).toBe(false);
     }
-
-    await expect(utility).toHaveCSS('position', 'sticky');
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    const stickyUtilityBox = await utility.boundingBox();
-    expect(stickyUtilityBox?.y).toBeCloseTo(16, 0);
-    await expectNoDocumentOverflow(page);
+    await expectNoDocumentOverflow(page, true);
   });
 }
 
+test('four-player desktop keeps all three opponent summaries around the central table without page overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/');
+  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('button', { name: '開始新遠征' }).click();
+
+  await expect(page.locator('.player-seat-cluster')).toHaveCount(3);
+  await expect(page.locator('.seat-0')).toBeVisible();
+  await expect(page.locator('.seat-1')).toBeVisible();
+  await expect(page.locator('.seat-2')).toBeVisible();
+  await expectNoDocumentOverflow(page, true);
+});
+
+test('utility drawer overlays the table, preserves its width, and restores trigger focus on Escape', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await openGame(page);
+  const playColumn = page.getByTestId('game-play-column');
+  const before = await playColumn.boundingBox();
+  const events = page.getByRole('button', { name: '事件', exact: true });
+  await events.click();
+  await expect(page.getByTestId('utility-drawer')).toBeVisible();
+  await expect(page.getByTestId('activity-rail')).toBeVisible();
+  const during = await playColumn.boundingBox();
+  expect(during?.width).toBeCloseTo(before?.width ?? 0, 0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('utility-drawer')).toHaveCount(0);
+  await expect(events).toBeFocused();
+});
+
+test('required lifecycle interaction closes an open utility drawer and stays actionable', async ({ page }) => {
+  await openGame(page, '/?e2eScenario=lifecycle-choice');
+  await page.getByRole('button', { name: '事件', exact: true }).click();
+  await expect(page.getByTestId('utility-drawer')).toBeVisible();
+  await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.getByTestId('utility-drawer')).toHaveCount(0);
+  await expect(page.getByTestId('lifecycle-dock').getByRole('button', { name: '繼續', exact: true })).toBeVisible();
+});
+
 test('Replay diagnostics are collapsed by default and keyboard operable', async ({ page }) => {
   await openGame(page);
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   const diagnostics = page.getByTestId('replay-diagnostics');
   const summary = diagnostics.locator('summary');
 
@@ -214,10 +246,12 @@ test('low-height lifecycle interaction remains reachable without page overflow',
   await expectNoDocumentOverflow(page);
 });
 
-async function expectNoDocumentOverflow(page: Page): Promise<void> {
+async function expectNoDocumentOverflow(page: Page, includeVertical = false): Promise<void> {
   const overflow = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
     offenders: Array.from(document.querySelectorAll<HTMLElement>('body *'))
       .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
       .slice(0, 8)
@@ -230,6 +264,7 @@ async function expectNoDocumentOverflow(page: Page): Promise<void> {
       })),
   }));
   expect(overflow.scrollWidth, JSON.stringify(overflow.offenders)).toBeLessThanOrEqual(overflow.clientWidth);
+  if (includeVertical) expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight + 1);
 }
 
 function rectanglesOverlap(
@@ -248,7 +283,7 @@ async function expectFixedTableOrder(page: Page): Promise<void> {
     '[data-testid="public-table"]',
     '[data-testid="guild-area"]',
     '[data-testid="interaction-rail"]',
-    '[data-testid="activity-rail"]',
+    '[data-testid="utility-tools"]',
   ];
   const ordered = await page.locator(selectors.join(',')).evaluateAll((elements) =>
     elements.every((element, index) =>

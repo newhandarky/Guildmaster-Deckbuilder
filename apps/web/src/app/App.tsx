@@ -11,9 +11,12 @@ import { GameNotices } from '../features/game/table/GameNotices.js';
 import { GameResultsScreen } from '../features/game/table/GameResultsScreen.js';
 import { GameTableShell } from '../features/game/table/GameTableShell.js';
 import { HandPanel } from '../features/game/table/HandPanel.js';
+import { LatestEventStatus } from '../features/game/table/LatestEventStatus.js';
 import { PlayerStatusStrip } from '../features/game/table/PlayerStatusStrip.js';
 import { ReplayDiagnosticsPanel } from '../features/game/table/ReplayDiagnosticsPanel.js';
+import { RestartControl } from '../features/game/table/RestartControl.js';
 import { TurnControlDock } from '../features/game/table/TurnControlDock.js';
+import { UtilityDrawer, type UtilityDrawerSection } from '../features/game/table/UtilityDrawer.js';
 import { buildLegalActionSummary } from '../features/game/table/gameplay-feedback.js';
 import { buildInteractionHint, phaseDisplayName } from '../features/game/table/phase-copy.js';
 import { useLifecycleFocus } from '../features/game/table/use-lifecycle-focus.js';
@@ -49,6 +52,7 @@ export function App() {
   const appRootRef = useRef<HTMLElement>(null);
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
+  const bondSetupHeadingRef = useRef<HTMLHeadingElement>(null);
   const cardDefinitions = useMemo(
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
@@ -63,6 +67,9 @@ export function App() {
   const lifecyclePending = lifecycleInteraction.kind === 'choice'
     || lifecycleInteraction.kind === 'counter-consent'
     || lifecycleInteraction.kind === 'waiting';
+  const bondSetupOfferId = view.bondSetup?.offerId;
+  const bondSetupActorId = view.bondSetup?.currentActorId;
+  const hasBondSetupOffer = Boolean(view.bondSetup?.offeredBondIds);
   const interactionHint = buildInteractionHint({
     lifecyclePending,
     status: view.status,
@@ -104,14 +111,14 @@ export function App() {
     restart();
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        (interactionFallbackRef.current ?? appRootRef.current)?.focus();
+        (bondSetupHeadingRef.current ?? lifecycleHeadingRef.current ?? interactionFallbackRef.current ?? appRootRef.current)?.focus();
       });
     });
   };
   const focusGame = () => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        (interactionFallbackRef.current ?? appRootRef.current)?.focus();
+        (bondSetupHeadingRef.current ?? lifecycleHeadingRef.current ?? interactionFallbackRef.current ?? appRootRef.current)?.focus();
       });
     });
   };
@@ -136,22 +143,44 @@ export function App() {
     }
     submitAndClear(action.command);
   };
+  const cpuNeedsStep = cpu.status === 'ready' && Boolean(cpu.nextActorId);
   const replayDiagnostics = <ReplayDiagnosticsPanel
     report={replayReport}
     loadCurrentReplay={loadCurrentReplay}
     runReplay={runReplay}
     clearReport={clearReplayReport}
   />;
+  const cpuTools = entrySummary.contentMode === 'provisional-original-full' || entrySummary.contentMode === 'custom-adventurers-full'
+    ? <section className="cpu-controls" aria-label="CPU 控制">
+        <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuNeedsStep || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
+          <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>
+        {cpu.diagnostic ? <p className="error" role="alert">CPU 已安全暫停：{cpu.diagnostic}</p> : null}
+        <details><summary>CPU 決策紀錄（{cpu.decisions.length}）</summary><ol>{cpu.decisions.slice(-12).map((decision, index) => <li key={`${decision.revision}-${decision.actorId}-${index}`}>r{decision.revision} · {decision.actorId} · {decision.command.type} · {decision.reasonCode} · {decision.score}</li>)}</ol></details>
+      </section>
+    : <p>目前模式沒有 CPU 控制工具。</p>;
+  const utilitySections: readonly UtilityDrawerSection[] = [
+    { id: 'events', label: '事件', content: <ActivityPanel events={events} /> },
+    { id: 'cpu', label: 'CPU', content: cpuTools },
+    { id: 'more', label: '更多', content: <div className="more-tools">
+      <RestartControl scopeKey={`${view.gameId}:${view.revision}`} onRestart={restartAndClear} />
+      <CardStateLegend />
+      {replayDiagnostics}
+    </div> },
+  ];
 
   useLifecycleFocus(hasEnteredGame && lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
-  const cpuNeedsStep = cpu.status === 'ready' && Boolean(cpu.nextActorId);
   useEffect(() => {
     if (!hasEnteredGame || !cpuNeedsStep || cpuPaused || view.status === 'finished') return undefined;
     const delay = { slow: 1200, normal: 600, fast: 150, instant: 10 }[cpuSpeed];
     const timer = window.setTimeout(stepCpu, delay);
     return () => window.clearTimeout(timer);
   }, [cpu.stepKey, cpuNeedsStep, cpuPaused, cpuSpeed, hasEnteredGame, stepCpu, view.status]);
-  useEffect(() => { setSelectedBondIds([]); }, [view.bondSetup?.offerId, view.bondSetup?.currentActorId]);
+  useEffect(() => {
+    setSelectedBondIds([]);
+    if (hasEnteredGame && hasBondSetupOffer) {
+      window.requestAnimationFrame(() => bondSetupHeadingRef.current?.focus());
+    }
+  }, [bondSetupActorId, bondSetupOfferId, hasBondSetupOffer, hasEnteredGame]);
   useEffect(() => { setSelectedCompletionBondIds([]); }, [view.gameId, view.revision, view.activePlayerId]);
 
   if (!hasEnteredGame) {
@@ -194,6 +223,8 @@ export function App() {
         discardCount: view.self.discardPile.length,
         turnPurchaseBonus: view.self.turnPurchaseBonus,
         turnCombatBonus: view.self.turnCombatBonus,
+        completedBondCount: view.self.bonds.filter(({ completed }) => completed).length,
+        bondCount: view.self.bonds.length,
       }}
       phase={view.phase}
       opponents={view.opponents}
@@ -237,8 +268,8 @@ export function App() {
     />}
     interaction={<div className="interaction-rail" data-testid="interaction-rail">
       {view.bondSetup?.offeredBondIds
-        ? <section className="bond-setup-panel" aria-labelledby="bond-setup-heading">
-            <h2 id="bond-setup-heading">從七張私人羈絆保留五張</h2>
+        ? <section className="bond-setup-panel blocking-choice-panel" role="dialog" aria-labelledby="bond-setup-heading">
+            <h2 ref={bondSetupHeadingRef} id="bond-setup-heading" tabIndex={-1}>從七張私人羈絆保留五張</h2>
             <div className="bond-choice-grid">{view.bondSetup.offeredBondIds.map((bondId) => {
               const bond = bondDefinitions.find(({ id }) => id === bondId);
               const checked = selectedBondIds.includes(bondId);
@@ -248,7 +279,7 @@ export function App() {
           </section>
         : null}
       {completableBondIds.length > 0
-        ? <section className="bond-setup-panel" aria-labelledby="bond-completion-heading">
+        ? <section className="bond-setup-panel bond-completion-panel" aria-labelledby="bond-completion-heading">
             <h2 id="bond-completion-heading">羈絆條件已成立</h2>
             <p>可以完成任意子集合，也可以暫不完成；暫不完成不會保存資格。</p>
             <div className="bond-choice-grid">{completableBondIds.map((bondId) => {
@@ -259,14 +290,6 @@ export function App() {
             <button className="primary" type="button" disabled={!selectedCompleteBondCommand} onClick={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}>完成所選羈絆</button>
           </section>
         : null}
-      {entrySummary.contentMode === 'provisional-original-full' || entrySummary.contentMode === 'custom-adventurers-full'
-        ? <section className="cpu-controls" aria-label="CPU 控制">
-            <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuNeedsStep || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
-              <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>
-            {cpu.diagnostic ? <p className="error" role="alert">CPU 已安全暫停：{cpu.diagnostic}</p> : null}
-            <details><summary>CPU 決策紀錄（{cpu.decisions.length}）</summary><ol>{cpu.decisions.slice(-12).map((decision, index) => <li key={`${decision.revision}-${decision.actorId}-${index}`}>r{decision.revision} · {decision.actorId} · {decision.command.type} · {decision.reasonCode} · {decision.score}</li>)}</ol></details>
-          </section>
-        : null}
       <LifecycleInteractionDock
         ref={lifecycleHeadingRef}
         model={lifecycleInteraction}
@@ -275,21 +298,21 @@ export function App() {
       />
       <TurnControlDock
         ref={interactionFallbackRef}
-        scopeKey={`${view.gameId}:${view.revision}`}
         interactionHint={interactionHint}
         actionSummary={legalActionSummary}
         phaseName={phaseDisplayName(view.phase)}
         canEndPhase={Boolean(endPhaseCommand)}
         equipmentSelected={Boolean(equipmentCardId)}
+        purchaseBonus={view.self.turnPurchaseBonus}
+        combatBonus={view.self.turnCombatBonus}
+        latestEventStatus={<LatestEventStatus event={events.at(-1)} />}
         onEndPhase={() => {
           if (endPhaseCommand) submitAndClear(endPhaseCommand);
         }}
         onCancelEquipment={() => setEquipmentCardId(undefined)}
-        onRestart={restartAndClear}
       />
-      <CardStateLegend />
     </div>}
-    activity={<ActivityPanel events={events} diagnostics={replayDiagnostics} />}
+    utilities={<UtilityDrawer sections={utilitySections} autoOpenId={cpu.diagnostic ? 'cpu' : undefined} suspended={lifecyclePending} />}
     details={<CardDetailsPanel
       card={currentInspection?.card}
       trigger={inspection?.trigger}
