@@ -5,8 +5,21 @@ import { isFiniteJsonValue } from './encounter.js';
 export const lifecyclePoints = ['game-setup', 'game-start', 'turn-start', 'turn-end', 'phase-start', 'phase-end', 'command-before', 'command-after', 'event-before', 'event-after', 'game-end-evaluation'] as const;
 export type LifecyclePoint = (typeof lifecyclePoints)[number];
 export type LifecycleHookKind = 'trigger' | 'continuous' | 'replacement';
+export type LifecycleActivation =
+  | { kind: 'always' }
+  | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null }
+  | { kind: 'metadata-equals'; key: string; value: string | number | boolean | null }
+  | { kind: 'phase-is'; phase: import('./state.js').Phase }
+  | { kind: 'definition-in-actor-party'; definitionId: string }
+  | { kind: 'definition-at-actor-party-position'; definitionId: string; position: number }
+  | { kind: 'definition-equipped-by-actor'; definitionId: string }
+  | { kind: 'definition-in-zone'; zoneId: string; definitionId: string }
+  | { kind: 'turn-fact-at-least'; fact: keyof Omit<import('./state.js').TurnFactLedger, 'schemaVersion' | 'playerId'>; amount: number }
+  | { kind: 'all'; conditions: readonly LifecycleActivation[] }
+  | { kind: 'any'; conditions: readonly LifecycleActivation[] }
+  | { kind: 'not'; condition: LifecycleActivation };
 /** JSON-only registry record owned by a Rules Module; no executable closures. */
-export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; eventType?: string; effect: EffectDefinition; priority?: number; activation?: { kind: 'always' } | { kind: 'module-state-equals'; key: string; value: string | number | boolean | null } | { kind: 'metadata-equals'; key: string; value: string | number | boolean | null } };
+export type LifecycleHook = { schemaVersion: 1; hookId: string; moduleId: string; point: LifecyclePoint; kind: LifecycleHookKind; eventType?: string; effect: EffectDefinition; priority?: number; activation?: LifecycleActivation };
 /**
  * A content-owned, immediate event trigger resolved once for every equipped card
  * instance that is still attached to the event actor's party.
@@ -21,6 +34,21 @@ export type EquipmentEventTrigger = { schemaVersion: 1; triggerId: string; point
 export type LifecyclePayload = { schemaVersion: 1; point: LifecyclePoint; actorId?: string; commandType?: string; eventType?: string; phase?: string; metadata?: Record<string, string | number | boolean | null> };
 const nonEmpty = z.string().trim().min(1);
 const canonicalNonEmpty = z.string().min(1).refine((value) => value === value.trim(), 'Value must not have leading or trailing whitespace.');
+const turnFact = z.enum(['adventurersRecruited', 'adventurersAddedToParty', 'itemsBought', 'equipmentBought', 'purchasePowerSpent', 'extraCardsDrawn', 'itemsUsed', 'bossesDefeated', 'monstersDefeated', 'marketRefreshed', 'combatResolved', 'combatSkipped']);
+const LifecycleActivationSchema: z.ZodType<LifecycleActivation> = z.lazy(() => z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('always') }).strict(),
+  z.object({ kind: z.literal('module-state-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict(),
+  z.object({ kind: z.literal('metadata-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict(),
+  z.object({ kind: z.literal('phase-is'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict(),
+  z.object({ kind: z.literal('definition-in-actor-party'), definitionId: canonicalNonEmpty }).strict(),
+  z.object({ kind: z.literal('definition-at-actor-party-position'), definitionId: canonicalNonEmpty, position: z.number().finite().int().positive() }).strict(),
+  z.object({ kind: z.literal('definition-equipped-by-actor'), definitionId: canonicalNonEmpty }).strict(),
+  z.object({ kind: z.literal('definition-in-zone'), zoneId: canonicalNonEmpty, definitionId: canonicalNonEmpty }).strict(),
+  z.object({ kind: z.literal('turn-fact-at-least'), fact: turnFact, amount: z.number().finite().nonnegative() }).strict(),
+  z.object({ kind: z.literal('all'), conditions: z.array(LifecycleActivationSchema).min(1) }).strict(),
+  z.object({ kind: z.literal('any'), conditions: z.array(LifecycleActivationSchema).min(1) }).strict(),
+  z.object({ kind: z.literal('not'), condition: LifecycleActivationSchema }).strict(),
+]));
 export const LifecycleHookSchema = z.object({
   schemaVersion: z.literal(1),
   hookId: nonEmpty,
@@ -30,11 +58,7 @@ export const LifecycleHookSchema = z.object({
   eventType: nonEmpty.optional(),
   effect: EffectDefinitionSchema,
   priority: z.number().finite().optional(),
-  activation: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('always') }).strict(),
-    z.object({ kind: z.literal('module-state-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict(),
-    z.object({ kind: z.literal('metadata-equals'), key: canonicalNonEmpty, value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict()
-  ]).optional()
+  activation: LifecycleActivationSchema.optional()
 }).strict() as unknown as z.ZodType<LifecycleHook>;
 export const EquipmentEventTriggerSchema = z.object({
   schemaVersion: z.literal(1),
@@ -46,7 +70,7 @@ export const EquipmentEventTriggerSchema = z.object({
 }).strict() as unknown as z.ZodType<EquipmentEventTrigger>;
 
 function containsSuspendingNode(node: EffectNode): boolean {
-  if (node.kind === 'choice' || node.kind === 'choose-card' || node.kind === 'request-counter-consent') return true;
+  if (node.kind === 'choice' || node.kind === 'choose-card' || node.kind === 'choose-order-player-deck-top' || node.kind === 'choose-order-player-party' || node.kind === 'repeat-discard-hand-for-combat' || node.kind === 'choose-shared-row-refresh-subset' || node.kind === 'repeat-item-use-effect' || node.kind === 'request-counter-consent') return true;
   if (node.kind === 'sequence') return node.effects.some(containsSuspendingNode);
   if (node.kind === 'conditional') return containsSuspendingNode(node.whenTrue) || Boolean(node.whenFalse && containsSuspendingNode(node.whenFalse));
   if (node.kind === 'random') return node.outcomes.some(({ effect }) => containsSuspendingNode(effect));

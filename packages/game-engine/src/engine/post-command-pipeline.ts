@@ -11,6 +11,7 @@ import type {
 import { dispatchLifecycle, resumeLifecycleChoice, resumeLifecycleCounterConsent } from '../effects/lifecycle-dispatcher.js';
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { evaluateDiceRoll } from '../rules/dice-evaluator.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 export type PostCommandBoundary = 'event-before' | 'event-after' | 'command-after';
 export type PostCommandPipelineResult = {
@@ -34,13 +35,47 @@ export type PostCommandPipelineCursor = {
 
 const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
-const contextFor = (envelope: CommandEnvelope): EffectContext => ({ controllerId: envelope.actorId });
+const contextExtends = (base: EffectContext, current: EffectContext): boolean => {
+  if (base.controllerId !== current.controllerId) return false;
+  const includes = <T>(expected: Readonly<Record<string, T>> | undefined, actual: Readonly<Record<string, T>> | undefined): boolean =>
+    Object.entries(expected ?? {}).every(([key, value]) => same(actual?.[key], value));
+  return includes(base.cardRefs, current.cardRefs) && includes(base.playerRefs, current.playerRefs) && includes(base.locationRefs, current.locationRefs);
+};
+const lifecyclePlayerRefs = (state: GameState, actorId: string): Record<string, string> => {
+  const start = state.players.findIndex(({ id }) => id === actorId);
+  const order = Array.from({ length: state.players.length }, (_, offset) => state.players[(start + offset) % state.players.length]!.id);
+  return {
+    leftPlayer: order[1] ?? order[0]!,
+    ...Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`draftPlayer${index}`, order[index] ?? order.at(-1)!])),
+  };
+};
+const contextFor = (envelope: CommandEnvelope, state: GameState): EffectContext => {
+  const commandCardId = 'cardId' in envelope.command ? envelope.command.cardId : undefined;
+  const playerRefs = lifecyclePlayerRefs(state, envelope.actorId);
+  if (!commandCardId) return { controllerId: envelope.actorId, playerRefs };
+  const player = state.players.find(({ id }) => id === envelope.actorId);
+  const partyPosition = player?.party.findIndex(({ adventurerId }) => adventurerId === commandCardId) ?? -1;
+  const equipmentPosition = player?.party.findIndex((slot) => attachedCardIds(slot).includes(commandCardId)) ?? -1;
+  const zone = player && (['hand', 'drawPile', 'discardPile', 'playArea'] as const).find((candidate) => player[candidate].includes(commandCardId));
+  return {
+    controllerId: envelope.actorId,
+    playerRefs,
+    cardRefs: { commandCard: commandCardId },
+    ...(partyPosition >= 0
+      ? { locationRefs: { commandCard: { kind: 'party', player: { kind: 'player-id', playerId: envelope.actorId }, position: partyPosition } } }
+      : equipmentPosition >= 0
+        ? { locationRefs: { commandCard: { kind: 'equipment', player: { kind: 'player-id', playerId: envelope.actorId }, partyPosition: equipmentPosition } } }
+      : zone
+        ? { locationRefs: { commandCard: { kind: 'player-zone', player: { kind: 'player-id', playerId: envelope.actorId }, zone } } }
+        : {}),
+  };
+};
 const registryFor = (state: GameState, ruleset: Ruleset): LifecycleRegistrySnapshot => ({
   rulesetVersion: state.rulesetVersion,
   modules: ruleset.modules.map(({ id, version }) => ({ id, version }))
 });
 
-export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState, point: PostCommandBoundary, fact?: DomainEvent): LifecyclePayload {
+export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState, point: PostCommandBoundary, fact?: DomainEvent, equipmentSuppressed = false): LifecyclePayload {
   const target = envelope.command.type === 'ATTACK_TARGET' ? state.enemyTargets[envelope.command.targetId] : undefined;
   const targetMetadata = target ? {
     targetId: target.targetId,
@@ -48,13 +83,23 @@ export function lifecyclePayloadFor(envelope: CommandEnvelope, state: GameState,
     cardInstanceId: target.cardInstanceId,
     definitionId: state.cards[target.cardInstanceId]?.definitionId ?? '',
   } : {};
+  const commandCardId = 'cardId' in envelope.command ? envelope.command.cardId : undefined;
+  const commandCardMetadata = commandCardId ? {
+    commandCardId,
+    commandDefinitionId: state.cards[commandCardId]?.definitionId ?? '',
+  } : {};
+  const targetAdventurerId = envelope.command.type === 'EQUIP_ITEM' || envelope.command.type === 'ATTACH_CARD' ? envelope.command.adventurerId : undefined;
+  const targetAdventurerMetadata = targetAdventurerId ? {
+    targetAdventurerId,
+    targetAdventurerDefinitionId: state.cards[targetAdventurerId]?.definitionId ?? '',
+  } : {};
   return {
     schemaVersion: 1,
     point,
     actorId: envelope.actorId,
     ...(fact
-      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId, ...targetMetadata } }
-      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId, ...targetMetadata } }),
+      ? { eventType: fact.type, metadata: { commandId: envelope.commandId, eventId: fact.eventId, ...targetMetadata, ...commandCardMetadata, ...targetAdventurerMetadata, ...(equipmentSuppressed ? { equipmentSuppressed: true } : {}) } }
+      : { commandType: envelope.command.type, metadata: { commandId: envelope.commandId, ...targetMetadata, ...commandCardMetadata, ...targetAdventurerMetadata, ...(equipmentSuppressed ? { equipmentSuppressed: true } : {}) } }),
     phase: state.phase
   };
 }
@@ -236,7 +281,7 @@ export function validatePostCommandContinuationState(state: GameState, ruleset?:
   const resolutions = outer.resolutionEnvelopes ?? [];
   const commandIds = [outer.envelope.commandId, ...resolutions.map(({ commandId }) => commandId)];
   if (resolutions.length > 256 || new Set(commandIds).size !== commandIds.length || resolutions.some((resolution) => resolution.gameId !== state.gameId || resolution.expectedRevision !== outer.envelope.expectedRevision || (resolution.command.type !== 'RESOLVE_EFFECT_CHOICE' && resolution.command.type !== 'RESPOND_COUNTER_CONSENT' && resolution.command.type !== 'CANCEL_COUNTER_CONSENT' && resolution.command.type !== 'EXPIRE_COUNTER_CONSENT'))) return 'Post-command resolution transcript is malformed or duplicated.';
-  if (lifecycle.context.controllerId !== outer.envelope.actorId || (choice && (choice.actorId !== outer.envelope.actorId || !same(choice.context, lifecycle.context))) || (consent && (consent.requesterId !== outer.envelope.actorId || !same(consent.context, lifecycle.context)))) return 'Post-command actor or effect context mismatch.';
+  if (lifecycle.context.controllerId !== outer.envelope.actorId || (choice && (!state.players.some(({ id }) => id === choice.actorId) || !contextExtends(lifecycle.context, choice.context))) || (consent && (consent.requesterId !== outer.envelope.actorId || !contextExtends(lifecycle.context, consent.context)))) return 'Post-command actor or effect context mismatch.';
   const expectedExecutionId = `${lifecycle.dispatchId}:${lifecycle.currentHook.moduleId}:${lifecycle.currentHook.hookId}`;
   if ((choice?.executionId ?? consent?.executionId) !== expectedExecutionId) return 'Post-command execution ID does not match the pending lifecycle hook.';
   if (!same(outer.payload, lifecycle.payload) || !same(outer.context, lifecycle.context) || !same(outer.registry, lifecycle.registry)) return 'Post-command lifecycle payload, context, or registry mismatch.';
@@ -326,8 +371,9 @@ export function continuePostCommandPipeline(state: GameState, ruleset: Ruleset, 
   while (true) {
     const fact = cursor.boundary === 'command-after' ? undefined : cursor.facts[cursor.factIndex];
     if (cursor.boundary !== 'command-after' && !fact) return { status: 'failed', state, events: [], error: 'Post-command fact cursor is out of range.', rollback: 'command' };
-    const payload = lifecyclePayloadFor(cursor.envelope, state, cursor.boundary, fact);
-    const result = dispatchLifecycle(state, ruleset, payload, contextFor(cursor.envelope));
+    const equipmentSuppressed = cursor.facts.some((candidate) => candidate.payload?.kind === 'combat-evaluation' && candidate.payload.evaluation.equipmentSuppressed);
+    const payload = lifecyclePayloadFor(cursor.envelope, state, cursor.boundary, fact, equipmentSuppressed);
+    const result = dispatchLifecycle(state, ruleset, payload, contextFor(cursor.envelope, state));
     appendLifecycleEvents(cursor, result.events);
     if (result.status === 'suspended') return suspend(state, cursor);
     if (result.status === 'failed' || result.status === 'unsupported') return { status: result.status, state, events: [], error: result.error ?? result.reason ?? `${cursor.boundary} lifecycle failed.`, rollback: 'command' };

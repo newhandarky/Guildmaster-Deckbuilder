@@ -9,7 +9,14 @@ type Callback = (state: GameState, ruleset: Ruleset, player: PlayerState, events
 export type PhaseTransitionCursor = 'after-phase-end' | 'complete-nonrest' | 'after-turn-end' | 'complete-game-end' | 'after-turn-start' | 'complete-turn-start';
 type BoundaryResult = { status: 'completed' } | { status: 'suspended' } | { status: 'failed'; error: EngineError };
 function boundary(state: GameState, ruleset: Ruleset, point: 'turn-start' | 'turn-end' | 'phase-start' | 'phase-end' | 'game-end-evaluation', actorId: string, events: DomainEvent[]): BoundaryResult {
-  const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point, actorId, phase: state.phase }, { controllerId: actorId }); events.push(...result.events);
+  const actorIndex = state.players.findIndex(({ id }) => id === actorId);
+  const seatOrder = Array.from({ length: state.players.length }, (_, offset) => state.players[(actorIndex + offset) % state.players.length]!.id);
+  const result = dispatchLifecycle(
+    state,
+    ruleset,
+    { schemaVersion: 1, point, actorId, phase: state.phase },
+    { controllerId: actorId, playerRefs: { leftPlayer: nextSeat(state.players, actorId).id, ...Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`draftPlayer${index}`, seatOrder[index] ?? seatOrder.at(-1)!])) } },
+  ); events.push(...result.events);
   if (result.status === 'completed') return { status: 'completed' };
   if (result.status === 'suspended') return { status: 'suspended' };
   return { status: 'failed', error: { code: 'INVALID_COMMAND', message: `${point} lifecycle failed: ${result.error ?? result.reason ?? 'unknown lifecycle failure'}.` } };
@@ -31,31 +38,40 @@ export function applyPhaseTransition(state: GameState, ruleset: Ruleset, player:
     }
     if (cursor === 'after-phase-end') {
       if (state.phase !== 'rest') {
-        const next: Record<Exclude<Phase, 'rest'>, Phase> = { action1: 'combat', combat: 'action2', action2: 'purchase', purchase: 'rest' };
+        const next: Record<Exclude<Phase, 'rest'>, Phase> = { action1: state.turnFacts?.combatSkipped ? 'action2' : 'combat', combat: 'action2', action2: 'purchase', purchase: 'rest' };
         if (state.phase === 'combat' && !state.turnFacts?.combatResolved) state.turnFacts!.combatSkipped = true;
-        state.phase = next[state.phase]; events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type: 'PHASE_ENDED', message: `${player.name} 結束階段。`, causedByCommandId: commandId });
+        state.phase = next[state.phase];
+        if (state.phase === 'action2' && state.turnFacts) state.turnFacts.actionPhaseItemsUsed = 0;
+        events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type: 'PHASE_ENDED', message: `${player.name} 結束階段。`, causedByCommandId: commandId });
         const result = boundary(state, ruleset, 'phase-start', player.id, events);
         if (result.status === 'failed') return result.error;
         if (result.status === 'suspended') suspend(state, envelope, rollbackState, resolutionEnvelopes, events, factStart, 'complete-nonrest');
         return undefined;
       }
-      const restError = settleRest(state, ruleset, player, events, commandId);
+      // Lifecycle execution commits a structured clone into state, so caller-owned
+      // PlayerState references must be reacquired before authoritative mutation.
+      const currentPlayer = state.players.find(({ id }) => id === player.id);
+      if (!currentPlayer) return { code: 'INVALID_COMMAND', message: 'Active player disappeared during the rest transition.' };
+      const restError = settleRest(state, ruleset, currentPlayer, events, commandId);
       if (restError) return restError;
-      const result = boundary(state, ruleset, 'turn-end', player.id, events);
+      const result = boundary(state, ruleset, 'turn-end', currentPlayer.id, events);
       if (result.status === 'failed') return result.error;
       if (result.status === 'suspended') { suspend(state, envelope, rollbackState, resolutionEnvelopes, events, factStart, 'after-turn-end'); return undefined; }
       cursor = 'after-turn-end';
     }
     if (cursor === 'after-turn-end') {
-      const bondError = completeBonds(state, ruleset, player, events, commandId); if (bondError) return bondError;
-      const endError = checkEnd(state, ruleset, player, events, commandId); if (endError) return endError;
-      if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === player.id) {
-        const result = boundary(state, ruleset, 'game-end-evaluation', player.id, events);
+      state.temporaryTargetModifiers = (state.temporaryTargetModifiers ?? []).filter(({ expiresAtTurnEndPlayerId }) => expiresAtTurnEndPlayerId !== player.id);
+      const currentPlayer = state.players.find(({ id }) => id === player.id);
+      if (!currentPlayer) return { code: 'INVALID_COMMAND', message: 'Active player disappeared during the turn-end transition.' };
+      const bondError = completeBonds(state, ruleset, currentPlayer, events, commandId); if (bondError) return bondError;
+      const endError = checkEnd(state, ruleset, currentPlayer, events, commandId); if (endError) return endError;
+      if (state.status === 'finalRound' && state.endState?.finalRoundEndPlayerId === currentPlayer.id) {
+        const result = boundary(state, ruleset, 'game-end-evaluation', currentPlayer.id, events);
         if (result.status === 'failed') return result.error;
         if (result.status === 'suspended') { suspend(state, envelope, rollbackState, resolutionEnvelopes, events, factStart, 'complete-game-end'); return undefined; }
         cursor = 'complete-game-end';
       } else {
-        const following = nextSeat(state.players, player.id); state.activePlayerId = following.id; state.phase = 'action1'; state.turnFacts = createTurnFactLedger(following.id);
+        const following = nextSeat(state.players, currentPlayer.id); state.activePlayerId = following.id; state.phase = 'action1'; state.turnFacts = createTurnFactLedger(following.id);
         if (following.id === state.startingPlayerId) state.round += 1;
         const result = boundary(state, ruleset, 'turn-start', following.id, events);
         if (result.status === 'failed') return result.error;

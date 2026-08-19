@@ -19,15 +19,15 @@ export type SessionPersistenceStatus = {
   replayHistoryComplete: boolean;
   recoveryReason?: 'INVALID_SAVE' | 'REGISTRY_MISMATCH' | 'REPLAY_DIVERGENCE' | 'CPU_PROFILE_MISMATCH';
   recovery?: {
-    reasonCode: 'helper-rules-upgraded';
-    previousPackVersion: '0.1.0';
-    previousModuleVersion: '1.0.0';
+    reasonCode: 'helper-rules-upgraded' | 'card-rules-upgraded';
+    previousPackVersion: string;
+    previousModuleVersion: string;
   } | undefined;
 };
 
 export type SessionEntrySummary = {
   schemaVersion: 3;
-  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full';
+  contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full' | 'custom-adventurers-full';
   advancedRules: { helpers: boolean };
   contentPackId: string;
   canContinue: boolean;

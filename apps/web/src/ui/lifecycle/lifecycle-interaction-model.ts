@@ -7,6 +7,7 @@ import type {
 import type { LifecycleCopyResolver } from './lifecycle-copy.js';
 
 type ChoiceCommand = Extract<GameCommand, { type: 'RESOLVE_EFFECT_CHOICE' }>;
+type OrderCommand = Extract<GameCommand, { type: 'RESOLVE_EFFECT_ORDER' }>;
 type ConsentCommand = Extract<GameCommand, {
   type: 'RESPOND_COUNTER_CONSENT' | 'CANCEL_COUNTER_CONSENT' | 'EXPIRE_COUNTER_CONSENT';
 }>;
@@ -141,6 +142,43 @@ function choiceModel(
   };
 }
 
+function orderModel(
+  view: PlayerView,
+  commands: readonly OrderCommand[],
+  resolver: LifecycleCopyResolver,
+  optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
+): LifecycleInteractionModel | undefined {
+  if (!commands.length) return undefined;
+  const groups = new Map<string, OrderCommand[]>();
+  for (const command of commands) {
+    const key = `${command.executionId}\u0000${command.orderId}`;
+    groups.set(key, [...(groups.get(key) ?? []), command]);
+  }
+  const prompt = view.decisionPrompt;
+  if (groups.size !== 1 || prompt?.decisionKind !== 'choose-order' || !prompt.order) return { kind: 'waiting', key: 'order:diagnostic', reason: 'diagnostic', title: '目前排序無法安全顯示', description: '排序指令與私人 PlayerView 資料不一致；介面不會猜測順序。' };
+  const options = [...groups.values()][0]!; const first = options[0]!; const inspected = [...prompt.order.cardIds].sort();
+  const malformed = options.some((command) => {
+    const ids = [...command.orderedCardIds, ...(command.removeCardId ? [command.removeCardId] : [])];
+    return prompt.choiceId !== first.orderId || command.orderId !== first.orderId || command.executionId !== first.executionId || new Set(ids).size !== ids.length || JSON.stringify([...ids].sort()) !== JSON.stringify(inspected) || (!prompt.order!.mayRemove && Boolean(command.removeCardId));
+  });
+  if (malformed) return { kind: 'waiting', key: 'order:diagnostic', reason: 'diagnostic', title: '目前排序無法安全顯示', description: '合法指令不是目前卡牌的完整排列；介面已停止送出指令。' };
+  const copy = resolver.resolveChoice(first.orderId);
+  const label = (cardId: string, index: number) => optionLabel?.(first.orderId, cardId, index) ?? cardId;
+  const describeOrder = (command: OrderCommand, index: number) => prompt.order!.kind === 'party'
+    ? `隊伍順序：${command.orderedCardIds.map((id) => label(id, index)).join(' → ')}`
+    : `${command.removeCardId ? `移除「${label(command.removeCardId, index)}」；` : ''}由底至頂：${command.orderedCardIds.map((id) => label(id, index)).join(' → ')}`;
+  return {
+    kind: 'choice', key: `order:${first.executionId}:${first.orderId}`, executionId: first.executionId, choiceId: first.orderId,
+    title: copy.title,
+    description: copy.description,
+    actions: options.map((command, index) => ({
+      id: `order:${command.executionId}:${command.orderId}:${index}`, kind: 'choice', command,
+      label: describeOrder(command, index),
+      emphasis: index === 0 ? 'primary' : 'secondary', requiresConfirmation: false,
+    })),
+  };
+}
+
 function consentActions(commands: readonly ConsentCommand[]): LifecycleInteractionAction[] {
   const actionFor = (command: ConsentCommand): LifecycleInteractionAction => {
     if (command.type === 'RESPOND_COUNTER_CONSENT' && command.response === 'accept') {
@@ -210,12 +248,13 @@ export function buildLifecycleInteractionModel(
   optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
 ): LifecycleInteractionModel {
   const choiceCommands = legalCommands.filter((command): command is ChoiceCommand => command.type === 'RESOLVE_EFFECT_CHOICE');
+  const orderCommands = legalCommands.filter((command): command is OrderCommand => command.type === 'RESOLVE_EFFECT_ORDER');
   const consentCommands = legalCommands.filter((command): command is ConsentCommand =>
     command.type === 'RESPOND_COUNTER_CONSENT'
     || command.type === 'CANCEL_COUNTER_CONSENT'
     || command.type === 'EXPIRE_COUNTER_CONSENT'
   );
-  if (view.pendingCounterConsent && choiceCommands.length > 0) {
+  if (view.pendingCounterConsent && (choiceCommands.length > 0 || orderCommands.length > 0)) {
     return {
       kind: 'waiting',
       key: 'lifecycle:diagnostic',
@@ -234,7 +273,9 @@ export function buildLifecycleInteractionModel(
       description: '合法指令缺少相符的 PlayerView 請求；介面不會猜測 requestId。',
     };
   }
-  return choiceModel(choiceCommands, resolver, optionLabel)
+  if (choiceCommands.length > 0 && orderCommands.length > 0) return { kind: 'waiting', key: 'decision:diagnostic', reason: 'diagnostic', title: '目前互動狀態不一致', description: '一般選擇與牌庫排序不可同時操作；介面已停止送出指令。' };
+  return orderModel(view, orderCommands, resolver, optionLabel)
+    ?? choiceModel(choiceCommands, resolver, optionLabel)
     ?? terminalResult(view, events)
     ?? { kind: 'none', key: 'none' };
 }

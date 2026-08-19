@@ -1,10 +1,11 @@
 import { baseRulesModule, type RulesModule } from '@guildmaster/game-engine';
-import type { CardDefinition, ContentPack } from '@guildmaster/game-protocol';
+import type { CardDefinition, ContentPack, EffectCardPredicate, EffectDefinition, LifecycleActivation } from '@guildmaster/game-protocol';
 
 export const baseHelperZoneIds = {
   deck: 'base:helper-deck',
   active: 'base:helper-active',
   retired: 'base:helper-retired',
+  draft: 'base:helper-draft',
 } as const;
 
 export const baseHelperIds = Array.from(
@@ -14,10 +15,17 @@ export const baseHelperIds = Array.from(
 
 export const enabledBaseHelperDefinitionIds = [
   'base:helper/helper-01',
+  'base:helper/helper-02',
+  'base:helper/helper-03',
+  'base:helper/helper-04',
+  'base:helper/helper-05',
   'base:helper/helper-06',
   'base:helper/helper-07',
   'base:helper/helper-08',
   'base:helper/helper-09',
+  'base:helper/helper-10',
+  'base:helper/helper-11',
+  'base:helper/helper-12',
 ] as const;
 export const enabledBaseHelperDefinitionId = 'base:helper/helper-08';
 
@@ -37,8 +45,8 @@ const definitions: readonly CardDefinition[] = baseHelperIds.map((id, index) => 
 export const baseProvisionalHelpersContentPack: ContentPack = {
   manifest: {
     id: 'base:provisional-helpers',
-    version: '0.2.0',
-    hash: 'base-provisional-helpers-v2-batch-a',
+    version: '0.3.0',
+    hash: 'base-provisional-helpers-v3-lifecycle-effects',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
     dependencies: ['base:provisional-foundation'],
@@ -47,9 +55,50 @@ export const baseProvisionalHelpersContentPack: ContentPack = {
   rulesModuleIds: ['base:helpers'],
 };
 
+const activeHelper = (definitionId: string): LifecycleActivation => ({ kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId });
+const helperDiscard = { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' } as const;
+const helperHand = { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } as const;
+const recoverToDeckTop = (choiceId: string, predicate: EffectCardPredicate): EffectDefinition['body'] => ({
+  kind: 'choose-card',
+  choiceId,
+  decisionKind: 'recover-card',
+  actor: { kind: 'controller' },
+  from: helperDiscard,
+  predicate,
+  selectedCardKey: 'recovered',
+  skipOptionId: `${choiceId}:skip`,
+  zeroCandidateBehavior: 'skip',
+  effect: {
+    kind: 'move-card',
+    card: { kind: 'context-card', key: 'recovered' },
+    from: helperDiscard,
+    to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'drawPile' },
+    position: 'top',
+  },
+});
+const draftChoices = (timing: string, index = 0): EffectDefinition['body'] => {
+  const selectedKey = `helper12Draft${index}`;
+  const move: EffectDefinition['body'] = {
+    kind: 'move-card', card: { kind: 'context-card', key: selectedKey }, from: { kind: 'shared-zone', zoneId: baseHelperZoneIds.draft },
+    to: { kind: 'player-zone', player: { kind: 'context-player', key: `draftPlayer${index}` }, zone: 'hand' }, transferOwnership: true,
+  };
+  return {
+    kind: 'choose-card', choiceId: `base:helper/helper-12-${timing}-draft-${index + 1}`, decisionKind: 'draft-card',
+    actor: { kind: 'context-player', key: `draftPlayer${index}` }, from: { kind: 'shared-zone', zoneId: baseHelperZoneIds.draft },
+    selectedCardKey: selectedKey, zeroCandidateBehavior: 'skip',
+    effect: index >= 3 ? move : { kind: 'sequence', effects: [move, draftChoices(timing, index + 1)] },
+  };
+};
+const helper12Draft = (timing: 'enter' | 'leave'): EffectDefinition['body'] => ({
+  kind: 'choice', choiceId: `base:helper/helper-12-${timing}-deck`, decisionKind: 'choose-effect-option', actor: { kind: 'controller' }, options: [
+    { id: 'adventurer-deck', effect: { kind: 'sequence', effects: [{ kind: 'reveal-shared-deck-to-zone', sourceZoneId: 'base:adventurer-deck', destinationZoneId: baseHelperZoneIds.draft, count: { kind: 'player-count' } }, draftChoices(timing)] } },
+    { id: 'item-deck', effect: { kind: 'sequence', effects: [{ kind: 'reveal-shared-deck-to-zone', sourceZoneId: 'base:item-deck', destinationZoneId: baseHelperZoneIds.draft, count: { kind: 'player-count' } }, draftChoices(timing)] } },
+  ],
+});
+
 export const baseHelpersRulesModule: RulesModule = {
   id: 'base:helpers',
-  version: '1.1.0',
+  version: '1.2.0',
   config: { enabledHelperDefinitionIds: [...enabledBaseHelperDefinitionIds] },
   composition: {
     schemaVersion: 1,
@@ -69,6 +118,7 @@ export const baseHelpersRulesModule: RulesModule = {
     { zoneId: baseHelperZoneIds.deck, kind: 'orderedDeck', visibility: 'hidden', rulesModuleId: 'base:helpers' },
     { zoneId: baseHelperZoneIds.active, kind: 'singleSlot', visibility: 'public', rulesModuleId: 'base:helpers' },
     { zoneId: baseHelperZoneIds.retired, kind: 'moduleArea', visibility: 'public', rulesModuleId: 'base:helpers' },
+    { zoneId: baseHelperZoneIds.draft, kind: 'moduleArea', visibility: 'public', rulesModuleId: 'base:helpers' },
   ],
   setupContributions: [{
     schemaVersion: 1,
@@ -150,7 +200,94 @@ export const baseHelpersRulesModule: RulesModule = {
     mode: 'replace',
     handSize: 6,
   }],
-  lifecycleHooks: [{
+  lifecycleHooks: [
+  {
+    schemaVersion: 1,
+    hookId: 'helper-12-initial-draft',
+    moduleId: 'base:helpers',
+    point: 'game-start',
+    kind: 'trigger',
+    priority: 10,
+    activation: activeHelper('base:helper/helper-12'),
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-12-initial-draft', body: helper12Draft('enter') },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-02-recover-item-at-rest',
+    moduleId: 'base:helpers',
+    point: 'phase-end',
+    kind: 'trigger',
+    priority: 20,
+    activation: { kind: 'all', conditions: [{ kind: 'phase-is', phase: 'rest' }, activeHelper('base:helper/helper-02')] },
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-02-recover-item-at-rest', body: recoverToDeckTop('base:helper/helper-02-recover-item', { kind: 'definition-type-in', values: ['item'] }) },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-03-reveal-enemies-at-purchase-start',
+    moduleId: 'base:helpers',
+    point: 'phase-start',
+    kind: 'trigger',
+    priority: 25,
+    activation: { kind: 'all', conditions: [{ kind: 'phase-is', phase: 'purchase' }, activeHelper('base:helper/helper-03')] },
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-03-reveal-enemies-at-purchase-start', body: {
+      kind: 'reveal-player-deck-until', player: { kind: 'controller' }, predicate: { kind: 'definition-type-in', values: ['monster', 'boss'] }, matchingDestination: 'hand',
+    } },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-04-purchase-per-party',
+    moduleId: 'base:helpers',
+    point: 'phase-start',
+    kind: 'trigger',
+    priority: 30,
+    activation: { kind: 'all', conditions: [
+      { kind: 'phase-is', phase: 'purchase' },
+      activeHelper('base:helper/helper-04'),
+      { kind: 'any', conditions: [{ kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'bossesDefeated', amount: 1 }] },
+    ] },
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-04-purchase-per-party', body: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: { kind: 'party-card-count', player: { kind: 'controller' } } } },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-05-recover-adventurer-at-turn-start',
+    moduleId: 'base:helpers',
+    point: 'turn-start',
+    kind: 'trigger',
+    priority: 40,
+    activation: activeHelper('base:helper/helper-05'),
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-05-recover-adventurer-at-turn-start', body: {
+      kind: 'choose-card', choiceId: 'base:helper/helper-05-recover-adventurer', decisionKind: 'recover-card', actor: { kind: 'controller' }, from: helperDiscard,
+      predicate: { kind: 'definition-type-in', values: ['adventurer'] }, selectedCardKey: 'recovered', skipOptionId: 'base:helper/helper-05-recover-adventurer:skip', zeroCandidateBehavior: 'skip',
+      effect: { kind: 'move-card', card: { kind: 'context-card', key: 'recovered' }, from: helperDiscard, to: helperHand },
+    } },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-10-recover-equipment-at-rest',
+    moduleId: 'base:helpers',
+    point: 'phase-end',
+    kind: 'trigger',
+    priority: 50,
+    activation: { kind: 'all', conditions: [{ kind: 'phase-is', phase: 'rest' }, activeHelper('base:helper/helper-10')] },
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-10-recover-equipment-at-rest', body: recoverToDeckTop('base:helper/helper-10-recover-equipment', { kind: 'definition-type-in', values: ['equipment'] }) },
+  },
+  {
+    schemaVersion: 1,
+    hookId: 'helper-11-pass-card-at-turn-start',
+    moduleId: 'base:helpers',
+    point: 'turn-start',
+    kind: 'trigger',
+    priority: 60,
+    activation: activeHelper('base:helper/helper-11'),
+    effect: { schemaVersion: 1, effectId: 'base:helpers/helper-11-pass-card-at-turn-start', body: {
+      kind: 'choose-card', choiceId: 'base:helper/helper-11-pass-card', decisionKind: 'transfer-card', actor: { kind: 'controller' }, from: helperHand,
+      selectedCardKey: 'transferred', zeroCandidateBehavior: 'skip', effect: {
+        kind: 'move-card', card: { kind: 'context-card', key: 'transferred' }, from: helperHand,
+        to: { kind: 'player-zone', player: { kind: 'context-player', key: 'leftPlayer' }, zone: 'hand' }, transferOwnership: true,
+      },
+    } },
+  },
+  {
     schemaVersion: 1,
     hookId: 'rotate-after-boss-defeat',
     moduleId: 'base:helpers',
@@ -165,7 +302,9 @@ export const baseHelpersRulesModule: RulesModule = {
       body: {
         kind: 'sequence',
         effects: [
+          { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('leave') },
           { kind: 'refresh-supply-row', refreshPolicyId: 'base:rotate-helper' },
+          { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('enter') },
           { kind: 'enforce-team-capacity', policyId: 'base:enforce-helper-capacity' },
         ],
       },

@@ -1,6 +1,7 @@
 import type { ContentRegistry, EffectCardLocation, EffectConcreteCardLocation, EffectContext, GameState } from '@guildmaster/game-protocol';
 import { getPlayer, isPartyMemberCard } from '../model/factories.js';
 import { getZone } from '../model/zones.js';
+import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
 
 export type MoveFailure = { ok: false; code: 'CARD_NOT_FOUND' | 'SOURCE_MISMATCH' | 'UNKNOWN_ZONE' | 'HIDDEN_INFORMATION' | 'OWNERSHIP_VIOLATION' | 'INVALID_DESTINATION' | 'EQUIPMENT_RELATIONSHIP' | 'CARD_TYPE_MISMATCH'; message: string };
 export type EncounterCardLocation = { kind: 'enemy-target-card'; targetId: string } | { kind: 'enemy-target-attachment'; targetId: string };
@@ -35,7 +36,7 @@ export function isCardAtLocation(state: GameState, location: ResolvedEngineCardL
   const player = getPlayer(state, (location.player as { playerId: string }).playerId);
   if (location.kind === 'player-zone') return player[location.zone].includes(cardId);
   if (location.kind === 'party') return player.party[location.position]?.adventurerId === cardId;
-  return player.party[location.partyPosition]?.equipmentId === cardId;
+  return Boolean(player.party[location.partyPosition] && attachedCardIds(player.party[location.partyPosition]!).includes(cardId));
 }
 function remove(state: GameState, location: ResolvedEngineCardLocation, cardId: string): void {
   if (location.kind === 'enemy-target-card') return;
@@ -45,7 +46,7 @@ function remove(state: GameState, location: ResolvedEngineCardLocation, cardId: 
   const player = getPlayer(state, (location.player as { playerId: string }).playerId);
   if (location.kind === 'player-zone') { const cards = player[location.zone]; cards.splice(cards.indexOf(cardId), 1); return; }
   if (location.kind === 'party') { player.party.splice(location.position, 1); return; }
-  delete player.party[location.partyPosition]!.equipmentId;
+  const slot = player.party[location.partyPosition]!; setAttachedCardIds(slot, attachedCardIds(slot).filter((id) => id !== cardId));
 }
 function insert(state: GameState, location: ResolvedEngineCardLocation, cardId: string, position: MoveRequest['position']): void {
   if (location.kind === 'enemy-target-card') { state.enemyTargets[location.targetId]!.cardInstanceId = cardId; return; }
@@ -55,10 +56,10 @@ function insert(state: GameState, location: ResolvedEngineCardLocation, cardId: 
   const player = getPlayer(state, (location.player as { playerId: string }).playerId);
   if (location.kind === 'player-zone') { const cards = player[location.zone]; if (position === 'top') cards.push(cardId); else if (typeof position === 'number') cards.splice(position, 0, cardId); else cards.unshift(cardId); return; }
   if (location.kind === 'party') { player.party.splice(location.position, 0, { adventurerId: cardId }); return; }
-  player.party[location.partyPosition]!.equipmentId = cardId;
+  const slot = player.party[location.partyPosition]!; setAttachedCardIds(slot, [...attachedCardIds(slot), cardId]);
 }
 function ownerOf(location: ResolvedEngineCardLocation): string | undefined { return location.kind === 'player-zone' || location.kind === 'party' || location.kind === 'equipment' ? (location.player as { playerId: string }).playerId : undefined; }
-function cardLocationCount(state: GameState, cardId: string, stagedTargetId?: string): number { let count = 0; for (const zone of Object.values(state.zones)) count += zone.cardIds.filter((id) => id === cardId).length; count += state.removedCards.filter((id) => id === cardId).length; for (const player of state.players) { for (const zone of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) count += player[zone].filter((id) => id === cardId).length; for (const slot of player.party) { if (slot.adventurerId === cardId) count += 1; if (slot.equipmentId === cardId) count += 1; } } for (const target of Object.values(state.enemyTargets)) { if (target.status === 'defeated' || target.status === 'removed') continue; if (!target.zoneId && target.targetId !== stagedTargetId && target.cardInstanceId === cardId) count += 1; count += target.attachments.filter((id) => id === cardId).length; } return count; }
+function cardLocationCount(state: GameState, cardId: string, stagedTargetId?: string): number { let count = 0; for (const zone of Object.values(state.zones)) count += zone.cardIds.filter((id) => id === cardId).length; count += state.removedCards.filter((id) => id === cardId).length; for (const player of state.players) { for (const zone of ['drawPile', 'hand', 'discardPile', 'playArea'] as const) count += player[zone].filter((id) => id === cardId).length; for (const slot of player.party) { if (slot.adventurerId === cardId) count += 1; count += attachedCardIds(slot).filter((id) => id === cardId).length; } } for (const target of Object.values(state.enemyTargets)) { if (target.status === 'defeated' || target.status === 'removed') continue; if (!target.zoneId && target.targetId !== stagedTargetId && target.cardInstanceId === cardId) count += 1; count += target.attachments.filter((id) => id === cardId).length; } return count; }
 
 export function moveCard(state: GameState, request: MoveRequest): MoveResult {
   const card = state.cards[request.cardInstanceId]; if (!card) return { ok: false, code: 'CARD_NOT_FOUND', message: 'Unknown card instance.' };
@@ -76,18 +77,18 @@ export function moveCard(state: GameState, request: MoveRequest): MoveResult {
     }
   }
   const definition = request.registry.definitions[card.definitionId]; if (!definition) return { ok: false, code: 'CARD_NOT_FOUND', message: 'Card definition is unavailable.' };
-  const attachedEquipmentId = from.kind === 'party' ? getPlayer(state, sourceOwner!).party[from.position]?.equipmentId : undefined;
-  if (attachedEquipmentId && request.attachedEquipmentDisposition !== 'discard') return { ok: false, code: 'EQUIPMENT_RELATIONSHIP', message: 'Move attached equipment first to avoid a dangling relationship.' };
+  const attachedEquipmentIds = from.kind === 'party' ? attachedCardIds(getPlayer(state, sourceOwner!).party[from.position]!) : [];
+  if (attachedEquipmentIds.length && request.attachedEquipmentDisposition !== 'discard') return { ok: false, code: 'EQUIPMENT_RELATIONSHIP', message: 'Move attached equipment first to avoid a dangling relationship.' };
   if (request.attachedEquipmentDisposition && to.kind !== 'removed') return { ok: false, code: 'INVALID_DESTINATION', message: 'Attached equipment disposition is only valid when removing a card from the game.' };
   if (to.kind === 'party' && !isPartyMemberCard(request.registry, state, request.cardInstanceId)) return { ok: false, code: 'CARD_TYPE_MISMATCH', message: 'Only configured party-member cards may enter a party slot.' };
-  if (to.kind === 'equipment') { const target = getPlayer(state, ownerOf(to)!).party[to.partyPosition]; if (!target || target.equipmentId || definition.type !== 'equipment') return { ok: false, code: 'INVALID_DESTINATION', message: 'Equipment destination requires an empty existing party slot and equipment card.' }; }
+  if (to.kind === 'equipment') { const target = getPlayer(state, ownerOf(to)!).party[to.partyPosition]; if (!target || attachedCardIds(target).length || definition.type !== 'equipment') return { ok: false, code: 'INVALID_DESTINATION', message: 'Equipment destination requires an empty existing party slot and equipment card.' }; }
   if (to.kind === 'enemy-target-card' && state.enemyTargets[to.targetId]!.cardInstanceId !== request.cardInstanceId) return { ok: false, code: 'INVALID_DESTINATION', message: 'Enemy target card destination is already occupied.' };
   if (to.kind === 'enemy-target-attachment' && state.enemyTargets[to.targetId]!.attachments.includes(request.cardInstanceId)) return { ok: false, code: 'INVALID_DESTINATION', message: 'Enemy target already contains this attachment.' };
   if (to.kind === 'player-zone' && to.zone === 'playArea' && definition.type !== 'item') return { ok: false, code: 'CARD_TYPE_MISMATCH', message: 'Only items may enter the item play area.' };
   if (to.kind === 'shared-zone') { const zone = getZone(state, to.zoneId); if (zone.kind === 'singleSlot' && !zone.cardIds.includes(request.cardInstanceId) && zone.cardIds.length > 0) return { ok: false, code: 'INVALID_DESTINATION', message: 'Single-slot destination is occupied.' }; }
   if (sameLocation(from, to)) return { ok: true, from, to };
   remove(state, from, request.cardInstanceId); insert(state, to, request.cardInstanceId, request.position);
-  if (attachedEquipmentId && request.attachedEquipmentDisposition === 'discard') getPlayer(state, sourceOwner!).discardPile.push(attachedEquipmentId);
+  if (attachedEquipmentIds.length && request.attachedEquipmentDisposition === 'discard') getPlayer(state, sourceOwner!).discardPile.push(...attachedEquipmentIds);
   const destinationOwner = ownerOf(to); if (request.transferOwnership && destinationOwner) card.ownerId = destinationOwner;
   return { ok: true, from, to };
 }

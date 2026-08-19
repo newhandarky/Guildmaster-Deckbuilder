@@ -9,10 +9,10 @@ export type CpuReasonCode =
 export type CpuScoringWeights = {
   honor: number; bondHonor: number; bossProgress: number; monsterDefeat: number;
   permanentPurchasePower: number; partyCombat: number; draw: number; removal: number;
-  immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; overflowLoss: number;
+  immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; equipmentRemoval: number; overflowLoss: number;
 };
 export type CpuProfile = {
-  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.2.0';
+  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.3.0';
   commandPriority: readonly GameCommand['type'][]; weights: CpuScoringWeights;
   maxActionsPerTurn: 128; maxAutonomousSteps: 512; repeatedVisibleStateLimit: 3;
 };
@@ -27,9 +27,9 @@ export type CpuDecisionResult =
   | { status: 'blocked'; reasonCode: 'UNSUPPORTED_DECISION_KIND' | 'NO_LEGAL_COMMAND' | 'MISSING_ACTION_FEATURE' | 'REPEATED_VISIBLE_STATE' | 'MAX_ACTIONS_EXCEEDED'; diagnostic: string };
 
 export const baseBalancedCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
-  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.2.0',
-  commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
-  weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, overflowLoss: -1 },
+  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.3.0',
+  commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESOLVE_EFFECT_ORDER', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'ATTACH_CARD', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
+  weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, equipmentRemoval: -8, overflowLoss: -1 },
   maxActionsPerTurn: 128, maxAutonomousSteps: 512, repeatedVisibleStateLimit: 3,
 });
 
@@ -48,12 +48,12 @@ function reason(command: GameCommand): CpuReasonCode {
   if (command.type === 'COMPLETE_BONDS') return 'COMPLETE_ELIGIBLE_BONDS';
   if (command.type === 'ATTACK_TARGET') return 'ATTACK_BEST_NET_VALUE';
   if (command.type === 'PLAY_ADVENTURER') return 'PLAY_FOR_PARTY_POWER';
-  if (command.type === 'EQUIP_ITEM') return 'EQUIP_FOR_COMBAT_GAIN';
+  if (command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD') return 'EQUIP_FOR_COMBAT_GAIN';
   if (command.type === 'USE_ITEM') return 'USE_ITEM_FOR_IMMEDIATE_VALUE';
   if (command.type === 'BUY_CARD') return 'BUY_HIGHEST_UTILITY';
   if (command.type === 'REFRESH_MARKET') return 'REFRESH_LOW_VALUE_MARKET';
   if (command.type === 'RESPOND_COUNTER_CONSENT' || command.type === 'CANCEL_COUNTER_CONSENT' || command.type === 'EXPIRE_COUNTER_CONSENT') return 'RESPOND_REQUIRED_CONSENT';
-  if (command.type === 'RESOLVE_EFFECT_CHOICE') return 'RESOLVE_HIGHEST_UTILITY_CHOICE';
+  if (command.type === 'RESOLVE_EFFECT_CHOICE' || command.type === 'RESOLVE_EFFECT_ORDER') return 'RESOLVE_HIGHEST_UTILITY_CHOICE';
   return 'END_NO_POSITIVE_ACTION';
 }
 
@@ -66,7 +66,7 @@ function scoreFeature(feature: CpuActionFeature, weights: CpuScoringWeights): { 
     ['honor', feature.honorGain], ['bondHonor', feature.bondHonorGain], ['bossProgress', feature.bossProgress], ['monsterDefeat', feature.monsterDefeat],
     ['permanentPurchasePower', feature.permanentPurchasePower], ['partyCombat', feature.partyCombatGain], ['draw', feature.cardsDrawn], ['removal', feature.removalValue],
     ['immediatePower', feature.immediatePurchasePower + feature.immediateCombatPower], ['purchaseCost', feature.purchaseCost], ['partyCombatLoss', feature.partyCombatLoss],
-    ['equipmentLoss', feature.equipmentLoss], ['overflowLoss', feature.overflowLoss],
+    ['equipmentLoss', feature.equipmentLoss], ['equipmentRemoval', feature.equipmentRemoval], ['overflowLoss', feature.overflowLoss],
   ];
   const terms = raw.filter(([, value]) => value !== 0).map(([featureName, value]) => ({ feature: featureName, value, weight: weights[featureName], contribution: value * weights[featureName] }));
   return { score: terms.reduce((sum, term) => sum + term.contribution, 0), terms };
@@ -75,7 +75,7 @@ function scoreFeature(feature: CpuActionFeature, weights: CpuScoringWeights): { 
 export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult {
   const fingerprint = cpuContextFingerprint(context);
   if (!context.legalCommands.length) return { status: 'blocked', reasonCode: 'NO_LEGAL_COMMAND', diagnostic: `No legal command at revision ${context.view.revision}.` };
-  if (context.legalCommands.some(({ type }) => type === 'RESOLVE_EFFECT_CHOICE') && !context.view.decisionPrompt) return { status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND', diagnostic: 'Effect choice has no typed PlayerDecisionPrompt; CPU stopped without guessing.' };
+  if (context.legalCommands.some(({ type }) => type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESOLVE_EFFECT_ORDER') && !context.view.decisionPrompt) return { status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND', diagnostic: 'Effect decision has no typed PlayerDecisionPrompt; CPU stopped without guessing.' };
   const availableBoss = Object.values(context.view.enemyTargets ?? {}).some(({ kind, status }) => kind === 'boss' && status === 'available');
   const legalBossAttack = context.legalCommands.some((command) => command.type === 'ATTACK_TARGET' && context.view.enemyTargets[command.targetId]?.kind === 'boss');
   const needsBossPower = availableBoss && !legalBossAttack;
@@ -97,6 +97,10 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
       const utility = definitionUtility(targetCardId ? context.definitions[context.view.cards[targetCardId]?.definitionId ?? option?.definitionId ?? ''] : undefined);
       const losesCard = prompt?.decisionKind === 'discard-card' || prompt?.decisionKind === 'remove-card' || prompt?.decisionKind === 'choose-party-member' || prompt?.decisionKind === 'transfer-card';
       return { command, score: 1_000_000 + (losesCard ? -utility : utility), terms: [] as CpuScoreTerm[] };
+    }
+    if (command.type === 'RESOLVE_EFFECT_ORDER') {
+      const removed = command.removeCardId ? context.definitions[context.view.cards[command.removeCardId]?.definitionId ?? ''] : undefined;
+      return { command, score: 1_000_000 - definitionUtility(removed), terms: [] as CpuScoreTerm[] };
     }
     const feature = context.actionFeatures.find((candidate) => canonicalCommand(candidate.command) === canonicalCommand(command));
     if (!feature) return { command, score: command.type === 'END_PHASE' ? 0 : Number.NEGATIVE_INFINITY, terms: [] as CpuScoreTerm[] };

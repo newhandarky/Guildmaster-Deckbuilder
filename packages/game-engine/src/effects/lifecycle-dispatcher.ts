@@ -4,6 +4,7 @@ import type {
   EquipmentEventTrigger,
   GameState,
   LifecycleHook,
+  LifecycleActivation,
   LifecycleHookRef,
   LifecyclePayload,
   LifecycleRegistrySnapshot,
@@ -12,6 +13,7 @@ import type {
 import { validateRulesetStateCompatibility, type Ruleset } from '../rules/ruleset.js';
 import { getDefinition } from '../model/factories.js';
 import { executeEffect, inspectEffectPreviewUncertainty, resolveEffectOrder, resumeEffectChoice, resumeEffectCounterConsent, validatePendingChoiceAgainstEffect, validatePendingCounterConsentAgainstEffect, type EffectExecutionResult, type EffectPreviewUncertainty } from './executor.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 export type LifecycleFailureReason = 'ORDER_POLICY_REQUIRED' | 'UNKNOWN_HOOK' | 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH';
 export type LifecycleDispatchResult = {
@@ -30,11 +32,26 @@ const registrySnapshot = (state: GameState, ruleset: Ruleset): LifecycleRegistry
   rulesetVersion: state.rulesetVersion,
   modules: ruleset.modules.map(({ id, version }) => ({ id, version }))
 });
-const active = (hook: LifecycleHook, state: GameState, payload: LifecyclePayload): boolean => !hook.activation
-  || hook.activation.kind === 'always'
-  || (hook.activation.kind === 'module-state-equals'
-    ? (state.moduleState[hook.moduleId] as Record<string, unknown> | undefined)?.[hook.activation.key] === hook.activation.value
-    : payload.metadata?.[hook.activation.key] === hook.activation.value);
+const activationMatches = (activation: LifecycleActivation, hook: LifecycleHook, state: GameState, payload: LifecyclePayload): boolean => {
+  const actor = payload.actorId ? state.players.find(({ id }) => id === payload.actorId) : undefined;
+  if (activation.kind === 'always') return true;
+  if (activation.kind === 'module-state-equals') return (state.moduleState[hook.moduleId] as Record<string, unknown> | undefined)?.[activation.key] === activation.value;
+  if (activation.kind === 'metadata-equals') return payload.metadata?.[activation.key] === activation.value;
+  if (activation.kind === 'phase-is') return payload.phase === activation.phase;
+  if (activation.kind === 'definition-in-actor-party') return Boolean(actor?.party.some(({ adventurerId }) => state.cards[adventurerId]?.definitionId === activation.definitionId));
+  if (activation.kind === 'definition-at-actor-party-position') return Boolean(actor && state.cards[actor.party[activation.position - 1]?.adventurerId ?? '']?.definitionId === activation.definitionId);
+  if (activation.kind === 'definition-equipped-by-actor') return Boolean(actor?.party.some((slot) => attachedCardIds(slot).some((cardId) => state.cards[cardId]?.definitionId === activation.definitionId)));
+  if (activation.kind === 'definition-in-zone') return Boolean(state.zones[activation.zoneId]?.cardIds.some((cardId) => state.cards[cardId]?.definitionId === activation.definitionId));
+  if (activation.kind === 'turn-fact-at-least') {
+    if (!payload.actorId || state.turnFacts?.playerId !== payload.actorId) return false;
+    const value = state.turnFacts[activation.fact];
+    return typeof value === 'number' ? value >= activation.amount : Number(value) >= activation.amount;
+  }
+  if (activation.kind === 'all') return activation.conditions.every((condition) => activationMatches(condition, hook, state, payload));
+  if (activation.kind === 'any') return activation.conditions.some((condition) => activationMatches(condition, hook, state, payload));
+  return !activationMatches(activation.condition, hook, state, payload);
+};
+const active = (hook: LifecycleHook, state: GameState, payload: LifecyclePayload): boolean => !hook.activation || activationMatches(hook.activation, hook, state, payload);
 const findHook = (ruleset: Ruleset, ref: LifecycleHookRef): LifecycleHook | undefined => ruleset.modules.find((module) => module.id === ref.moduleId)?.lifecycleHooks?.find((hook) => hook.hookId === ref.hookId);
 const candidateHooks = (ruleset: Ruleset, payload: LifecyclePayload): LifecycleHook[] => ruleset.modules.flatMap((module) => module.lifecycleHooks ?? []).filter((hook) => hook.point === payload.point && (!hook.eventType || hook.eventType === payload.eventType));
 const matchingHooks = (state: GameState, ruleset: Ruleset, payload: LifecyclePayload): LifecycleHook[] => candidateHooks(ruleset, payload).filter((hook) => active(hook, state, payload));
@@ -45,23 +62,23 @@ const equipmentTriggerId = ({ cardInstanceId, trigger }: ResolvedEquipmentTrigge
 const normalizedEquipmentEvents = (dispatchId: string, resolved: ResolvedEquipmentTrigger, events: readonly DomainEvent[], offset: number): DomainEvent[] => events.map((event, index) => ({ ...event, eventId: `${dispatchId}:${equipmentTriggerId(resolved)}:${offset + index + 1}` }));
 
 function matchingEquipmentTriggers(state: GameState, ruleset: Ruleset, payload: LifecyclePayload, context: EffectContext): ResolvedEquipmentTrigger[] {
-  if (payload.point !== 'event-after' || !payload.eventType || !payload.actorId) return [];
+  if (payload.point !== 'event-after' || !payload.eventType || !payload.actorId || payload.metadata?.equipmentSuppressed === true) return [];
   const player = state.players.find(({ id }) => id === payload.actorId);
   if (!player) return [];
-  return player.party.flatMap((slot, partyPosition) => {
-    if (!slot.equipmentId) return [];
-    const definition = getDefinition(ruleset.registry, state, slot.equipmentId);
+  return player.party.flatMap((slot, partyPosition) => attachedCardIds(slot).flatMap((equipmentId) => {
+    const definition = getDefinition(ruleset.registry, state, equipmentId);
+    if (definition.type !== 'equipment') return [];
     const triggers = (definition.equipmentEventTriggers ?? [])
       .filter((trigger) => trigger.point === payload.point && trigger.eventType === payload.eventType)
       .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0));
     return triggers.map((trigger) => ({
-      cardInstanceId: slot.equipmentId!,
+      cardInstanceId: equipmentId,
       partyPosition,
       trigger,
       context: {
         ...structuredClone(context),
         controllerId: player.id,
-        cardRefs: { ...structuredClone(context.cardRefs ?? {}), sourceEquipment: slot.equipmentId! },
+        cardRefs: { ...structuredClone(context.cardRefs ?? {}), sourceEquipment: equipmentId },
         playerRefs: { ...structuredClone(context.playerRefs ?? {}), sourceOwner: player.id },
         locationRefs: {
           ...structuredClone(context.locationRefs ?? {}),
@@ -69,7 +86,7 @@ function matchingEquipmentTriggers(state: GameState, ruleset: Ruleset, payload: 
         },
       },
     }));
-  });
+  }));
 }
 
 function validateRegistry(registry: LifecycleRegistrySnapshot, state: GameState, ruleset: Ruleset): { reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH'; error: string } | undefined {
@@ -231,7 +248,7 @@ export function resumeLifecycleCounterConsent(state: GameState, ruleset: Ruleset
   const refError = validateHookRefs(ruleset, [pending.currentHook, ...pending.remainingHooks]);
   if (refError) return fail(refError.reason, hookIds, [], refError.error);
   const canonical = canonicalRefs(pending.rollbackState, ruleset, pending.payload); const currentIndex = canonical?.findIndex((ref) => refKey(ref) === refKey(pending.currentHook)) ?? -1; if (!canonical || currentIndex < 0 || JSON.stringify(canonical.slice(currentIndex + 1)) !== JSON.stringify(pending.remainingHooks)) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: 'Pending lifecycle hook queue is not a canonical suffix for its payload.' };
-  const consent = state.effectState.pendingCounterConsent; const currentHook = findHook(ruleset, pending.currentHook); const programError = consent && currentHook ? validatePendingCounterConsentAgainstEffect(consent, currentHook.effect) : 'Pending lifecycle counter consent or hook is missing.'; if (programError) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: programError };
+  const consent = state.effectState.pendingCounterConsent; const currentHook = findHook(ruleset, pending.currentHook); const programError = consent && currentHook ? validatePendingCounterConsentAgainstEffect(consent, currentHook.effect, state, ruleset) : 'Pending lifecycle counter consent or hook is missing.'; if (programError) return { status: 'failed', hookIds, evaluatedContinuousHookIds: [], events: [], error: programError };
   const next = structuredClone(state);
   const effect = resumeEffectCounterConsent(next, ruleset, actorId, requestId, action); effect.events = normalizedEffectEvents(pending, pending.currentHook, effect.events, 0);
   if (effect.status === 'failed' || effect.status === 'unsupported') return { status: effect.status, hookIds, evaluatedContinuousHookIds: [], events: [], effect, ...(effect.error ? { error: effect.error } : {}) };

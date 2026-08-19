@@ -1,5 +1,6 @@
 import type { BondCondition, BondConditionRule, BondEvaluation, BondPlayerZone, GameState, PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
+import { attachedCardIds } from '../model/attachments.js';
 import type { Ruleset } from './ruleset.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
@@ -20,13 +21,15 @@ function cardIdsInZones(player: PlayerState, zones: readonly BondPlayerZone[]): 
   return zones.flatMap((zone) => {
     switch (zone) {
       case 'party': return player.party.map((slot) => slot.adventurerId);
-      case 'equipment': return player.party.flatMap((slot) => slot.equipmentId ? [slot.equipmentId] : []);
+      case 'equipment': return player.party.flatMap(attachedCardIds);
       default: return player[zone];
     }
   });
 }
 
 function evaluateCompatibleBondPredicate(condition: BondCondition, state: GameState, ruleset: Ruleset, player: PlayerState): boolean {
+  const partyDefinitions = () => player.party.map(({ adventurerId }) => getDefinition(ruleset.registry, state, adventurerId));
+  const tagsFor = (definition: ReturnType<typeof getDefinition>, prefix?: string) => (definition.tags ?? []).filter((tag) => !prefix || tag.startsWith(prefix));
   switch (condition.kind) {
     case 'defeated-bosses-at-least': return player.history.defeatedBosses >= condition.amount;
     case 'defeated-monsters-at-least': return player.history.defeatedMonsters >= condition.amount;
@@ -35,7 +38,38 @@ function evaluateCompatibleBondPredicate(condition: BondCondition, state: GameSt
     case 'card-definition-present': return cardIdsInZones(player, condition.zones).some((cardId) => state.cards[cardId]?.definitionId === condition.definitionId);
     case 'card-type-present': return cardIdsInZones(player, condition.zones).some((cardId) => getDefinition(ruleset.registry, state, cardId).type === condition.cardType);
     case 'party-member-present': return player.party.some((slot) => !condition.definitionId || state.cards[slot.adventurerId]?.definitionId === condition.definitionId);
-    case 'equipment-present': return player.party.some((slot) => slot.equipmentId && (!condition.definitionId || state.cards[slot.equipmentId]?.definitionId === condition.definitionId));
+    case 'equipment-present': return player.party.some((slot) => attachedCardIds(slot).some((cardId) => !condition.definitionId || state.cards[cardId]?.definitionId === condition.definitionId));
+    case 'phase-is': return state.phase === condition.phase;
+    case 'turn-fact-at-least': {
+      if (state.turnFacts?.playerId !== player.id) return false;
+      const value = state.turnFacts[condition.fact];
+      return typeof value === 'number' && value >= condition.amount;
+    }
+    case 'turn-fact-distinct-values-at-least': {
+      if (state.turnFacts?.playerId !== player.id) return false;
+      return new Set(state.turnFacts[condition.fact] ?? []).size >= condition.amount;
+    }
+    case 'party-size-between': return player.party.length >= condition.minimum && player.party.length <= condition.maximum;
+    case 'party-tag-count-at-least': return partyDefinitions().filter((definition) => condition.tags.some((tag) => definition.tags?.includes(tag))).length >= condition.amount;
+    case 'party-edge-tags': {
+      if (player.party.length < condition.count) return false;
+      const selected = condition.edge === 'first' ? partyDefinitions().slice(0, condition.count) : partyDefinitions().slice(-condition.count);
+      return selected.every((definition) => condition.tags.some((tag) => definition.tags?.includes(tag)));
+    }
+    case 'party-distinct-tag-count-at-least': {
+      const definitions = partyDefinitions().filter((definition) => !condition.nonStarterOnly || definition.type !== 'starter');
+      return new Set(definitions.flatMap((definition) => tagsFor(definition, condition.tagPrefix))).size >= condition.amount;
+    }
+    case 'party-nonstarter-count-at-least': return partyDefinitions().filter(({ type }) => type !== 'starter').length >= condition.amount;
+    case 'party-all-tags-in': return player.party.length >= condition.minimum && partyDefinitions().every((definition) => condition.tags.some((tag) => definition.tags?.includes(tag)));
+    case 'party-same-tag-count-at-least': {
+      if (condition.requireAll && player.party.length < condition.amount) return false;
+      const counts = new Map<string, number>();
+      for (const definition of partyDefinitions()) for (const tag of tagsFor(definition, condition.tagPrefix)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      return condition.requireAll
+        ? [...counts.values()].some((count) => count === player.party.length)
+        : [...counts.values()].some((count) => count >= condition.amount);
+    }
     case 'all': return condition.conditions.every((child) => evaluateCompatibleBondPredicate(child, state, ruleset, player));
     case 'any': return condition.conditions.some((child) => evaluateCompatibleBondPredicate(child, state, ruleset, player));
     case 'not': return !evaluateCompatibleBondPredicate(condition.condition, state, ruleset, player);

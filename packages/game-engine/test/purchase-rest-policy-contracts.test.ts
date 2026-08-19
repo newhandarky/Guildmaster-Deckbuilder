@@ -48,12 +48,12 @@ describe('purchase cost and rest hand-size policy contracts', () => {
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, ruleId: ' test:item-discount' }] })])).toThrow(/leading or trailing whitespace/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, moduleId: 'wrong' }] })])).toThrow(/must belong/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ restHandSizePolicies: [{ ...rest, handSize: -1 }] })])).toThrow(/greater than or equal to 0/);
-    expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, activation: { ...purchase.activation, zoneId: 'test:missing' } }] })])).toThrow(/unknown zone/);
+    expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, activation: { ...(purchase.activation as Extract<typeof purchase.activation, { kind: 'definition-in-zone' }>), zoneId: 'test:missing' } }] })])).toThrow(/unknown zone/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, activation: { ...purchase.activation, definitionId: 'test:missing' } }] })])).toThrow(/unknown definition/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [{ ...purchase, target: { kind: 'definition-type-in', values: ['missing-type'] } }] })])).toThrow(/unknown definition type/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({
       zoneDefinitions: [{ zoneId: 'test:hidden-activation', kind: 'singleSlot', visibility: 'hidden', rulesModuleId: 'test:modifiers' }],
-      restHandSizePolicies: [{ ...rest, activation: { ...rest.activation, zoneId: 'test:hidden-activation' } }],
+      restHandSizePolicies: [{ ...rest, activation: { ...(rest.activation as Extract<typeof rest.activation, { kind: 'definition-in-zone' }>), zoneId: 'test:hidden-activation' } }],
     })])).toThrow(/must be public/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ purchaseCostModifierRules: [purchase, { ...purchase, ruleId: 'test:second-discount' }] })])).toThrow(/priority 10 is ambiguous/);
     expect(() => createRuleset([testPack], [baseRulesModule, policyModule({ restHandSizePolicies: [rest, { ...rest, policyId: 'test:second-rest' }] })])).toThrow(/priority 10 is ambiguous/);

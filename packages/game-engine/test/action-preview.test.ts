@@ -520,6 +520,7 @@ describe('authoritative action previews', () => {
     const state = makeGame();
     const ref = { moduleId: 'test:encounter', policyId: 'policy' };
     const nodes: EffectDefinition['body'][] = [
+      { kind: 'draw-shared-deck', sourceZoneId: 'base:item-deck', player: { kind: 'controller' }, destination: 'discardPile', count: 1 },
       { kind: 'create-enemy-encounter', encounterId: 'encounter', encounterKind: 'kind', rulesModuleId: 'test:encounter', policy: ref },
       { kind: 'create-enemy-target', targetId: 'target', encounterId: 'encounter', card: { kind: 'card-instance', cardInstanceId: 'card' }, from: { kind: 'shared-zone', zoneId: 'base:monster-deck' }, targetKind: 'part' },
       { kind: 'attach-card-to-enemy-target', targetId: 'target', card: { kind: 'card-instance', cardInstanceId: 'card' }, from: { kind: 'shared-zone', zoneId: 'base:item-row' } },

@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
-import { cardAccessibleName, type CardMetric, type CardVisualViewModel } from '../cards/card-visual-model.js';
+import { cardAccessibleName, type CardCornerSlot, type CardVisualViewModel } from '../cards/card-visual-model.js';
+import { CardIcon } from '../cards/card-icons.js';
 import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
@@ -8,40 +9,53 @@ type Props = {
   testId?: string;
 };
 
-export function CardArt({ card }: { card: CardVisualViewModel }) {
-  return <span className="card-art" data-asset-key={card.art.key}>
-    <CardPresentationImage art={card.art} sizes="(max-width: 767px) 112px, 146px" />
+export function CardArt({
+  card,
+  sizes = '(max-width: 767px) 112px, 146px',
+  placeholderAccessible = false,
+}: {
+  card: CardVisualViewModel;
+  sizes?: string;
+  placeholderAccessible?: boolean;
+}) {
+  return <span className="game-card__art" data-asset-key={card.art.key}>
+    <CardPresentationImage art={card.art} sizes={sizes} placeholderAccessible={placeholderAccessible} />
   </span>;
 }
 
-export function CardTitleScrim({ card }: { card: CardVisualViewModel }) {
-  return <span className="card-title-scrim">
-    <span className="card-type">{card.cardTypeLabel}</span>
-    <strong>{card.displayName}</strong>
+export function CardCorner({ corner }: { corner: CardCornerSlot }) {
+  return <span className={`game-card__corner game-card__corner--${corner.slot}`} role="img" aria-label={corner.accessibleLabel}>
+    <CardIcon iconKey={corner.iconKey} />
+    {corner.value !== undefined ? <strong aria-hidden="true">{corner.value}</strong> : null}
   </span>;
 }
 
-export function CardMetricRail({ metrics }: { metrics: readonly CardMetric[] }) {
-  return <span className="card-metric-rail">
-    {metrics.map((metric) => <span className={`card-metric card-metric-${metric.kind}`} key={metric.kind} aria-label={`${metric.label} ${metric.value}`}>
-      <span aria-hidden="true">{metric.icon}</span>
-      <strong>{metric.value}</strong>
-    </span>)}
-  </span>;
-}
-
-export function CardSummaryBand({ card }: { card: CardVisualViewModel }) {
-  return <span className="card-summary-band">
-    <span>{card.shortDisplayText}</span>
-    {card.contextLabel ? <small>{card.contextLabel}</small> : null}
-  </span>;
-}
-
-export function CardStateRing({ card }: { card: CardVisualViewModel }) {
-  return <span className="card-state-label">
-    <span className="card-state-marker" aria-hidden="true" />
-    {card.stateLabel}
-  </span>;
+export function CardFace({
+  card,
+  showState = true,
+  sizes = '(max-width: 767px) 112px, 146px',
+  placeholderAccessible = false,
+}: {
+  card: CardVisualViewModel;
+  showState?: boolean;
+  sizes?: string;
+  placeholderAccessible?: boolean;
+}) {
+  return <>
+    <CardArt card={card} sizes={sizes} placeholderAccessible={placeholderAccessible} />
+    <span className="game-card__wash" aria-hidden="true" />
+    <span className="game-card__frame" aria-hidden="true" />
+    <span className="game-card__nameplate"><strong>{card.displayName}</strong></span>
+    {card.corners.map((corner) => <CardCorner corner={corner} key={corner.slot} />)}
+    <span className="game-card__rules">
+      <span className="game-card__skill-summary">{card.shortDisplayText}</span>
+      {card.contextLabel ? <small>{card.contextLabel}</small> : null}
+    </span>
+    {showState ? <>
+      <span className="game-card__state-ring" aria-hidden="true" />
+      <span className="game-card__state-label"><span aria-hidden="true" />{card.stateLabel}</span>
+    </> : null}
+  </>;
 }
 
 /** Inspectable presentation surface. Authoritative commands are executed only from CardDetailsPanel. */
@@ -53,17 +67,15 @@ export function Card({ card, onInspect, testId }: Props) {
     data-card-instance-id={card.instanceId}
     data-card-type={card.cardType}
     data-card-template={card.template}
+    data-card-appearance={card.appearance}
+    data-profession={card.profession}
     data-card-state={card.interactionState}
     data-legal-action={card.action ? 'true' : 'false'}
-    className={`card card-${card.template} card-state-${card.interactionState}`}
+    className={`card game-card game-card-button card-${card.template}`}
     aria-haspopup="dialog"
     aria-label={cardAccessibleName(card)}
     onClick={inspect}
   >
-    <CardArt card={card} />
-    <CardTitleScrim card={card} />
-    <CardMetricRail metrics={card.metrics} />
-    <CardSummaryBand card={card} />
-    <CardStateRing card={card} />
+    <CardFace card={card} />
   </button>;
 }

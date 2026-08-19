@@ -22,6 +22,7 @@ export function buildPhaseProgress(currentPhase: Phase): readonly PhaseProgressI
 
 const lifecycleCommandTypes = new Set<GameCommand['type']>([
   'RESOLVE_EFFECT_CHOICE',
+  'RESOLVE_EFFECT_ORDER',
   'RESPOND_COUNTER_CONSENT',
   'CANCEL_COUNTER_CONSENT',
   'EXPIRE_COUNTER_CONSENT',
@@ -38,7 +39,7 @@ export function buildLegalActionSummary(commands: readonly GameCommand[]): strin
   const summaries = [
     [commands.filter((command) => command.type === 'PLAY_ADVENTURER').length, '張冒險者可加入隊伍'],
     [commands.filter((command) => command.type === 'USE_ITEM').length, '張道具可使用'],
-    [uniqueCommandCount(commands.flatMap((command) => command.type === 'EQUIP_ITEM' ? [command.cardId] : [])), '張裝備可選擇配戴對象'],
+    [uniqueCommandCount(commands.flatMap((command) => command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD' ? [command.cardId] : [])), '張卡牌可選擇附著對象'],
     [commands.filter((command) => command.type === 'ATTACK_TARGET').length, '個目標可討伐'],
     [commands.filter((command) => command.type === 'BUY_CARD').length, '張卡牌可購買'],
     [uniqueCommandCount(commands.flatMap((command) => command.type === 'COMPLETE_BONDS' ? command.bondIds : [])), '張羈絆條件成立，可自行選擇完成'],

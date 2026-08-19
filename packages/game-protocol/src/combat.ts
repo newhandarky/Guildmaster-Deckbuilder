@@ -5,23 +5,33 @@ export type CombatCondition =
   | { kind: 'always'; value: boolean }
   | { kind: 'phase-is'; phase: import('./state.js').Phase }
   | { kind: 'target-kind-in'; kinds: readonly string[] }
+  | { kind: 'target-definition-id-in'; definitionIds: readonly string[] }
   | { kind: 'player-counter-at-least'; resourceId: string; amount: number }
   | { kind: 'all'; conditions: readonly CombatCondition[] }
   | { kind: 'any'; conditions: readonly CombatCondition[] }
   | { kind: 'not'; condition: CombatCondition };
 
 type CombatRuleBase = { schemaVersion: 1; ruleId: string; moduleId: string; priority?: number; when: CombatCondition };
-export type CombatModifierRule = CombatRuleBase & { kind: 'modifier'; amount: number };
+export type CombatModifierAmount = number
+  | { kind: 'public-zone-card-count'; zoneId: string; definitionTypes: readonly string[]; multiplier: number }
+  | { kind: 'distinct-party-tag-count'; player: 'attacking-player' | 'next-seat'; tagPrefix: string; multiplier: number };
+export type CombatModifierRule = CombatRuleBase & { kind: 'modifier'; amount: CombatModifierAmount };
 export type CombatRestrictionRule = CombatRuleBase & { kind: 'restriction'; reasonCode: string };
+export type CombatParticipantLimitRule = CombatRuleBase & { kind: 'participant-limit'; maximumPartySlots: number; reasonCode: string };
+export type CombatEquipmentSuppressionRule = CombatRuleBase & { kind: 'equipment-suppression'; reasonCode: string };
 export type CombatReplacementOutcome = { kind: 'defeat-target' } | { kind: 'remove-target' };
 export type CombatReplacementRule = CombatRuleBase & { kind: 'replacement'; outcome: CombatReplacementOutcome };
-export type CombatRule = CombatModifierRule | CombatRestrictionRule | CombatReplacementRule;
+export type CombatRule = CombatModifierRule | CombatRestrictionRule | CombatParticipantLimitRule | CombatEquipmentSuppressionRule | CombatReplacementRule;
 
 export type CombatRuleRef = { moduleId: string; ruleId: string };
 export type CombatEvaluation = {
   schemaVersion: 1;
   requiredCombat: number;
   eligible: boolean;
+  maximumPartySlots?: number;
+  participantLimitReasonCode?: string;
+  equipmentSuppressed: boolean;
+  equipmentSuppressionReasonCodes: readonly string[];
   restrictionReasonCodes: readonly string[];
   outcome: CombatReplacementOutcome;
   appliedRules: readonly CombatRuleRef[];
@@ -32,6 +42,7 @@ export const CombatConditionSchema: z.ZodType<CombatCondition> = z.lazy(() => z.
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
   z.object({ kind: z.literal('phase-is'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict(),
   z.object({ kind: z.literal('target-kind-in'), kinds: z.array(z.string().trim().min(1)).min(1) }).strict(),
+  z.object({ kind: z.literal('target-definition-id-in'), definitionIds: z.array(z.string().trim().min(1)).min(1) }).strict(),
   z.object({ kind: z.literal('player-counter-at-least'), resourceId: z.string().trim().min(1), amount: z.number().finite() }).strict(),
   z.object({ kind: z.literal('all'), conditions: z.array(CombatConditionSchema).min(1) }).strict(),
   z.object({ kind: z.literal('any'), conditions: z.array(CombatConditionSchema).min(1) }).strict(),
@@ -39,23 +50,34 @@ export const CombatConditionSchema: z.ZodType<CombatCondition> = z.lazy(() => z.
 ]));
 
 const combatRuleBase = { schemaVersion: z.literal(1), ruleId: z.string().trim().min(1), moduleId: z.string().trim().min(1), priority: z.number().finite().optional(), when: CombatConditionSchema };
+const combatModifierAmountSchema = z.union([
+  z.number().finite(),
+  z.object({ kind: z.literal('public-zone-card-count'), zoneId: z.string().trim().min(1), definitionTypes: z.array(z.string().trim().min(1)).min(1), multiplier: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('distinct-party-tag-count'), player: z.enum(['attacking-player', 'next-seat']), tagPrefix: z.string().trim().min(1), multiplier: z.number().finite() }).strict(),
+]);
 export const CombatRuleSchema = z.discriminatedUnion('kind', [
-  z.object({ ...combatRuleBase, kind: z.literal('modifier'), amount: z.number().finite() }).strict(),
+  z.object({ ...combatRuleBase, kind: z.literal('modifier'), amount: combatModifierAmountSchema }).strict(),
   z.object({ ...combatRuleBase, kind: z.literal('restriction'), reasonCode: z.string().trim().min(1) }).strict(),
+  z.object({ ...combatRuleBase, kind: z.literal('participant-limit'), maximumPartySlots: z.number().int().positive(), reasonCode: z.string().trim().min(1) }).strict(),
+  z.object({ ...combatRuleBase, kind: z.literal('equipment-suppression'), reasonCode: z.string().trim().min(1) }).strict(),
   z.object({ ...combatRuleBase, kind: z.literal('replacement'), outcome: z.discriminatedUnion('kind', [z.object({ kind: z.literal('defeat-target') }).strict(), z.object({ kind: z.literal('remove-target') }).strict()]) }).strict()
 ]);
 
 const combatRuleRefSchema = z.object({ moduleId: z.string(), ruleId: z.string() }).strict();
 const combatRegistrySchema = z.object({ rulesetVersion: z.string(), modules: z.array(z.object({ id: z.string(), version: z.string() }).strict()) }).strict();
-export const CombatEvaluationSchema: z.ZodType<CombatEvaluation> = z.object({
+export const CombatEvaluationSchema = z.object({
   schemaVersion: z.literal(1),
   requiredCombat: z.number().finite().nonnegative(),
   eligible: z.boolean(),
+  maximumPartySlots: z.number().int().positive().optional(),
+  participantLimitReasonCode: z.string().trim().min(1).optional(),
+  equipmentSuppressed: z.boolean(),
+  equipmentSuppressionReasonCodes: z.array(z.string().trim().min(1)),
   restrictionReasonCodes: z.array(z.string()),
   outcome: z.discriminatedUnion('kind', [z.object({ kind: z.literal('defeat-target') }).strict(), z.object({ kind: z.literal('remove-target') }).strict()]),
   appliedRules: z.array(combatRuleRefSchema),
   registry: combatRegistrySchema
-}).strict();
+}).strict() as unknown as z.ZodType<CombatEvaluation>;
 
 function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;

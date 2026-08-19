@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EffectDefinition } from '@guildmaster/game-protocol';
-import { dispatch, envelope, executeEffect, getLegalCommands, moveCard, resolveEffectOrder, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { dispatch, envelope, executeEffect, getLegalCommands, moveCard, projectPlayerView, resolveEffectOrder, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseZoneIds } from '../src/model/zones.js';
 import { makeGame, testRuleset } from './fixtures.js';
 
@@ -16,6 +16,42 @@ describe('serializable effect primitives', () => {
     const commands = getLegalCommands(restored, testRuleset, 'p1'); expect(commands).toEqual([{ type: 'RESOLVE_EFFECT_CHOICE', executionId: 'execution-1', choiceId: 'discard-or-hold', optionId: 'discard' }, { type: 'RESOLVE_EFFECT_CHOICE', executionId: 'execution-1', choiceId: 'discard-or-hold', optionId: 'hold' }]);
     const result = dispatch(restored, testRuleset, envelope(restored, 'p1', commands[0]!));
     expect(result.error).toBeUndefined(); expect(result.state.players[0]!.discardPile).toContain(cardId); expect(result.state.effectState.pendingChoice).toBeUndefined();
+  });
+
+  it('privately orders or removes inspected deck-top cards through RESOLVE_EFFECT_ORDER after Snapshot', () => {
+    const state = makeGame(); const player = state.players[0]!; player.drawPile.push(...player.hand.splice(0, 3)); const inspected = player.drawPile.slice(-3);
+    const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/order-deck-top', body: { kind: 'choose-order-player-deck-top', orderId: 'private-top-three', actor: { kind: 'controller' }, player: { kind: 'controller' }, count: 3, mayRemove: true } };
+    expect(executeEffect(state, testRuleset, effect, { controllerId: 'p1' }, 'order-execution')).toMatchObject({ status: 'suspended' });
+    expect(projectPlayerView(state, testRuleset, 'p1').decisionPrompt).toMatchObject({ decisionKind: 'choose-order', order: { kind: 'player-deck-top', cardIds: inspected, mayRemove: true } });
+    expect(projectPlayerView(state, testRuleset, 'p2').cards).not.toHaveProperty(inspected[0]!);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))));
+    const commands = getLegalCommands(restored, testRuleset, 'p1').filter((command) => command.type === 'RESOLVE_EFFECT_ORDER');
+    expect(commands).toHaveLength(12);
+    const chosen = commands.find((command) => command.type === 'RESOLVE_EFFECT_ORDER' && command.removeCardId === inspected[0] && command.orderedCardIds[0] === inspected[2])!;
+    const completed = dispatch(restored, testRuleset, envelope(restored, 'p1', chosen));
+    expect(completed.error).toBeUndefined();
+    if (chosen.type !== 'RESOLVE_EFFECT_ORDER') throw new Error('Expected order command.');
+    expect(completed.state.players[0]!.drawPile.slice(-2)).toEqual(chosen.orderedCardIds);
+    expect(completed.state.removedCards).toContain(inspected[0]);
+
+    const forgedState = structuredClone(state); const before = structuredClone(forgedState);
+    const forged = dispatch(forgedState, testRuleset, envelope(forgedState, 'p1', { type: 'RESOLVE_EFFECT_ORDER', executionId: 'order-execution', orderId: 'private-top-three', orderedCardIds: [inspected[0]!, inspected[0]!] }));
+    expect(forged.error?.code).toBe('INVALID_COMMAND'); expect(forged.state).toEqual(before);
+  });
+
+  it('fails closed before expanding an ordering continuation beyond the 256-branch budget', () => {
+    const state = makeGame();
+    const oversizedDeckOrder = {
+      schemaVersion: 1,
+      effectId: 'test:effect/oversized-deck-order',
+      body: { kind: 'choose-order-player-deck-top', orderId: 'six-cards', actor: { kind: 'controller' }, player: { kind: 'controller' }, count: 6, mayRemove: true },
+    } as EffectDefinition;
+    expect(executeEffect(state, testRuleset, oversizedDeckOrder, { controllerId: 'p1' }, 'oversized-deck-order')).toMatchObject({ status: 'failed', error: expect.stringContaining('Invalid effect definition') });
+
+    const extraId = state.zones[baseZoneIds.adventurerDeck]!.cardIds.pop()!;
+    state.players[0]!.party.push({ adventurerId: extraId }); state.cards[extraId]!.ownerId = 'p1';
+    const oversizedPartyOrder: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/oversized-party-order', body: { kind: 'choose-order-player-party', orderId: 'six-party-cards', actor: { kind: 'controller' }, player: { kind: 'controller' } } };
+    expect(executeEffect(state, testRuleset, oversizedPartyOrder, { controllerId: 'p1' }, 'oversized-party-order')).toMatchObject({ status: 'failed', error: 'Party ordering supports at most 5 cards.' });
   });
 
   it('preserves the exact outer execution tail when a nested sequence suspends', () => {
@@ -88,7 +124,7 @@ describe('serializable effect primitives', () => {
     expect(state.players[0]!.hand).toHaveLength(handBefore + 2);
 
     const invalid: EffectDefinition = structuredClone(effect);
-    if (invalid.body.kind === 'draw' && typeof invalid.body.count !== 'number') invalid.body.count.tagPrefix = ' profession:';
+    if (invalid.body.kind === 'draw' && typeof invalid.body.count !== 'number' && invalid.body.count.kind === 'party-distinct-tag-count') invalid.body.count.tagPrefix = ' profession:';
     expect(executeEffect(state, dynamicRuleset, invalid, { controllerId: 'p1' }, 'invalid-prefix')).toMatchObject({ status: 'failed', error: expect.stringContaining('leading or trailing whitespace') });
   });
 
@@ -98,6 +134,31 @@ describe('serializable effect primitives', () => {
     const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/move', body: { kind: 'sequence', effects: [{ kind: 'move-card', card: { kind: 'context-card', key: 'card' }, from: hand, to: { kind: 'shared-zone', zoneId: 'test:module-zone' }, transferOwnership: false }, { kind: 'move-card', card: { kind: 'context-card', key: 'card' }, from: { kind: 'shared-zone', zoneId: 'test:module-zone' }, to: discard }] } };
     expect(executeEffect(state, testRuleset, effect, { controllerId: 'p1', cardRefs: { card: cardId } }, 'move-1').status).toBe('completed');
     expect(state.players[0]!.discardPile).toContain(cardId); expect(state.zones['test:module-zone']!.cardIds).not.toContain(cardId);
+  });
+
+  it('draws the available top cards from a shared ordered deck, transfers ownership, and rolls back later failure', () => {
+    const state = makeGame();
+    const source = state.zones[baseZoneIds.adventurerDeck]!;
+    const expected = source.cardIds.slice(-2).reverse();
+    const effect: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/shared-deck-draw', body: { kind: 'draw-shared-deck', sourceZoneId: baseZoneIds.adventurerDeck, player: { kind: 'controller' }, destination: 'discardPile', count: 2 } };
+    const completed = executeEffect(state, testRuleset, effect, { controllerId: 'p1' }, 'shared-draw');
+    expect(completed).toMatchObject({ status: 'completed' });
+    expect(completed.events.filter(({ type }) => type === 'SHARED_DECK_CARD_DRAWN')).toHaveLength(2);
+    expect(state.players[0]!.discardPile.slice(-2)).toEqual(expected);
+    for (const cardId of expected) expect(state.cards[cardId]!.ownerId).toBe('p1');
+
+    const partial = makeGame();
+    const partialSource = partial.zones[baseZoneIds.itemDeck]!;
+    const retained = partialSource.cardIds.at(-1)!;
+    partial.removedCards.push(...partialSource.cardIds.splice(0, partialSource.cardIds.length - 1));
+    expect(executeEffect(partial, testRuleset, { schemaVersion: 1, effectId: 'test:effect/partial-shared-draw', body: { kind: 'draw-shared-deck', sourceZoneId: baseZoneIds.itemDeck, player: { kind: 'controller' }, destination: 'hand', count: 3 } }, { controllerId: 'p1' }, 'partial-shared-draw')).toMatchObject({ status: 'completed' });
+    expect(partial.players[0]!.hand).toContain(retained);
+
+    const rollback = makeGame();
+    const before = structuredClone(rollback);
+    const failing: EffectDefinition = { schemaVersion: 1, effectId: 'test:effect/shared-draw-rollback', body: { kind: 'sequence', effects: [effect.body, { kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: 'missing' }, from: { kind: 'removed' }, to: discard }] } };
+    expect(executeEffect(rollback, testRuleset, failing, { controllerId: 'p1' }, 'shared-draw-rollback')).toMatchObject({ status: 'failed' });
+    expect(rollback).toEqual(before);
   });
 
   it('rejects invalid, stale, hidden, and equipment-breaking moves without changing state', () => {

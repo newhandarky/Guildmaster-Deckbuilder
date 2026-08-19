@@ -190,8 +190,54 @@ const enabledProfessionEquipmentCopy: Readonly<Record<string, { profession: stri
   '07': { profession: '遠程', name: '透視眼鏡' },
   '25': { profession: '坦克', name: '騎士之盾' },
 };
+const enabledPartyCombatCopy: Readonly<Record<string, { shortDisplayText: string; detailDisplayText: string }>> = {
+  '04': { shortDisplayText: '隊伍第一位的其他冒險者戰力 +2。', detailDisplayText: '只要此冒險者在隊伍中，隊伍第一位的另一名冒險者有效戰力增加 2；若此卡自己位於第一位則不套用。位置變動後會立即重算。此為已啟用的 Provisional 候選效果。' },
+  '10': { shortDisplayText: '位於隊伍第一位時，自身戰力 +2。', detailDisplayText: '此冒險者只有在隊伍第一位時，自身有效戰力增加 2；離開第一位後立即失去此加成。此為已啟用的 Provisional 候選效果。' },
+  '15': { shortDisplayText: '位於隊伍第四或第五位時，自身戰力 +1。', detailDisplayText: '此冒險者位於隊伍第 4 或第 5 位時，自身有效戰力增加 1；其他位置不套用。此為已啟用的 Provisional 候選效果。' },
+  '20': { shortDisplayText: '自身戰力減少隊伍中其他冒險者的數量。', detailDisplayText: '計算有效戰力時，每有 1 名其他隊伍冒險者，自身戰力便減少 1；單張卡的有效戰力最低為 0。此為已啟用的 Provisional 候選效果。' },
+  '24': { shortDisplayText: '討伐魔物時，自身戰力 +3。', detailDisplayText: '本次討伐目標為魔物時，此冒險者有效戰力增加 3；討伐魔王或沒有指定目標的公開隊伍摘要不套用。此為已啟用的 Provisional 候選效果。' },
+  '27': { shortDisplayText: '相鄰的其他冒險者戰力各 +1。', detailDisplayText: '此冒險者前後直接相鄰的隊伍冒險者有效戰力各增加 1；隊伍位置改變後立即重算。此為已啟用的 Provisional 候選效果。' },
+};
+const enabledBossCopy: Readonly<Record<string, { shortDisplayText: string; detailDisplayText: string }>> = {
+  '01': {
+    shortDisplayText: '戰力增加商店中的裝備數；擊敗後購買力 +5，並取得商店最多 2 張費用 4 以下的牌。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 9，加上當下商店公開列中的裝備張數；商店變動後會重新計算。擊敗後先取得 5 點購買力，再依序取得最多 2 張費用 4 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '02': {
+    shortDisplayText: '參戰起始冒險者移出遊戲，其他冒險者洗回公共牌庫，再依參戰人數補抽；擊敗後購買力 +5 並再取得 2 張冒險者。',
+    detailDisplayText: '只處理實際提供戰力的最短隊伍前綴：其中起始冒險者移出遊戲，非起始冒險者洗回公共冒險者牌庫，裝備依各自離場規則進入棄牌堆或移出遊戲。完成洗牌後，依全部參戰者人數從該牌庫頂取得等量冒險者置入棄牌堆；牌庫不足時只取得現存牌。擊敗後再取得 5 點購買力與最多 2 張公共冒險者。此為已啟用的 Provisional 候選效果。',
+  },
+  '03': {
+    shortDisplayText: '戰鬥後必須從手牌棄 1 張冒險者；無法支付時討伐失敗。成功後購買力 +5，並可從棄牌堆移除最多 2 張牌。',
+    detailDisplayText: '隊伍戰力足夠時，即使手牌沒有冒險者仍可發起討伐。實際參戰的最短隊伍前綴與裝備會先依戰鬥規則離場；接著必須從手牌選擇並棄置 1 張帶有職業的冒險者。零候選時巫妖留在公共區域、沒有任何報酬，已離場隊伍不回復。支付成功後取得 5 點購買力，再分兩次選擇從自己的棄牌堆移除 0、1 或 2 張牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '05': {
+    shortDisplayText: '本次討伐所有裝備失效；擊敗後購買力 +5，並取得商店最多 2 張費用 3 以下的牌。',
+    detailDisplayText: '討伐此魔王的整次戰鬥中，裝備的戰力、修正、觸發與離場替代全部失效，但仍保持配戴並隨實際參戰者依核心規則棄置。擊敗後先取得 5 點購買力，再依序從當下商店取得最多 2 張費用 3 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '06': {
+    shortDisplayText: '完整隊伍每有 1 種職業，戰力 +1；擊敗後購買力 +5，並從冒險者牌庫取得 2 張牌。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，裝備不提供職業。擊敗後先取得 5 點購買力，再從公共冒險者牌庫頂取得最多 2 張牌置入自己的棄牌堆；牌庫不足時只取得現存牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '08': {
+    shortDisplayText: '最多使用隊伍最前方 3 名冒險者；擊敗後購買力 +5，並取得招募區最多 2 張費用 3 以下的冒險者。',
+    detailDisplayText: '討伐時只能使用隊伍最前方連續的 1 至 3 名冒險者及其裝備，不能跳過前方成員；未參戰的後方成員保留。擊敗後先取得 5 點購買力，再依序取得招募區最多 2 張費用 3 以下的冒險者置入棄牌堆；沒有候選時自動略過，招募區不立即補牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '09': {
+    shortDisplayText: '左手邊玩家完整隊伍每有 1 種職業，戰力 +1；擊敗後購買力 +5，並從物資牌庫取得 1 張牌。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家左手邊玩家完整公開隊伍中的不同職業種類數；active player 改變時會重新計算。擊敗後先取得 5 點購買力，再從公共物資牌庫頂取得最多 1 張牌置入自己的棄牌堆；牌庫為空時略過取牌。此為已啟用的 Provisional 候選效果。',
+  },
+  '10': {
+    shortDisplayText: '完整隊伍每有 1 種職業，戰力 −1；擊敗後購買力 +5，並抽 3 張牌。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 14，減去當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，最低戰力為 0。擊敗後先取得 5 點購買力，再從自己的牌庫抽 3 張，必要時依一般規則重洗棄牌堆。此為已啟用的 Provisional 候選效果。',
+  },
+  '11': {
+    shortDisplayText: '只能使用隊伍最前方 1 名冒險者；擊敗後購買力 +5，並取得商店最多 2 張費用 3 以下的道具。',
+    detailDisplayText: '討伐時只能使用隊伍最前方第 1 名冒險者及其裝備，不能改選後方成員；所有未參戰成員保留。擊敗後先取得 5 點購買力，再依序取得商店最多 2 張費用 3 以下的道具置入棄牌堆，裝備不是合法候選；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+  },
+};
 export const provisionalOriginalFullPresentationPack: PresentationPack = {
-  manifest: { id: 'presentation:provisional-original-full-neutral', version: '1.4.0', theme: 'neutral-text', locale: 'zh-TW' },
+  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.2.0', theme: 'neutral-text', locale: 'zh-TW' },
   entries: [
     ...Array.from({ length: 5 }, (_, index) => fullNeutralEntry(`base:starter/adventurer-${String(index + 1).padStart(2, '0')}`, `候選起始冒險者 ${String(index + 1).padStart(2, '0')}`, 'starter')),
     fullNeutralEntry('base:starter/summoning-stone', '候選起始資源 A', 'starter'),
@@ -207,17 +253,23 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         ...(id === '02' ? {
           shortDisplayText: '此冒險者不能配戴裝備。',
           detailDisplayText: '此冒險者在隊伍中時，任何裝備都不會成為其合法配戴指令；Legal Commands、CPU 與權威 dispatch 共用相同限制。此為 Provisional 候選效果。',
+        } : id === '05' ? {
+          shortDisplayText: '在自己的隊伍中時，購買所有裝備費用 −1。',
+          detailDisplayText: '此冒險者位於自己的隊伍時，自己從商店購買的每張裝備費用減少 1，最低為 0；不影響道具，也不替其他玩家折價。Legal Commands、購買預覽、CPU 與權威 dispatch 共用此 Provisional 規則。',
         } : id === '09' ? {
           shortDisplayText: '配戴任一裝備時，額外增加戰力 1。',
           detailDisplayText: '此冒險者實際配戴裝備時，除裝備本身與其他合法修正外，再增加戰力 1；未配戴裝備時不套用。此為已確認並啟用的 Provisional 候選持續效果。',
-        } : {}),
+        } : enabledPartyCombatCopy[id] ?? {}),
       };
     }),
     ...Array.from({ length: 28 }, (_, index) => String(index + 1).padStart(2, '0')).filter((id) => !fullExistingResourceEntries.has(id)).map((id) => {
       const professionEquipment = enabledProfessionEquipmentCopy[id];
       return {
         ...fullNeutralEntry(`base:resource/resource-${id}`, `候選物資 ${id}`, [2,3,7,9,11,12,14,16,18,19,20,21,24,25].includes(Number(id)) ? 'equipment' : 'item'),
-        ...(professionEquipment ? {
+        ...(id === '12' ? {
+          shortDisplayText: '配戴者因戰鬥進入棄牌堆時，此裝備改為移出遊戲。',
+          detailDisplayText: '配戴者實際作為討伐參戰者進入棄牌堆時，冒險者照常棄置，但真龍斧連枷會強制永久移出本局；隊伍超額、休息或卡牌效果造成的離場不觸發。此為已啟用的 Provisional 候選效果。',
+        } : professionEquipment ? {
           shortDisplayText: `印刷戰力 1；由${professionEquipment.profession}配戴時額外 +1。`,
           detailDisplayText: `${professionEquipment.name}的印刷戰力為 1；由${professionEquipment.profession}冒險者配戴時額外增加戰力 1，合計提供 2。此為已確認並啟用的 Provisional 候選效果。`,
         } : {}),
@@ -230,7 +282,10 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         ...(enabledMonsterRewardCopy[id] ?? {}),
       };
     }),
-    ...Array.from({ length: 11 }, (_, index) => fullNeutralEntry(`base:boss/boss-${String(index + 1).padStart(2, '0')}`, `候選魔王 ${String(index + 1).padStart(2, '0')}`, 'boss')),
+    ...Array.from({ length: 11 }, (_, index) => {
+      const id = String(index + 1).padStart(2, '0');
+      return { ...fullNeutralEntry(`base:boss/boss-${id}`, `候選魔王 ${id}`, 'boss'), ...(enabledBossCopy[id] ?? {}) };
+    }),
   ],
 };
 

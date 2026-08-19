@@ -1,5 +1,6 @@
 import type { ContinuousEvaluation, GameState } from '@guildmaster/game-protocol';
 import type { Ruleset } from './ruleset.js';
+import { attachedCardIds } from '../model/attachments.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 
 export type ContinuousResult = { status: 'ready'; evaluation: ContinuousEvaluation } | { status: 'unsupported'; reason: 'ORDER_POLICY_REQUIRED'; error: string } | { status: 'failed'; reason: 'REGISTRY_VERSION_MISMATCH'; error: string };
@@ -7,13 +8,13 @@ export type ContinuousPreviewUncertainty = { observesHiddenInformation: boolean 
 
 function present(state: GameState, cardId: string): boolean {
   return Object.values(state.zones).some((zone) => zone.cardIds.includes(cardId))
-    || state.players.some((player) => player.hand.includes(cardId) || player.playArea.includes(cardId) || player.party.some((slot) => slot.adventurerId === cardId || slot.equipmentId === cardId));
+    || state.players.some((player) => player.hand.includes(cardId) || player.playArea.includes(cardId) || player.party.some((slot) => slot.adventurerId === cardId || attachedCardIds(slot).includes(cardId)));
 }
 
 function sourceLocationIsVisible(state: GameState, viewerId: string, cardId: string): boolean {
   if (Object.values(state.zones).some((zone) => zone.visibility === 'public' && zone.cardIds.includes(cardId))) return true;
   const viewer = state.players.find(({ id }) => id === viewerId);
-  if (viewer && (viewer.hand.includes(cardId) || viewer.discardPile.includes(cardId) || viewer.playArea.includes(cardId) || viewer.party.some((slot) => slot.adventurerId === cardId || slot.equipmentId === cardId))) return true;
+  if (viewer && (viewer.hand.includes(cardId) || viewer.discardPile.includes(cardId) || viewer.playArea.includes(cardId) || viewer.party.some((slot) => slot.adventurerId === cardId || attachedCardIds(slot).includes(cardId)))) return true;
   return Object.values(state.enemyTargets).some((target) => target.status !== 'defeated' && target.status !== 'removed' && (target.cardInstanceId === cardId || target.attachments.includes(cardId)));
 }
 

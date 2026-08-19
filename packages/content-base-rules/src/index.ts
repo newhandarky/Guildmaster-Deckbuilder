@@ -1,7 +1,8 @@
 import { baseRulesModule, type RulesModule } from '@guildmaster/game-engine';
-import type { CombatRewardPolicy, EffectDefinition, EquipmentCombatModifierRule } from '@guildmaster/game-protocol';
+import type { BondCondition, BondConditionRule, CombatRewardPolicy, EffectDefinition, EquipmentCombatModifierRule, PartyCombatModifierRule } from '@guildmaster/game-protocol';
 
 export const baseProvisionalOriginalFullRulesModuleId = 'base:provisional-original-full-rules';
+export const baseProvisionalOriginalFullZoneIds = { rewardDraft: 'base:provisional-original-full-reward-draft' } as const;
 
 const reward = (
   rewardPolicyId: string,
@@ -43,6 +44,24 @@ const professionEquipmentBonus = (
   amount: 1,
 });
 
+const partyCombatModifier = (
+  ruleId: string,
+  sourceSuffix: string,
+  priority: number,
+  subject: PartyCombatModifierRule['subject'],
+  amount: PartyCombatModifierRule['amount'],
+  when: PartyCombatModifierRule['when'] = { kind: 'always', value: true },
+): PartyCombatModifierRule => ({
+  schemaVersion: 1,
+  ruleId,
+  moduleId: baseProvisionalOriginalFullRulesModuleId,
+  priority,
+  sourceDefinitionIds: [`base:adventurer/${sourceSuffix}`],
+  subject,
+  when,
+  amount,
+});
+
 const optionalRemoval = (
   choiceId: string,
   locations: readonly ({ kind: 'player-zone'; player: { kind: 'controller' }; zone: 'hand' | 'discardPile' } | { kind: 'party'; player: { kind: 'controller' } })[],
@@ -74,9 +93,135 @@ const optionalReward = (choiceId: string, effect: EffectDefinition['body']): Eff
   ],
 });
 
+const publicRowCardsReward = (choiceId: string, zoneId: string, maximumCost: number, count: number, definitionTypes?: readonly string[]): EffectDefinition['body'] => {
+  const selectedCardKey = `${choiceId}:selected-${count}`;
+  const move: EffectDefinition['body'] = {
+    kind: 'move-card',
+    card: { kind: 'context-card', key: selectedCardKey },
+    from: { kind: 'shared-zone', zoneId },
+    to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
+    transferOwnership: true,
+  };
+  return {
+    kind: 'choose-card',
+    choiceId: `${choiceId}:${count}`,
+    decisionKind: 'choose-market-card',
+    actor: { kind: 'controller' },
+    from: { kind: 'shared-zone', zoneId },
+    predicate: definitionTypes
+      ? { kind: 'all', predicates: [{ kind: 'definition-type-in', values: definitionTypes }, { kind: 'definition-cost-at-most', value: maximumCost }] }
+      : { kind: 'definition-cost-at-most', value: maximumCost },
+    selectedCardKey,
+    zeroCandidateBehavior: 'skip',
+    effect: count === 1 ? move : { kind: 'sequence', effects: [move, publicRowCardsReward(choiceId, zoneId, maximumCost, count - 1, definitionTypes)] },
+  };
+};
+
+const sharedDeckCardsReward = (sourceZoneId: string, count: number): EffectDefinition['body'] => ({
+  kind: 'draw-shared-deck',
+  sourceZoneId,
+  player: { kind: 'controller' },
+  destination: 'discardPile',
+  count,
+});
+
+const sharedDeckDraftChoices = (choicePrefix: string, index = 0): EffectDefinition['body'] => {
+  const selectedCardKey = `${choicePrefix}:selected-${index + 1}`;
+  const move: EffectDefinition['body'] = {
+    kind: 'move-card',
+    card: { kind: 'context-card', key: selectedCardKey },
+    from: { kind: 'shared-zone', zoneId: baseProvisionalOriginalFullZoneIds.rewardDraft },
+    to: { kind: 'player-zone', player: { kind: 'context-player', key: `draftPlayer${index}` }, zone: 'hand' },
+    transferOwnership: true,
+  };
+  return {
+    kind: 'choose-card',
+    choiceId: `${choicePrefix}:pick-${index + 1}`,
+    decisionKind: 'draft-card',
+    actor: { kind: 'context-player', key: `draftPlayer${index}` },
+    from: { kind: 'shared-zone', zoneId: baseProvisionalOriginalFullZoneIds.rewardDraft },
+    selectedCardKey,
+    zeroCandidateBehavior: 'skip',
+    effect: index >= 3 ? move : { kind: 'sequence', effects: [move, sharedDeckDraftChoices(choicePrefix, index + 1)] },
+  };
+};
+
+const sharedDeckPublicDraft = (choicePrefix: string, sourceZoneId: string): EffectDefinition['body'] => ({
+  kind: 'sequence',
+  effects: [
+    { kind: 'reveal-shared-deck-to-zone', sourceZoneId, destinationZoneId: baseProvisionalOriginalFullZoneIds.rewardDraft, count: { kind: 'player-count' } },
+    sharedDeckDraftChoices(choicePrefix),
+  ],
+});
+
 const hand = { kind: 'player-zone', player: { kind: 'controller' }, zone: 'hand' } as const;
 const discardPile = { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' } as const;
 const party = { kind: 'party', player: { kind: 'controller' } } as const;
+const defeatedThisTurn = (source: { kind: 'definition-in-actor-party' | 'definition-equipped-by-actor'; definitionId: string }) => ({
+  kind: 'all' as const,
+  conditions: [
+    { kind: 'phase-is' as const, phase: 'combat' as const },
+    source,
+    {
+      kind: 'any' as const,
+      conditions: [
+        { kind: 'turn-fact-at-least' as const, fact: 'monstersDefeated' as const, amount: 1 },
+        { kind: 'turn-fact-at-least' as const, fact: 'bossesDefeated' as const, amount: 1 },
+      ],
+    },
+  ],
+});
+
+const profession = (name: 'support' | 'mage' | 'melee' | 'tank' | 'ranged') => `profession:${name}`;
+const defeatedEnemy: BondCondition = {
+  kind: 'any',
+  conditions: [
+    { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 },
+    { kind: 'turn-fact-at-least', fact: 'bossesDefeated', amount: 1 },
+  ],
+};
+const bondRule = (suffix: string, condition: BondCondition): BondConditionRule => ({
+  schemaVersion: 1,
+  ruleId: `bond-${suffix}-condition`,
+  moduleId: baseProvisionalOriginalFullRulesModuleId,
+  bondId: `base:bond/bond-${suffix}`,
+  condition,
+});
+const all = (...conditions: BondCondition[]): BondCondition => ({ kind: 'all', conditions });
+const combatPhase = { kind: 'phase-is', phase: 'combat' } as const;
+
+const baseBondConditionRules: readonly BondConditionRule[] = [
+  bondRule('01', all(combatPhase, { kind: 'party-size-between', minimum: 3, maximum: 3 }, { kind: 'party-all-tags-in', tags: [profession('support'), profession('mage')], minimum: 3 })),
+  bondRule('02', all({ kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 1 }, { kind: 'not', condition: { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 2 } })),
+  bondRule('03', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('mage')] })),
+  bondRule('04', all(defeatedEnemy, { kind: 'party-size-between', minimum: 1, maximum: 1 })),
+  bondRule('05', { kind: 'turn-fact-at-least', fact: 'equipmentBought', amount: 2 }),
+  bondRule('06', all({ kind: 'turn-fact-at-least', fact: 'adventurersRecruited', amount: 1 }, { kind: 'any', conditions: [{ kind: 'turn-fact-at-least', fact: 'itemsBought', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'equipmentBought', amount: 1 }] })),
+  bondRule('07', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('ranged')] })),
+  bondRule('08', { kind: 'turn-fact-at-least', fact: 'adventurersAddedToParty', amount: 3 }),
+  bondRule('09', all(combatPhase, { kind: 'party-tag-count-at-least', tags: [profession('tank'), profession('melee')], amount: 3 })),
+  bondRule('10', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('melee')] })),
+  bondRule('11', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('mage')], amount: 2 })),
+  bondRule('12', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('tank')], amount: 2 })),
+  bondRule('13', { kind: 'turn-fact-at-least', fact: 'actionPhaseItemsUsed', amount: 3 }),
+  bondRule('14', all(combatPhase, { kind: 'party-size-between', minimum: 5, maximum: 5 }, { kind: 'party-distinct-tag-count-at-least', tagPrefix: 'profession:', amount: 5 }, { kind: 'party-nonstarter-count-at-least', amount: 3 })),
+  bondRule('15', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('ranged')], amount: 2 })),
+  bondRule('16', { kind: 'turn-fact-at-least', fact: 'adventurersRecruited', amount: 2 }),
+  bondRule('17', { kind: 'turn-fact-at-least', fact: 'extraCardsDrawn', amount: 3 }),
+  bondRule('18', all(defeatedEnemy, { kind: 'turn-fact-distinct-values-at-least', fact: 'lastCombatDiscardedNonStarterProfessions', amount: 3 })),
+  bondRule('19', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('support')], amount: 2 })),
+  bondRule('20', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('melee')], amount: 2 })),
+  bondRule('21', { kind: 'party-same-tag-count-at-least', tagPrefix: 'profession:', amount: 3 }),
+  bondRule('22', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('tank')] })),
+  bondRule('23', { kind: 'turn-fact-at-least', fact: 'lastCombatDiscardedEquipment', amount: 3 }),
+  bondRule('24', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }),
+  bondRule('25', { kind: 'turn-fact-at-least', fact: 'monstersUsedForPurchase', amount: 3 }),
+  bondRule('26', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 2 }),
+  bondRule('27', { kind: 'turn-fact-at-least', fact: 'purchasePowerSpent', amount: 7 }),
+  bondRule('28', all(defeatedEnemy, { kind: 'party-same-tag-count-at-least', tagPrefix: 'profession:', amount: 2, requireAll: true })),
+  bondRule('29', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('support')] })),
+  bondRule('30', { kind: 'party-distinct-tag-count-at-least', tagPrefix: 'profession:', amount: 3, nonStarterOnly: true }),
+];
 
 /**
  * Data-driven rules for the small, visually unambiguous first effect batch.
@@ -85,24 +230,79 @@ const party = { kind: 'party', player: { kind: 'controller' } } as const;
  */
 export const baseProvisionalOriginalFullRulesModule: RulesModule = {
   id: baseProvisionalOriginalFullRulesModuleId,
-  version: '1.4.0',
+  version: '2.8.0',
   config: {
     effectBatch: 'card-rules-a',
     enabledDefinitionIds: [
+      'base:adventurer/adventurer-01',
       'base:adventurer/adventurer-02',
+      'base:adventurer/adventurer-04',
+      'base:adventurer/adventurer-05',
+      'base:adventurer/adventurer-06',
+      'base:adventurer/adventurer-07',
+      'base:adventurer/adventurer-08',
       'base:adventurer/adventurer-09',
+      'base:adventurer/adventurer-10',
+      'base:adventurer/adventurer-11',
+      'base:adventurer/adventurer-12',
+      'base:adventurer/adventurer-13',
+      'base:adventurer/adventurer-14',
+      'base:adventurer/adventurer-15',
+      'base:adventurer/adventurer-16',
+      'base:adventurer/adventurer-18',
+      'base:adventurer/adventurer-17',
+      'base:adventurer/adventurer-19',
+      'base:adventurer/adventurer-20',
+      'base:adventurer/adventurer-21',
+      'base:adventurer/adventurer-22',
+      'base:adventurer/adventurer-23',
+      'base:adventurer/adventurer-24',
+      'base:adventurer/adventurer-25',
+      'base:adventurer/adventurer-26',
+      'base:adventurer/adventurer-27',
+      'base:adventurer/adventurer-28',
+      'base:adventurer/adventurer-29',
+      'base:adventurer/adventurer-30',
       'base:resource/resource-02',
       'base:resource/resource-03',
+      'base:resource/resource-06',
       'base:resource/resource-07',
+      'base:resource/resource-12',
+      'base:resource/resource-14',
+      'base:resource/resource-16',
+      'base:resource/resource-19',
+      'base:resource/resource-20',
+      'base:resource/resource-21',
+      'base:resource/resource-23',
+      'base:resource/resource-24',
       'base:resource/resource-25',
+      'base:resource/resource-26',
+      'base:resource/resource-28',
       'base:monster/monster-01',
       'base:monster/monster-02',
       'base:monster/monster-03',
+      'base:monster/monster-04',
+      'base:monster/monster-05',
       'base:monster/monster-06',
+      'base:monster/monster-07',
+      'base:monster/monster-08',
       'base:monster/monster-09',
       'base:monster/monster-10',
       'base:monster/monster-11',
+      'base:monster/monster-12',
+      'base:monster/monster-13',
       'base:monster/monster-14',
+      'base:boss/boss-01',
+      'base:boss/boss-02',
+      'base:boss/boss-03',
+      'base:boss/boss-04',
+      'base:boss/boss-05',
+      'base:boss/boss-06',
+      'base:boss/boss-07',
+      'base:boss/boss-08',
+      'base:boss/boss-09',
+      'base:boss/boss-10',
+      'base:boss/boss-11',
     ],
   },
   composition: {
@@ -111,6 +311,399 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     priority: 20,
     dependencies: [{ moduleId: baseRulesModule.id, version: baseRulesModule.version }],
   },
+  zoneDefinitions: [{ zoneId: baseProvisionalOriginalFullZoneIds.rewardDraft, kind: 'moduleArea', visibility: 'public', rulesModuleId: baseProvisionalOriginalFullRulesModuleId }],
+  lifecycleHooks: [
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-01-recover-after-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-end',
+      kind: 'trigger',
+      priority: 110,
+      activation: defeatedThisTurn({ kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-01' }),
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-01-recover-after-combat`,
+        body: {
+          kind: 'choose-card',
+          choiceId: 'base:adventurer/adventurer-01-recover',
+          decisionKind: 'recover-card',
+          actor: { kind: 'controller' },
+          from: discardPile,
+          predicate: { kind: 'tag-prefix', value: 'profession:' },
+          selectedCardKey: 'recoveredAdventurer',
+          skipOptionId: 'base:adventurer/adventurer-01-recover:skip',
+          zeroCandidateBehavior: 'skip',
+          effect: {
+            kind: 'move-card',
+            card: { kind: 'context-card', key: 'recoveredAdventurer' },
+            from: discardPile,
+            to: hand,
+          },
+        },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-06-draw-resource-after-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-end',
+      kind: 'trigger',
+      priority: 120,
+      activation: defeatedThisTurn({ kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-06' }),
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-06-draw-resource-after-combat`,
+        body: sharedDeckCardsReward('base:item-deck', 1),
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-18-purchase-after-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-end',
+      kind: 'trigger',
+      priority: 130,
+      activation: defeatedThisTurn({ kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-18' }),
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-18-purchase-after-combat`,
+        body: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 2 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-23-roll-monster-penalty-at-combat-start',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-start',
+      kind: 'trigger',
+      priority: 145,
+      activation: { kind: 'all', conditions: [
+        { kind: 'phase-is', phase: 'combat' },
+        { kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-23' },
+      ] },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-23-roll-monster-penalty-at-combat-start`,
+        body: {
+          kind: 'roll-die',
+          moduleId: baseProvisionalOriginalFullRulesModuleId,
+          diceId: 'adventurer-23-combat-d6',
+          outcomes: Array.from({ length: 6 }, (_, index) => ({
+            face: index + 1,
+            effect: {
+              kind: 'choose-card' as const,
+              choiceId: `base:adventurer/adventurer-23-target-face-${index + 1}`,
+              decisionKind: 'choose-enemy-target' as const,
+              actor: { kind: 'controller' as const },
+              from: { kind: 'shared-zone' as const, zoneId: 'base:monster-row' },
+              predicate: { kind: 'definition-type-in' as const, values: ['monster'] },
+              selectedCardKey: 'adventurer23Target',
+              zeroCandidateBehavior: 'skip' as const,
+              effect: { kind: 'add-temporary-target-combat-modifier' as const, modifierId: 'adventurer-23-die-penalty', moduleId: baseProvisionalOriginalFullRulesModuleId, targetCard: { kind: 'context-card' as const, key: 'adventurer23Target' }, amount: -Math.ceil((index + 1) / 2), expires: 'turn-end' as const },
+            },
+          })),
+        },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-30-remove-after-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-end',
+      kind: 'trigger',
+      priority: 140,
+      activation: defeatedThisTurn({ kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-30' }),
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-30-remove-after-combat`,
+        body: optionalRemoval('base:adventurer/adventurer-30-remove', [hand, party, discardPile]),
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'resource-19-draw-after-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-end',
+      kind: 'trigger',
+      priority: 150,
+      activation: defeatedThisTurn({ kind: 'definition-equipped-by-actor', definitionId: 'base:resource/resource-19' }),
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/resource-19-draw-after-combat`,
+        body: { kind: 'draw', player: { kind: 'controller' }, count: 2 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'resource-16-discard-enemy-at-combat-start',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-start',
+      kind: 'trigger',
+      priority: 155,
+      activation: { kind: 'all', conditions: [
+        { kind: 'phase-is', phase: 'combat' },
+        { kind: 'definition-equipped-by-actor', definitionId: 'base:resource/resource-16' },
+      ] },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/resource-16-discard-enemy-at-combat-start`,
+        body: {
+          kind: 'choose-card',
+          choiceId: 'base:resource/resource-16-discard-enemy',
+          decisionKind: 'discard-card',
+          actor: { kind: 'controller' },
+          from: hand,
+          predicate: { kind: 'definition-type-in', values: ['monster', 'boss'] },
+          selectedCardKey: 'resource16Enemy',
+          skipOptionId: 'base:resource/resource-16-discard-enemy:skip',
+          zeroCandidateBehavior: 'skip',
+          effect: { kind: 'sequence', effects: [
+            { kind: 'discard-card', card: { kind: 'context-card', key: 'resource16Enemy' }, from: hand },
+            { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: { kind: 'card-stat', card: { kind: 'context-card', key: 'resource16Enemy' }, stat: 'purchasePower' } },
+          ] },
+        },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'resource-20-discard-for-combat-at-combat-start',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-start',
+      kind: 'trigger',
+      priority: 157,
+      activation: { kind: 'all', conditions: [
+        { kind: 'phase-is', phase: 'combat' },
+        { kind: 'definition-equipped-by-actor', definitionId: 'base:resource/resource-20' },
+      ] },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/resource-20-discard-for-combat-at-combat-start`,
+        body: { kind: 'repeat-discard-hand-for-combat', choiceId: 'base:resource/resource-20-discard-for-combat', actor: { kind: 'controller' }, player: { kind: 'controller' }, amountPerCard: 1, stopOptionId: 'base:resource/resource-20-discard-for-combat:stop' },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'resource-21-purchase-at-purchase-start',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-start',
+      kind: 'trigger',
+      priority: 160,
+      activation: {
+        ...defeatedThisTurn({ kind: 'definition-equipped-by-actor', definitionId: 'base:resource/resource-21' }),
+        conditions: [
+          { kind: 'phase-is', phase: 'purchase' },
+          { kind: 'definition-equipped-by-actor', definitionId: 'base:resource/resource-21' },
+          {
+            kind: 'any',
+            conditions: [
+              { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 },
+              { kind: 'turn-fact-at-least', fact: 'bossesDefeated', amount: 1 },
+            ],
+          },
+        ],
+      },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/resource-21-purchase-at-purchase-start`,
+        body: { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 2 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-11-order-deck-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 164,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-11' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-11-order-deck-on-entry`,
+        body: { kind: 'choose-order-player-deck-top', orderId: 'base:adventurer/adventurer-11-order-top-three', actor: { kind: 'controller' }, player: { kind: 'controller' }, count: 3, mayRemove: true },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-12-move-first-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 165,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-12' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-12-move-first-on-entry`,
+        body: optionalReward('base:adventurer/adventurer-12-move-first', {
+          kind: 'move-card',
+          card: { kind: 'context-card', key: 'commandCard' },
+          from: { kind: 'context-location', key: 'commandCard' },
+          to: { kind: 'party', player: { kind: 'controller' }, position: 0 },
+        }),
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-13-remove-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 170,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-13' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-13-remove-on-entry`,
+        body: optionalRemoval('base:adventurer/adventurer-13-remove-discard', [discardPile]),
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-07-refresh-monsters-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 171,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-07' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-07-refresh-monsters-on-entry`,
+        body: { kind: 'choose-shared-row-refresh-subset', choiceId: 'base:adventurer/adventurer-07-refresh-monsters', actor: { kind: 'controller' }, rowZoneId: 'base:monster-row', sourceDeckZoneId: 'base:monster-deck', maxSelections: 3 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-08-penalize-monster-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 172,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-08' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-08-penalize-monster-on-entry`,
+        body: {
+          kind: 'choose-card',
+          choiceId: 'base:adventurer/adventurer-08-target-monster',
+          decisionKind: 'choose-enemy-target',
+          actor: { kind: 'controller' },
+          from: { kind: 'shared-zone', zoneId: 'base:monster-row' },
+          predicate: { kind: 'definition-type-in', values: ['monster'] },
+          selectedCardKey: 'adventurer08Target',
+          zeroCandidateBehavior: 'skip',
+          effect: { kind: 'add-temporary-target-combat-modifier', modifierId: 'adventurer-08-entry-penalty', moduleId: baseProvisionalOriginalFullRulesModuleId, targetCard: { kind: 'context-card', key: 'adventurer08Target' }, amount: -2, expires: 'turn-end' },
+        },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-16-reveal-top-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 175,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-16' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-16-reveal-top-on-entry`,
+        body: { kind: 'reveal-player-deck-top', player: { kind: 'controller' }, predicate: { kind: 'definition-type-in', values: ['item', 'equipment'] }, matchingDestination: 'hand' },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-17-draw-discard-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 180,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-17' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-17-draw-discard-on-entry`,
+        body: {
+          kind: 'sequence',
+          effects: [
+            { kind: 'draw', player: { kind: 'controller' }, count: 3 },
+            {
+              kind: 'choose-card',
+              choiceId: 'base:adventurer/adventurer-17-discard',
+              decisionKind: 'discard-card',
+              actor: { kind: 'controller' },
+              from: hand,
+              selectedCardKey: 'adventurer17Discard',
+              zeroCandidateBehavior: 'skip',
+              effect: { kind: 'discard-card', card: { kind: 'context-card', key: 'adventurer17Discard' }, from: hand },
+            },
+          ],
+        },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-26-enemy-purchase-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 185,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-26' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-26-enemy-purchase-on-entry`,
+        body: { kind: 'add-turn-enemy-card-purchase-bonus', player: { kind: 'controller' }, amount: 1 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-28-draw-on-entry',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'ADVENTURER_ENTERED_PARTY',
+      kind: 'trigger',
+      priority: 190,
+      activation: { kind: 'metadata-equals', key: 'commandDefinitionId', value: 'base:adventurer/adventurer-28' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-28-draw-on-entry`,
+        body: { kind: 'draw', player: { kind: 'controller' }, count: 1 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-28-draw-on-equip',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'event-after',
+      eventType: 'EQUIPMENT_ATTACHED',
+      kind: 'trigger',
+      priority: 200,
+      activation: { kind: 'metadata-equals', key: 'targetAdventurerDefinitionId', value: 'base:adventurer/adventurer-28' },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-28-draw-on-equip`,
+        body: { kind: 'draw', player: { kind: 'controller' }, count: 1 },
+      },
+    },
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-14-discard-when-first',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'command-after',
+      kind: 'trigger',
+      priority: 210,
+      activation: { kind: 'definition-at-actor-party-position', definitionId: 'base:adventurer/adventurer-14', position: 1 },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-14-discard-when-first`,
+        body: { kind: 'discard-first-party-member', player: { kind: 'controller' } },
+      },
+    },
+  ],
   equipmentEligibilityRules: [{
     schemaVersion: 1,
     ruleId: 'adventurer-02-no-equipment',
@@ -119,7 +712,81 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     when: { kind: 'adventurer-definition-in', definitionIds: ['base:adventurer/adventurer-02'] },
     kind: 'restriction',
     reasonCode: 'ADVENTURER_CANNOT_EQUIP',
+  }, {
+    schemaVersion: 1,
+    ruleId: 'resource-14-melee-or-support-only',
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    priority: 20,
+    when: {
+      kind: 'all',
+      conditions: [
+        { kind: 'equipment-definition-in', definitionIds: ['base:resource/resource-14'] },
+        { kind: 'not', condition: { kind: 'adventurer-tag-in', tags: ['profession:melee', 'profession:support'] } },
+      ],
+    },
+    kind: 'restriction',
+    reasonCode: 'RESOURCE_14_REQUIRES_MELEE_OR_SUPPORT',
+  }, {
+    schemaVersion: 1,
+    ruleId: 'resource-19-mage-or-support-only',
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    priority: 30,
+    when: {
+      kind: 'all',
+      conditions: [
+        { kind: 'equipment-definition-in', definitionIds: ['base:resource/resource-19'] },
+        { kind: 'not', condition: { kind: 'adventurer-tag-in', tags: ['profession:mage', 'profession:support'] } },
+      ],
+    },
+    kind: 'restriction',
+    reasonCode: 'RESOURCE_19_REQUIRES_MAGE_OR_SUPPORT',
+  }, {
+    schemaVersion: 1,
+    ruleId: 'resource-16-tank-or-melee-only',
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    priority: 40,
+    when: {
+      kind: 'all',
+      conditions: [
+        { kind: 'equipment-definition-in', definitionIds: ['base:resource/resource-16'] },
+        { kind: 'not', condition: { kind: 'adventurer-tag-in', tags: ['profession:tank', 'profession:melee'] } },
+      ],
+    },
+    kind: 'restriction',
+    reasonCode: 'RESOURCE_16_REQUIRES_TANK_OR_MELEE',
   }],
+  attachmentPolicies: [
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'base-equipment-single-slot', priority: 0,
+      sourceDefinitionTypes: ['equipment'], capacity: 1, combatContribution: 'printed-combat', reasonCode: 'BASE_EQUIPMENT_ATTACHMENT',
+    },
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'adventurer-29-three-equipment', priority: 100,
+      sourceDefinitionTypes: ['equipment'], wearerDefinitionIds: ['base:adventurer/adventurer-29'], capacity: 3, combatContribution: 'printed-combat', reasonCode: 'ADVENTURER_29_THREE_EQUIPMENT_CAPACITY',
+    },
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'adventurer-19-enemy-attachment', priority: 110,
+      sourceDefinitionTypes: ['monster', 'boss'], wearerDefinitionIds: ['base:adventurer/adventurer-19'], capacity: 1, combatContribution: 'fixed', fixedCombat: 0, reasonCode: 'ADVENTURER_19_ENEMY_AS_ATTACHMENT',
+    },
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'adventurer-22-enemy-purchase-combat', priority: 120,
+      sourceDefinitionTypes: ['monster', 'boss'], wearerDefinitionIds: ['base:adventurer/adventurer-22'], capacity: 1, combatContribution: 'printed-purchase-power', reasonCode: 'ADVENTURER_22_ENEMY_PURCHASE_POWER_AS_COMBAT',
+    },
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'adventurer-25-as-equipment', priority: 130,
+      sourceDefinitionIds: ['base:adventurer/adventurer-25'], capacity: 1, combatContribution: 'fixed', fixedCombat: 2, reasonCode: 'ADVENTURER_25_AS_EQUIPMENT',
+    },
+  ],
+  enemyAttachmentPolicies: [
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'boss-04-monster-attachment', priority: 100,
+      targetDefinitionIds: ['base:boss/boss-04'], sourceZoneId: 'base:monster-deck', combatContribution: 'printed-combat', onDefeat: 'remove-from-game', reasonCode: 'BOSS_04_REMOVES_ATTACHED_MONSTER',
+    },
+    {
+      schemaVersion: 1, moduleId: baseProvisionalOriginalFullRulesModuleId, policyId: 'boss-07-adventurer-attachment', priority: 110,
+      targetDefinitionIds: ['base:boss/boss-07'], sourceZoneId: 'base:adventurer-deck', combatContribution: 'printed-combat', onDefeat: 'winner-discard', reasonCode: 'BOSS_07_AWARDS_ATTACHED_ADVENTURER',
+    },
+  ],
   equipmentCombatModifierRules: [
     {
       schemaVersion: 1,
@@ -135,13 +802,193 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     professionEquipmentBonus('resource-07-ranged-bonus', 'base:resource/resource-07', 'profession:ranged', 40),
     professionEquipmentBonus('resource-25-tank-bonus', 'base:resource/resource-25', 'profession:tank', 50),
   ],
+  equipmentDeparturePolicies: [
+    {
+      schemaVersion: 1,
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      policyId: 'resource-12-combat-removal',
+      priority: 100,
+      equipmentDefinitionIds: ['base:resource/resource-12'],
+      cause: 'combat-discard',
+      disposition: 'remove-from-game',
+      reasonCode: 'RESOURCE_12_WEARER_COMBAT_DISCARD_REMOVES_EQUIPMENT',
+    },
+    {
+      schemaVersion: 1,
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      policyId: 'resource-14-combat-removal',
+      priority: 110,
+      equipmentDefinitionIds: ['base:resource/resource-14'],
+      cause: 'combat-discard',
+      disposition: 'remove-from-game',
+      reasonCode: 'RESOURCE_14_WEARER_COMBAT_DISCARD_REMOVES_EQUIPMENT',
+    },
+    {
+      schemaVersion: 1,
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      policyId: 'resource-24-combat-draw',
+      priority: 120,
+      equipmentDefinitionIds: ['base:resource/resource-24'],
+      cause: 'combat-discard',
+      disposition: 'discard',
+      rewards: [{ kind: 'draw', count: 2 }],
+      reasonCode: 'RESOURCE_24_WEARER_COMBAT_DISCARD_DRAWS_TWO',
+    },
+  ],
+  discardRedirectPolicies: [{
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    policyId: 'resource-06-right-seat-discard',
+    priority: 100,
+    definitionIds: ['base:resource/resource-06'],
+    destination: 'right-seat-discard',
+    reasonCode: 'RESOURCE_06_REDIRECTS_TO_RIGHT_SEAT_DISCARD',
+  }],
+  combatParticipantDeparturePolicies: [{
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    policyId: 'boss-02-participant-departure',
+    priority: 100,
+    targetDefinitionIds: ['base:boss/boss-02'],
+    dispositions: [
+      { definitionTypes: ['starter'], destination: { kind: 'remove-from-game' } },
+      { definitionTypes: ['adventurer'], destination: { kind: 'shuffle-into-shared-deck', zoneId: 'base:adventurer-deck' } },
+    ],
+    replacementDraw: { sourceZoneId: 'base:adventurer-deck', destination: 'discardPile', count: 'participant-count' },
+    reasonCode: 'BOSS_02_REPLACES_COMBAT_PARTICIPANTS',
+  }],
+  combatDepartureReplacementPolicies: [{
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    policyId: 'adventurer-19-attachment-substitute',
+    priority: 100,
+    sourceDefinitionIds: ['base:adventurer/adventurer-19'],
+    replacement: { kind: 'discard-attached-card', attachmentDefinitionTypes: ['monster', 'boss'] },
+    reasonCode: 'ADVENTURER_19_ATTACHMENT_SUBSTITUTES_COMBAT_DISCARD',
+  }, {
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    policyId: 'adventurer-21-return-to-draw-top',
+    priority: 110,
+    sourceDefinitionIds: ['base:adventurer/adventurer-21'],
+    replacement: { kind: 'self-to-player-draw-top' },
+    reasonCode: 'ADVENTURER_21_RETURNS_TO_DRAW_TOP',
+  }],
+  partyCombatModifierRules: [
+    partyCombatModifier('adventurer-04-first-other-bonus', 'adventurer-04', 10, 'first', { kind: 'fixed', value: 2 }),
+    partyCombatModifier('adventurer-14-other-party-bonus', 'adventurer-14', 25, 'other', { kind: 'fixed', value: 1 }),
+    partyCombatModifier('adventurer-10-first-self-bonus', 'adventurer-10', 20, 'source', { kind: 'fixed', value: 2 }, { kind: 'source-position-in', positions: [1] }),
+    partyCombatModifier('adventurer-15-rear-self-bonus', 'adventurer-15', 30, 'source', { kind: 'fixed', value: 1 }, { kind: 'source-position-in', positions: [4, 5] }),
+    partyCombatModifier('adventurer-20-party-size-penalty', 'adventurer-20', 40, 'source', { kind: 'per-other-party-member', value: -1 }),
+    partyCombatModifier('adventurer-24-monster-self-bonus', 'adventurer-24', 50, 'source', { kind: 'fixed', value: 3 }, { kind: 'target-kind-in', kinds: ['monster'] }),
+    partyCombatModifier('adventurer-27-adjacent-bonus', 'adventurer-27', 60, 'adjacent', { kind: 'fixed', value: 1 }),
+  ],
+  combatRules: [
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-01-item-row-equipment-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 10,
+      kind: 'modifier',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-01'] },
+      amount: { kind: 'public-zone-card-count', zoneId: 'base:item-row', definitionTypes: ['equipment'], multiplier: 1 },
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-05-equipment-suppression',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 20,
+      kind: 'equipment-suppression',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-05'] },
+      reasonCode: 'BOSS_05_SUPPRESSES_ALL_EQUIPMENT',
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-06-attacking-party-professions-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 30,
+      kind: 'modifier',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-06'] },
+      amount: { kind: 'distinct-party-tag-count', player: 'attacking-player', tagPrefix: 'profession:', multiplier: 1 },
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-08-three-participant-limit',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 40,
+      kind: 'participant-limit',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-08'] },
+      maximumPartySlots: 3,
+      reasonCode: 'BOSS_08_MAXIMUM_THREE_ADVENTURERS',
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-09-next-seat-professions-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 50,
+      kind: 'modifier',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-09'] },
+      amount: { kind: 'distinct-party-tag-count', player: 'next-seat', tagPrefix: 'profession:', multiplier: 1 },
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-10-attacking-party-professions-combat',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 60,
+      kind: 'modifier',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-10'] },
+      amount: { kind: 'distinct-party-tag-count', player: 'attacking-player', tagPrefix: 'profession:', multiplier: -1 },
+    },
+    {
+      schemaVersion: 1,
+      ruleId: 'boss-11-one-participant-limit',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 70,
+      kind: 'participant-limit',
+      when: { kind: 'target-definition-id-in', definitionIds: ['base:boss/boss-11'] },
+      maximumPartySlots: 1,
+      reasonCode: 'BOSS_11_FIRST_ADVENTURER_ONLY',
+    },
+  ],
+  purchaseCostModifierRules: [{
+    schemaVersion: 1,
+    ruleId: 'adventurer-05-equipment-discount',
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    priority: 100,
+    activation: { kind: 'definition-in-player-party', player: 'evaluated-player', definitionId: 'base:adventurer/adventurer-05' },
+    target: { kind: 'definition-type-in', values: ['equipment'] },
+    amount: -1,
+  }],
   diceDefinitions: [{
     schemaVersion: 1,
     moduleId: baseProvisionalOriginalFullRulesModuleId,
     diceId: 'monster-02-reward-d6',
     sides: 6,
+  }, {
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    diceId: 'adventurer-23-combat-d6',
+    sides: 6,
   }],
   combatRewardPolicies: [
+    reward(
+      'boss-01-purchase-and-market-cards',
+      'base:boss/boss-01',
+      5,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        publicRowCardsReward('base:boss/boss-01-market-reward', 'base:item-row', 4, 2, ['item', 'equipment']),
+      ] },
+    ),
+    reward(
+      'boss-02-purchase-and-adventurer-deck',
+      'base:boss/boss-02',
+      7,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        sharedDeckCardsReward('base:adventurer-deck', 2),
+      ] },
+    ),
     reward(
       'monster-01-purchase-bonus',
       'base:monster/monster-01',
@@ -177,6 +1024,21 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
       optionalRemoval('base:monster/monster-03-remove-one', [hand, party, discardPile]),
     ),
     reward(
+      'monster-04-recruit-cost-three',
+      'base:monster/monster-04',
+      26,
+      optionalReward(
+        'base:monster/monster-04-reward',
+        publicRowCardsReward('base:monster/monster-04-adventurer-reward', 'base:adventurer-row', 3, 1, ['adventurer']),
+      ),
+    ),
+    reward(
+      'monster-05-public-item-draft',
+      'base:monster/monster-05',
+      27,
+      sharedDeckPublicDraft('base:monster/monster-05-draft', 'base:item-deck'),
+    ),
+    reward(
       'monster-06-remove-up-to-two',
       'base:monster/monster-06',
       28,
@@ -187,6 +1049,24 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
           optionalRemoval('base:monster/monster-06-remove-second', [hand, party, discardPile]),
         ],
       },
+    ),
+    reward(
+      'monster-07-item-cost-three',
+      'base:monster/monster-07',
+      29,
+      optionalReward(
+        'base:monster/monster-07-reward',
+        publicRowCardsReward('base:monster/monster-07-item-reward', 'base:item-row', 3, 1, ['item', 'equipment']),
+      ),
+    ),
+    reward(
+      'monster-08-item-cost-four',
+      'base:monster/monster-08',
+      30,
+      optionalReward(
+        'base:monster/monster-08-reward',
+        publicRowCardsReward('base:monster/monster-08-item-reward', 'base:item-row', 4, 1, ['item', 'equipment']),
+      ),
     ),
     reward(
       'monster-09-draw-two',
@@ -207,12 +1087,127 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
       optionalRemoval('base:monster/monster-11-remove-discard', [discardPile]),
     ),
     reward(
+      'monster-12-recruit-cost-four',
+      'base:monster/monster-12',
+      39,
+      optionalReward(
+        'base:monster/monster-12-reward',
+        publicRowCardsReward('base:monster/monster-12-adventurer-reward', 'base:adventurer-row', 4, 1, ['adventurer']),
+      ),
+    ),
+    reward(
+      'monster-13-replace-hand',
+      'base:monster/monster-13',
+      39,
+      optionalReward('base:monster/monster-13-reward', { kind: 'discard-hand-and-draw', player: { kind: 'controller' } }),
+    ),
+    reward(
       'monster-14-draw-one',
       'base:monster/monster-14',
       40,
       optionalReward('base:monster/monster-14-reward', { kind: 'draw', player: { kind: 'controller' }, count: 1 }),
     ),
+    reward(
+      'boss-03-hand-adventurer-gate-and-reward',
+      'base:boss/boss-03',
+      45,
+      {
+        kind: 'choose-card',
+        choiceId: 'base:boss/boss-03-hand-adventurer-cost',
+        decisionKind: 'discard-card',
+        actor: { kind: 'controller' },
+        from: hand,
+        predicate: { kind: 'tag-prefix', value: 'profession:' },
+        selectedCardKey: 'base:boss/boss-03-hand-adventurer',
+        zeroCandidateEffect: { kind: 'mark-combat-failed', reasonCode: 'BOSS_03_REQUIRED_HAND_ADVENTURER_MISSING' },
+        effect: {
+          kind: 'sequence',
+          effects: [
+            { kind: 'discard-card', card: { kind: 'context-card', key: 'base:boss/boss-03-hand-adventurer' }, from: hand },
+            { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+            optionalRemoval('base:boss/boss-03-remove-first', [discardPile]),
+            optionalRemoval('base:boss/boss-03-remove-second', [discardPile]),
+          ],
+        },
+      },
+    ),
+    reward(
+      'boss-04-purchase-and-draw-four',
+      'base:boss/boss-04',
+      47,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        { kind: 'draw', player: { kind: 'controller' }, count: 4 },
+      ] },
+    ),
+    reward(
+      'boss-05-purchase-and-market-cards',
+      'base:boss/boss-05',
+      50,
+      {
+        kind: 'sequence',
+        effects: [
+          { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+          publicRowCardsReward('base:boss/boss-05-market-reward', 'base:item-row', 3, 2),
+        ],
+      },
+    ),
+    reward(
+      'boss-06-purchase-and-adventurer-deck',
+      'base:boss/boss-06',
+      55,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        sharedDeckCardsReward('base:adventurer-deck', 2),
+      ] },
+    ),
+    reward(
+      'boss-07-purchase-and-adventurer-deck',
+      'base:boss/boss-07',
+      57,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        sharedDeckCardsReward('base:adventurer-deck', 1),
+      ] },
+    ),
+    reward(
+      'boss-08-purchase-and-adventurers',
+      'base:boss/boss-08',
+      60,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        publicRowCardsReward('base:boss/boss-08-adventurer-reward', 'base:adventurer-row', 3, 2, ['adventurer']),
+      ] },
+    ),
+    reward(
+      'boss-09-purchase-and-item-deck',
+      'base:boss/boss-09',
+      65,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        sharedDeckCardsReward('base:item-deck', 1),
+      ] },
+    ),
+    reward(
+      'boss-10-purchase-and-personal-draw',
+      'base:boss/boss-10',
+      68,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        { kind: 'draw', player: { kind: 'controller' }, count: 3 },
+      ] },
+    ),
+    reward(
+      'boss-11-purchase-and-items',
+      'base:boss/boss-11',
+      70,
+      { kind: 'sequence', effects: [
+        { kind: 'modify-value', target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } }, amount: 5 },
+        publicRowCardsReward('base:boss/boss-11-item-reward', 'base:item-row', 3, 2, ['item']),
+      ] },
+    ),
   ],
+  bondConditionRules: baseBondConditionRules,
   getPartyLimit: (_state, _player, currentLimit) => currentLimit,
   onSupplyDepleted: () => 'handled',
 };

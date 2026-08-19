@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
+import { BondPanel } from '../features/game/bonds/BondPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
@@ -70,7 +71,7 @@ export function App() {
   });
   const legalActionSummary = buildLegalActionSummary(legalCommands);
   const legalEquipCommands = legalCommands.filter(
-    (command): command is Extract<GameCommand, { type: 'EQUIP_ITEM' }> => command.type === 'EQUIP_ITEM',
+    (command): command is Extract<GameCommand, { type: 'EQUIP_ITEM' | 'ATTACH_CARD' }> => command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD',
   );
   const endPhaseCommand = legalCommands.find(
     (command): command is Extract<GameCommand, { type: 'END_PHASE' }> =>
@@ -128,6 +129,7 @@ export function App() {
     setInspection({ gameId: view.gameId, revision: view.revision, card, trigger });
   };
   const runCardAction = (action: CardAction) => {
+    if (action.kind === 'action-menu') return;
     if (action.kind === 'select-equipment') {
       setEquipmentCardId(action.equipmentCardId);
       return;
@@ -195,6 +197,11 @@ export function App() {
       }}
       phase={view.phase}
       opponents={view.opponents}
+      cards={view.cards}
+      definitions={definitions}
+      presentation={presentationResolver}
+      bondDefinitions={bondDefinitions}
+      suspendDetails={lifecyclePending}
     />}
     publicTable={<BoardPanel
       zones={view.zones}
@@ -207,7 +214,7 @@ export function App() {
       previewScope={{ gameId: view.gameId, revision: view.revision, actorId: view.viewerId }}
       onInspect={inspectCard}
     />}
-    party={<PartyPanel
+    party={<><PartyPanel
       player={view.self}
       partyLimit={view.partyLimit}
       definitions={definitions}
@@ -216,7 +223,8 @@ export function App() {
       equipCardId={equipmentCardId}
       legalEquipCommands={legalEquipCommands}
       onInspect={inspectCard}
-    />}
+      onCommand={submitAndClear}
+    /><BondPanel bonds={view.self.bonds} definitions={bondDefinitions} completableBondIds={completableBondIds} /></>}
     hand={<HandPanel
       cardIds={view.self.hand}
       definitions={definitions}
@@ -251,7 +259,7 @@ export function App() {
             <button className="primary" type="button" disabled={!selectedCompleteBondCommand} onClick={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}>完成所選羈絆</button>
           </section>
         : null}
-      {entrySummary.contentMode === 'provisional-original-full'
+      {entrySummary.contentMode === 'provisional-original-full' || entrySummary.contentMode === 'custom-adventurers-full'
         ? <section className="cpu-controls" aria-label="CPU 控制">
             <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuNeedsStep || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
               <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>

@@ -122,15 +122,67 @@ describe('web content modes', () => {
     ]);
   });
 
-  it('creates the separate full provisional four-player ruleset without helpers', () => {
+  it('creates the separate full provisional four-player ruleset with its distinct helper identity', () => {
     const ruleset = createWebRuleset(undefined, 'provisional-original-full');
-    expect(ruleset.registry.packs).toEqual([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' })]);
-    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(90);
+    expect(ruleset.registry.packs).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'base:provisional-original-full', contentStatus: 'provisional-playtest' }), expect.objectContaining({ id: 'base:provisional-original-full-helpers' })]));
+    expect(Object.keys(ruleset.registry.definitions)).toHaveLength(102);
     expect(ruleset.registry.bonds).toHaveLength(30);
-    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:provisional-original-full-rules']);
+    expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers', 'base:provisional-original-full-rules']);
     expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
-    expect(webGameSetupFromSnapshot(['base:provisional-original-full'], ['base:rules', 'base:provisional-original-full-rules'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: false } });
-    expect(() => createWebRuleset(undefined, { contentMode: 'provisional-original-full', advancedRules: { helpers: true } })).toThrow(/does not enable helpers/);
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full', 'base:provisional-original-full-helpers'], ['base:rules', 'base:provisional-original-full-rules', 'base:helpers'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: true } });
+  });
+
+  it('creates a four-player custom-adventurer ruleset with an exact replacement roster and restorable identity', () => {
+    const ruleset = createWebRuleset(undefined, 'custom-adventurers-full');
+    const packIds = ruleset.registry.packs.map(({ id }) => id);
+    const moduleIds = ruleset.modules.map(({ id }) => id);
+
+    expect(packIds).toEqual([
+      'base:provisional-original-full',
+      'custom:adventurers-full',
+      'custom:adventurers-full-helpers',
+    ]);
+    expect(moduleIds).toEqual([
+      'base:rules',
+      'base:helpers',
+      'custom:adventurers-full-rules',
+    ]);
+    expect(webContentModeFromPackIds(packIds)).toBe('custom-adventurers-full');
+    expect(webGameSetupFromSnapshot(packIds, moduleIds)).toEqual({
+      contentMode: 'custom-adventurers-full',
+      advancedRules: { helpers: true },
+    });
+
+    const adventurerDefinitions = Object.values(ruleset.registry.definitions)
+      .filter(({ type }) => type === 'adventurer');
+    expect(adventurerDefinitions).toHaveLength(43);
+    expect(adventurerDefinitions.every(({ id }) => id.startsWith('custom:adventurer/'))).toBe(true);
+    expect('partyDefinitionIds' in ruleset.registry.starter ? ruleset.registry.starter.partyDefinitionIds : []).toEqual([
+      'custom:starter/support',
+      'custom:starter/melee',
+      'custom:starter/mage',
+      'custom:starter/tank',
+      'custom:starter/ranged',
+    ]);
+
+    const state = createGame({
+      gameId: 'custom-adventurers-four-player',
+      seed: 20260818,
+      players: [
+        { id: 'human-1', name: '你', kind: 'human' },
+        { id: 'ai-1', name: 'CPU 1', kind: 'ai' },
+        { id: 'ai-2', name: 'CPU 2', kind: 'ai' },
+        { id: 'ai-3', name: 'CPU 3', kind: 'ai' },
+      ],
+      startingPlayerId: 'human-1',
+    }, ruleset);
+    expect(state.players).toHaveLength(4);
+    expect(state.players.every(({ party }) => party.every(({ adventurerId }) => state.cards[adventurerId]!.definitionId.startsWith('custom:starter/')))).toBe(true);
+    expect([
+      ...state.zones['base:adventurer-deck']!.cardIds,
+      ...state.zones['base:adventurer-row']!.cardIds,
+    ]).toHaveLength(86);
+    expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
   });
 
   it('keeps helper-off provisional registry identity and definition count unchanged', () => {

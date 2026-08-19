@@ -7,12 +7,15 @@ export type EffectCardRef = { kind: 'context-card'; key: string } | { kind: 'car
 export type PlayerZoneName = 'drawPile' | 'hand' | 'discardPile' | 'playArea';
 export type EffectConcreteCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: PlayerZoneName } | { kind: 'party'; player: EffectPlayerRef; position: number } | { kind: 'equipment'; player: EffectPlayerRef; partyPosition: number } | { kind: 'shared-zone'; zoneId: string } | { kind: 'removed' };
 export type EffectCardLocation = EffectConcreteCardLocation | { kind: 'context-location'; key: string };
-export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> } | { kind: 'party'; player: EffectPlayerRef };
+export type EffectSelectableCardLocation = { kind: 'player-zone'; player: EffectPlayerRef; zone: Exclude<PlayerZoneName, 'drawPile'> } | { kind: 'party'; player: EffectPlayerRef } | { kind: 'shared-zone'; zoneId: string };
 export type EffectSelectableCardSource = EffectSelectableCardLocation | { kind: 'one-of'; locations: readonly EffectSelectableCardLocation[] };
 export type EffectCardPredicate =
   | { kind: 'definition-type-in'; values: readonly string[] }
   | { kind: 'definition-id-in'; values: readonly string[] }
+  | { kind: 'definition-cost-at-most'; value: number }
   | { kind: 'tag-in'; values: readonly string[] }
+  | { kind: 'tag-prefix'; value: string }
+  | { kind: 'definition-has-use-effect' }
   | { kind: 'all'; predicates: readonly EffectCardPredicate[] }
   | { kind: 'any'; predicates: readonly EffectCardPredicate[] }
   | { kind: 'not'; predicate: EffectCardPredicate };
@@ -23,8 +26,8 @@ export const EFFECT_CARD_PREDICATE_LIMITS = {
   maxValuesPerNode: 32,
   maxTotalValues: 128,
 } as const;
-export type EffectCondition = { kind: 'always'; value: boolean } | { kind: 'has-card-at'; card: EffectCardRef; location: EffectCardLocation };
-export type EffectNumberExpression = { kind: 'party-distinct-tag-count'; player: EffectPlayerRef; tagPrefix: string };
+export type EffectCondition = { kind: 'always'; value: boolean } | { kind: 'has-card-at'; card: EffectCardRef; location: EffectCardLocation } | { kind: 'definition-in-zone'; zoneId: string; definitionId: string };
+export type EffectNumberExpression = { kind: 'party-distinct-tag-count'; player: EffectPlayerRef; tagPrefix: string } | { kind: 'party-card-count'; player: EffectPlayerRef } | { kind: 'player-count' } | { kind: 'card-stat'; card: EffectCardRef; stat: 'combat' | 'purchasePower' | 'cost' };
 export type EffectNumberValue = number | EffectNumberExpression;
 export type EffectValueTarget = { kind: 'turn-purchase-bonus'; player: EffectPlayerRef } | { kind: 'turn-combat-bonus'; player: EffectPlayerRef } | { kind: 'player-counter'; player: EffectPlayerRef; resourceId: string };
 export type CombatReward = { kind: 'draw'; count: number } | { kind: 'purchase-bonus'; amount: number } | { kind: 'combat-bonus'; amount: number } | { kind: 'counter'; resourceId: string; amount: number };
@@ -32,15 +35,35 @@ export type EffectNode =
   | { kind: 'sequence'; effects: readonly EffectNode[] }
   | { kind: 'conditional'; condition: EffectCondition; whenTrue: EffectNode; whenFalse?: EffectNode }
   | { kind: 'choice'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; options: readonly { id: string; effect: EffectNode }[] }
-  | { kind: 'choose-card'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; skipOptionId?: string; effect: EffectNode }
+  | { kind: 'choose-card'; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actor: EffectPlayerRef; from: EffectSelectableCardSource; predicate?: EffectCardPredicate; selectedCardKey: string; selectedLocationKey?: string; skipOptionId?: string; zeroCandidateBehavior?: 'skip'; zeroCandidateEffect?: EffectNode; effect: EffectNode }
+  | { kind: 'choose-order-player-deck-top'; orderId: string; actor: EffectPlayerRef; player: EffectPlayerRef; count: number; mayRemove: boolean }
+  | { kind: 'choose-order-player-party'; orderId: string; actor: EffectPlayerRef; player: EffectPlayerRef }
+  | { kind: 'choose-shared-row-refresh-subset'; choiceId: string; actor: EffectPlayerRef; rowZoneId: string; sourceDeckZoneId: string; maxSelections: number }
+  | { kind: 'refresh-shared-row-selection'; rowZoneId: string; sourceDeckZoneId: string; cardIds: readonly string[] }
   | { kind: 'random'; randomId: string; outcomes: readonly { id: string; effect: EffectNode }[] }
   | { kind: 'roll-die'; moduleId: string; diceId: string; outcomes: readonly { face: number; effect: EffectNode }[] }
   | { kind: 'request-counter-consent'; requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwner: EffectPlayerRef; outcomes: { accepted: EffectNode; declined: EffectNode; cancelled: EffectNode; expired: EffectNode } }
   | { kind: 'move-card'; card: EffectCardRef; from: EffectCardLocation; to: EffectCardLocation; position?: 'top' | 'bottom' | number; permission?: 'controller-only' | 'system'; transferOwnership?: boolean }
   | { kind: 'draw'; player: EffectPlayerRef; count: EffectNumberValue }
+  | { kind: 'draw-shared-deck'; sourceZoneId: string; player: EffectPlayerRef; destination: 'hand' | 'discardPile'; count: number }
+  | { kind: 'discard-hand-and-draw'; player: EffectPlayerRef }
+  | { kind: 'discard-party-and-hand'; player: EffectPlayerRef }
+  | { kind: 'discard-first-party-member'; player: EffectPlayerRef }
+  | { kind: 'assert-turn-fact-at-most'; player: EffectPlayerRef; fact: 'bossesDefeated' | 'monstersDefeated'; amount: number; reasonCode: string }
+  | { kind: 'record-turn-effect-use'; player: EffectPlayerRef; usageId: string; maxUses: number }
+  | { kind: 'skip-combat-this-turn'; player: EffectPlayerRef }
+  | { kind: 'add-turn-enemy-card-purchase-bonus'; player: EffectPlayerRef; amount: number }
+  | { kind: 'set-turn-card-combat-multiplier'; player: EffectPlayerRef; definitionId: string; numerator: number; denominator: number; rounding: 'floor' }
+  | { kind: 'repeat-item-use-effect'; card: EffectCardRef; player: EffectPlayerRef; times: number }
+  | { kind: 'repeat-discard-hand-for-combat'; choiceId: string; actor: EffectPlayerRef; player: EffectPlayerRef; amountPerCard: number; stopOptionId: string }
+  | { kind: 'reveal-player-deck-until'; player: EffectPlayerRef; predicate: EffectCardPredicate; matchingDestination: 'hand' }
+  | { kind: 'reveal-player-deck-top'; player: EffectPlayerRef; predicate: EffectCardPredicate; matchingDestination: 'hand' }
+  | { kind: 'reveal-shared-deck-to-zone'; sourceZoneId: string; destinationZoneId: string; count: EffectNumberValue }
+  | { kind: 'add-temporary-target-combat-modifier'; modifierId: string; moduleId: string; targetCard: EffectCardRef; amount: number; expires: 'turn-end' }
+  | { kind: 'mark-combat-failed'; reasonCode: string }
   | { kind: 'discard-card'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system' }
   | { kind: 'remove-from-game'; card: EffectCardRef; from: EffectCardLocation; permission?: 'controller-only' | 'system'; attachedEquipmentDisposition?: 'discard' }
-  | { kind: 'modify-value'; target: EffectValueTarget; amount: number }
+  | { kind: 'modify-value'; target: EffectValueTarget; amount: EffectNumberValue }
   | { kind: 'grant-combat-reward'; recipient: EffectPlayerRef; rewards: readonly CombatReward[] }
   | { kind: 'refresh-supply-row'; refreshPolicyId: string }
   | { kind: 'enforce-team-capacity'; policyId: string }
@@ -53,7 +76,8 @@ export type EffectNode =
   | { kind: 'finish-enemy-encounter'; encounterId: string; policy: { moduleId: string; policyId: string } };
 export type EffectDefinition = { schemaVersion: 1; effectId: string; body: EffectNode };
 export type EffectContext = { controllerId: string; cardRefs?: Readonly<Record<string, string>> | undefined; playerRefs?: Readonly<Record<string, string>> | undefined; locationRefs?: Readonly<Record<string, EffectConcreteCardLocation>> | undefined };
-export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actorId: string; options: readonly { id: string; effect: EffectNode; context?: EffectContext }[]; remaining: readonly EffectNode[]; context: EffectContext; source?: EffectSelectableCardSource };
+export type PendingEffectOrder = { kind?: 'player-deck-top' | 'party'; playerId: string; cardIds: readonly string[]; mayRemove: boolean; resolutions: readonly { optionId: string; orderedCardIds: readonly string[]; removeCardId?: string | undefined }[] };
+export type PendingEffectChoice = { schemaVersion: 1; executionId: string; choiceId: string; decisionKind?: import('./state.js').PlayerDecisionKind; actorId: string; options: readonly { id: string; effect: EffectNode; context?: EffectContext }[]; remaining: readonly EffectNode[]; context: EffectContext; source?: EffectSelectableCardSource; order?: PendingEffectOrder };
 export type PendingCounterConsent = {
   schemaVersion: 1;
   executionId: string;
@@ -90,6 +114,7 @@ export type PendingCommandContinuation =
   | { schemaVersion: 1; kind?: 'command-before-lifecycle'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; resolutionEnvelopes?: readonly import('./commands.js').CommandEnvelope[] }
   | { schemaVersion: 1; kind: 'phase-transition'; envelope: import('./commands.js').CommandEnvelope & { command: Extract<import('./commands.js').GameCommand, { type: 'END_PHASE' }> }; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; factStart: number; cursor: 'after-phase-end' | 'complete-nonrest' | 'after-turn-end' | 'complete-game-end' | 'after-turn-start' | 'complete-turn-start' }
   | { schemaVersion: 1; kind: 'team-overflow'; envelope: import('./commands.js').CommandEnvelope; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; policy: { moduleId: string; policyId: string }; candidateIds: readonly string[]; requiredSelectionCount: number; optionCandidates: Readonly<Record<string, readonly string[]>>; registry: LifecycleRegistrySnapshot }
+  | { schemaVersion: 1; kind: 'combat-departure-choice'; envelope: import('./commands.js').CommandEnvelope & { command: Extract<import('./commands.js').GameCommand, { type: 'ATTACK_TARGET' }> }; events: readonly import('./commands.js').DomainEvent[]; rollbackState: import('./state.js').GameState; candidates: readonly import('./combat-departure-replacement.js').CombatDepartureReplacementCandidate[]; optionCandidateIds: Readonly<Record<string, readonly string[]>>; registry: LifecycleRegistrySnapshot }
   | { schemaVersion: 1; kind: 'card-use-effect'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; context: EffectContext; registry: LifecycleRegistrySnapshot }
   | { schemaVersion: 1; kind: 'combat-reward'; continuationId: string; envelope: import('./commands.js').CommandEnvelope; resolutionEnvelopes: readonly import('./commands.js').CommandEnvelope[]; rollbackState: import('./state.js').GameState; events: readonly import('./commands.js').DomainEvent[]; factStart: number; evaluation: import('./combat-reward.js').CombatRewardEvaluation; policyIndex: number; step: 'resume-policy-effect' | 'dispatch-next-policy'; context: EffectContext; registry: LifecycleRegistrySnapshot };
 /** Serializable cursor for a command whose reducer has completed but post-command lifecycle work is pending. */
@@ -143,6 +168,7 @@ const locationSchema: z.ZodType<EffectCardLocation> = z.discriminatedUnion('kind
 export const EffectSelectableCardLocationSchema: z.ZodType<EffectSelectableCardLocation> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player-zone'), player: playerRefSchema, zone: z.enum(['hand', 'discardPile', 'playArea']) }).strict(),
   z.object({ kind: z.literal('party'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('shared-zone'), zoneId: nonEmpty }).strict(),
 ]);
 export const EffectSelectableCardSourceSchema: z.ZodType<EffectSelectableCardSource> = z.union([
   EffectSelectableCardLocationSchema,
@@ -155,22 +181,30 @@ export const EffectContextSchema: z.ZodType<EffectContext> = z.object({
   locationRefs: z.record(EffectConcreteCardLocationSchema).optional(),
 }).strict();
 const canonicalPredicateValue = z.string().min(1).refine((value) => value === value.trim(), 'Predicate values must not have leading or trailing whitespace.');
-const numberValueSchema: z.ZodType<EffectNumberValue> = z.union([
-  z.number().finite().int().nonnegative(),
+const numberExpressionSchema: z.ZodType<EffectNumberExpression> = z.union([
   z.object({ kind: z.literal('party-distinct-tag-count'), player: playerRefSchema, tagPrefix: canonicalPredicateValue }).strict(),
+  z.object({ kind: z.literal('party-card-count'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('player-count') }).strict(),
+  z.object({ kind: z.literal('card-stat'), card: cardRefSchema, stat: z.enum(['combat', 'purchasePower', 'cost']) }).strict(),
 ]);
+const countValueSchema: z.ZodType<EffectNumberValue> = z.union([z.number().finite().int().nonnegative(), numberExpressionSchema]);
+const amountValueSchema: z.ZodType<EffectNumberValue> = z.union([z.number().finite().int(), numberExpressionSchema]);
 const uniqueNonEmptyValues = z.array(canonicalPredicateValue).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxValuesPerNode).refine((values) => new Set(values).size === values.length, 'Predicate values must be unique.');
 const cardPredicateSchema: z.ZodType<EffectCardPredicate> = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('definition-type-in'), values: uniqueNonEmptyValues }).strict(),
   z.object({ kind: z.literal('definition-id-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('definition-cost-at-most'), value: z.number().finite().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('tag-in'), values: uniqueNonEmptyValues }).strict(),
+  z.object({ kind: z.literal('tag-prefix'), value: nonEmpty }).strict(),
+  z.object({ kind: z.literal('definition-has-use-effect') }).strict(),
   z.object({ kind: z.literal('all'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
   z.object({ kind: z.literal('any'), predicates: z.array(cardPredicateSchema).min(1).max(EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) }).strict(),
   z.object({ kind: z.literal('not'), predicate: cardPredicateSchema }).strict(),
 ] as const)) as unknown as z.ZodType<EffectCardPredicate>;
 const conditionSchema: z.ZodType<EffectCondition> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
-  z.object({ kind: z.literal('has-card-at'), card: cardRefSchema, location: locationSchema }).strict()
+  z.object({ kind: z.literal('has-card-at'), card: cardRefSchema, location: locationSchema }).strict(),
+  z.object({ kind: z.literal('definition-in-zone'), zoneId: nonEmpty, definitionId: nonEmpty }).strict(),
 ]);
 const valueTargetSchema: z.ZodType<EffectValueTarget> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('turn-purchase-bonus'), player: playerRefSchema }).strict(),
@@ -185,22 +219,44 @@ const rewardSchema: z.ZodType<CombatReward> = z.discriminatedUnion('kind', [
 ]);
 const policyRefSchema = z.object({ moduleId: nonEmpty, policyId: nonEmpty }).strict();
 const uniqueOptions = <T extends { id: string }>(values: readonly T[]): boolean => new Set(values.map(({ id }) => id)).size === values.length;
-const decisionKindSchema = z.enum(['choose-effect-option', 'discard-card', 'remove-card', 'recover-card', 'choose-market-card', 'choose-enemy-target', 'choose-party-member', 'draft-card', 'transfer-card']);
-const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), skipOptionId: nonEmpty.optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
+const decisionKindSchema = z.enum(['choose-effect-option', 'discard-card', 'remove-card', 'recover-card', 'choose-market-card', 'choose-enemy-target', 'choose-party-member', 'draft-card', 'transfer-card', 'choose-order']);
+const chooseCardSchema = z.object({ kind: z.literal('choose-card'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, from: EffectSelectableCardSourceSchema, predicate: cardPredicateSchema.optional(), selectedCardKey: nonEmpty, selectedLocationKey: nonEmpty.optional(), skipOptionId: nonEmpty.optional(), zeroCandidateBehavior: z.literal('skip').optional(), zeroCandidateEffect: z.lazy(() => EffectNodeSchema).optional(), effect: z.lazy(() => EffectNodeSchema) }).strict();
 
 export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sequence'), effects: z.array(EffectNodeSchema).min(1) }).strict(),
   z.object({ kind: z.literal('conditional'), condition: conditionSchema, whenTrue: EffectNodeSchema, whenFalse: EffectNodeSchema.optional() }).strict(),
   z.object({ kind: z.literal('choice'), choiceId: nonEmpty, decisionKind: decisionKindSchema.optional(), actor: playerRefSchema, options: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Choice option IDs must be unique.') }).strict(),
   chooseCardSchema,
+  // Five cards produce at most 240 legal outcomes (including optional removal),
+  // keeping serialized continuations below the engine's 256-branch budget.
+  z.object({ kind: z.literal('choose-order-player-deck-top'), orderId: nonEmpty, actor: playerRefSchema, player: playerRefSchema, count: z.number().finite().int().min(1).max(5), mayRemove: z.boolean() }).strict(),
+  z.object({ kind: z.literal('choose-order-player-party'), orderId: nonEmpty, actor: playerRefSchema, player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('choose-shared-row-refresh-subset'), choiceId: nonEmpty, actor: playerRefSchema, rowZoneId: nonEmpty, sourceDeckZoneId: nonEmpty, maxSelections: z.number().finite().int().min(1).max(5) }).strict(),
+  z.object({ kind: z.literal('refresh-shared-row-selection'), rowZoneId: nonEmpty, sourceDeckZoneId: nonEmpty, cardIds: z.array(nonEmpty).max(5).refine((values) => new Set(values).size === values.length, 'Refresh selection card IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('random'), randomId: nonEmpty, outcomes: z.array(z.object({ id: nonEmpty, effect: EffectNodeSchema }).strict()).min(1).refine(uniqueOptions, 'Random outcome IDs must be unique.') }).strict(),
   z.object({ kind: z.literal('roll-die'), moduleId: nonEmpty, diceId: nonEmpty, outcomes: z.array(z.object({ face: z.number().finite().int().positive(), effect: EffectNodeSchema }).strict()).min(1).refine((values) => new Set(values.map(({ face }) => face)).size === values.length, 'Die faces must be unique.') }).strict(),
   z.object({ kind: z.literal('request-counter-consent'), requestId: nonEmpty, policy: policyRefSchema, counterOwner: playerRefSchema, outcomes: z.object({ accepted: EffectNodeSchema, declined: EffectNodeSchema, cancelled: EffectNodeSchema, expired: EffectNodeSchema }).strict() }).strict(),
   z.object({ kind: z.literal('move-card'), card: cardRefSchema, from: locationSchema, to: locationSchema, position: z.union([z.enum(['top', 'bottom']), z.number().finite().int().nonnegative()]).optional(), permission: z.enum(['controller-only', 'system']).optional(), transferOwnership: z.boolean().optional() }).strict(),
-  z.object({ kind: z.literal('draw'), player: playerRefSchema, count: numberValueSchema }).strict(),
+  z.object({ kind: z.literal('draw'), player: playerRefSchema, count: countValueSchema }).strict(),
+  z.object({ kind: z.literal('draw-shared-deck'), sourceZoneId: nonEmpty, player: playerRefSchema, destination: z.enum(['hand', 'discardPile']), count: z.number().finite().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('discard-hand-and-draw'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('discard-party-and-hand'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('discard-first-party-member'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('assert-turn-fact-at-most'), player: playerRefSchema, fact: z.enum(['bossesDefeated', 'monstersDefeated']), amount: z.number().finite().int().nonnegative(), reasonCode: nonEmpty }).strict(),
+  z.object({ kind: z.literal('record-turn-effect-use'), player: playerRefSchema, usageId: nonEmpty, maxUses: z.number().finite().int().positive() }).strict(),
+  z.object({ kind: z.literal('skip-combat-this-turn'), player: playerRefSchema }).strict(),
+  z.object({ kind: z.literal('add-turn-enemy-card-purchase-bonus'), player: playerRefSchema, amount: z.number().finite().int() }).strict(),
+  z.object({ kind: z.literal('set-turn-card-combat-multiplier'), player: playerRefSchema, definitionId: canonicalPredicateValue, numerator: z.number().finite().int().positive(), denominator: z.number().finite().int().positive(), rounding: z.literal('floor') }).strict(),
+  z.object({ kind: z.literal('repeat-item-use-effect'), card: cardRefSchema, player: playerRefSchema, times: z.number().finite().int().min(2).max(4) }).strict(),
+  z.object({ kind: z.literal('repeat-discard-hand-for-combat'), choiceId: nonEmpty, actor: playerRefSchema, player: playerRefSchema, amountPerCard: z.number().finite().int().positive(), stopOptionId: nonEmpty }).strict(),
+  z.object({ kind: z.literal('reveal-player-deck-until'), player: playerRefSchema, predicate: cardPredicateSchema, matchingDestination: z.literal('hand') }).strict(),
+  z.object({ kind: z.literal('reveal-player-deck-top'), player: playerRefSchema, predicate: cardPredicateSchema, matchingDestination: z.literal('hand') }).strict(),
+  z.object({ kind: z.literal('reveal-shared-deck-to-zone'), sourceZoneId: nonEmpty, destinationZoneId: nonEmpty, count: countValueSchema }).strict(),
+  z.object({ kind: z.literal('add-temporary-target-combat-modifier'), modifierId: nonEmpty, moduleId: nonEmpty, targetCard: cardRefSchema, amount: z.number().finite().int(), expires: z.literal('turn-end') }).strict(),
+  z.object({ kind: z.literal('mark-combat-failed'), reasonCode: nonEmpty }).strict(),
   z.object({ kind: z.literal('discard-card'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional() }).strict(),
   z.object({ kind: z.literal('remove-from-game'), card: cardRefSchema, from: locationSchema, permission: z.enum(['controller-only', 'system']).optional(), attachedEquipmentDisposition: z.literal('discard').optional() }).strict(),
-  z.object({ kind: z.literal('modify-value'), target: valueTargetSchema, amount: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('modify-value'), target: valueTargetSchema, amount: amountValueSchema }).strict(),
   z.object({ kind: z.literal('grant-combat-reward'), recipient: playerRefSchema, rewards: z.array(rewardSchema).min(1) }).strict(),
   z.object({ kind: z.literal('refresh-supply-row'), refreshPolicyId: nonEmpty }).strict(),
   z.object({ kind: z.literal('enforce-team-capacity'), policyId: nonEmpty }).strict(),
@@ -236,6 +292,10 @@ export function validateEffectCardPredicate(predicate: unknown): string[] {
       if (entry.values.some((value) => typeof value === 'string' && value !== value.trim())) return ['Predicate values must not have leading or trailing whitespace.'];
       continue;
     }
+    if (entry.kind === 'tag-prefix') {
+      if (typeof entry.value === 'string' && entry.value !== entry.value.trim()) return ['Predicate tag prefix must not have leading or trailing whitespace.'];
+      continue;
+    }
     if (entry.kind === 'all' || entry.kind === 'any') {
       if (!Array.isArray(entry.predicates)) continue;
       if (entry.predicates.length > EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode) return [`Effect card predicate exceeds maximum branch count of ${EFFECT_CARD_PREDICATE_LIMITS.maxBranchesPerNode}.`];
@@ -253,6 +313,7 @@ function validateEffectPredicateBudgets(effect: EffectDefinition): string[] {
     const node = objectValue(queue.pop());
     if (!node) continue;
     if (node.kind === 'choose-card') {
+      if (node.zeroCandidateBehavior && node.zeroCandidateEffect) return ['Choose-card may declare only one zero-candidate outcome.'];
       const source = objectValue(node.from);
       const locations = source?.kind === 'one-of' && Array.isArray(source.locations) ? source.locations : [node.from];
       if (locations.some((location) => objectValue(location)?.kind === 'party') && (typeof node.selectedLocationKey !== 'string' || !node.selectedLocationKey.trim())) return ['Party card choices require selectedLocationKey.'];
@@ -260,7 +321,12 @@ function validateEffectPredicateBudgets(effect: EffectDefinition): string[] {
         const errors = validateEffectCardPredicate(node.predicate);
         if (errors.length) return errors;
       }
-      queue.push(node.effect);
+      queue.push(node.effect, node.zeroCandidateEffect);
+      continue;
+    }
+    if (node.kind === 'reveal-player-deck-until') {
+      const errors = validateEffectCardPredicate(node.predicate);
+      if (errors.length) return errors;
       continue;
     }
     if (node.kind === 'sequence' && Array.isArray(node.effects)) queue.push(...node.effects);
@@ -286,5 +352,20 @@ export function validateEffectDefinition(effect: EffectDefinition): string[] {
 
 /** Semantic entry point for effects owned by a versioned card-use continuation. */
 export function validateCardUseEffectDefinition(effect: EffectDefinition): string[] {
-  return validateEffectDefinition(effect);
+  const errors = validateEffectDefinition(effect);
+  const queue: EffectNode[] = [effect.body];
+  while (queue.length) {
+    const node = queue.pop()!;
+    if (node.kind === 'repeat-item-use-effect') {
+      errors.push('Card use effects cannot recursively invoke repeat-item-use-effect.');
+      break;
+    }
+    if (node.kind === 'sequence') queue.push(...node.effects);
+    else if (node.kind === 'conditional') queue.push(node.whenTrue, ...(node.whenFalse ? [node.whenFalse] : []));
+    else if (node.kind === 'choice') queue.push(...node.options.map(({ effect: branch }) => branch));
+    else if (node.kind === 'choose-card') queue.push(node.effect, ...(node.zeroCandidateEffect ? [node.zeroCandidateEffect] : []));
+    else if (node.kind === 'random' || node.kind === 'roll-die') queue.push(...node.outcomes.map(({ effect: branch }) => branch));
+    else if (node.kind === 'request-counter-consent') queue.push(...Object.values(node.outcomes));
+  }
+  return errors;
 }

@@ -8,6 +8,10 @@ import {
   provisionalOriginalFullPresentationPack,
   provisionalHelpersPresentationPack,
 } from '@guildmaster/presentation-demo';
+import {
+  customAdventurerPresentationPack,
+  resolveCustomRemoteAsset,
+} from '@guildmaster/presentation-custom-adventurers';
 
 /** Client-only composition. Nothing in this module is authoritative game state. */
 export const presentationAssetRegistry = createPresentationAssetRegistry(
@@ -29,16 +33,23 @@ const resolveAsset = (assetKey: string) => {
       objectPosition: '35% 25%',
     };
   }
-  return presentationAssetRegistry.resolveAsset(assetKey);
+  return resolveCustomRemoteAsset(assetKey) ?? presentationAssetRegistry.resolveAsset(assetKey);
 };
 
 export const presentationResolver = createPresentationResolver(
-  [demoPresentationPack, provisionalFoundationPresentationPack, provisionalOriginalFullPresentationPack, provisionalHelpersPresentationPack],
+  [
+    demoPresentationPack,
+    provisionalFoundationPresentationPack,
+    provisionalOriginalFullPresentationPack,
+    provisionalHelpersPresentationPack,
+    customAdventurerPresentationPack,
+  ],
   { resolveAsset },
 );
 
 export const lifecycleCopyResolver = createLifecycleCopyResolver({
   choices: [
+    { choiceId: 'base:adventurer/adventurer-11-order-top-three', title: '整理牌庫頂三張牌', description: '可移除至多一張，並選擇其餘卡牌由底至頂的放回順序。' },
     { choiceId: 'base:resource/resource-01-recover-adventurer', title: '選擇要取回的冒險者', description: '將選擇的冒險者從棄牌堆加入手牌。' },
     { choiceId: 'base:resource/resource-04-discard-boss', title: '選擇要棄置的魔王', description: '棄置選擇的魔王後，抽 3 張牌。' },
     { choiceId: 'base:resource/resource-05-recover-equipment', title: '選擇要取回的裝備', description: '將選擇的裝備從棄牌堆加入手牌。' },

@@ -1,7 +1,7 @@
 import type { DomainEvent, EngineError, GameState, PlayerState } from '@guildmaster/game-protocol';
 import type { Ruleset } from '../rules/ruleset.js';
 import { evaluateRestHandSize } from '../rules/rest-hand-size-evaluator.js';
-import { attachTargets } from './create-game.js';
+import { attachTargets } from './target-supply.js';
 import { drawCards } from './draw.js';
 import { refillConfiguredSupplyRows } from './supply.js';
 
@@ -21,7 +21,7 @@ export function finishRest(state: GameState, ruleset: Ruleset, player: PlayerSta
   player.turnCombatBonus = 0;
   try {
     refillConfiguredSupplyRows(state, ruleset, events);
-    attachTargets(state);
+    attachTargets(state, ruleset);
     drawCards(state, player.id, handSize.evaluation.effectiveHandSize, events);
   } catch (error) {
     return { code: 'INVALID_COMMAND', message: error instanceof Error ? error.message : 'Rest settlement failed.' };

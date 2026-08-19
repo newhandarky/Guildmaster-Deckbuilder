@@ -65,7 +65,7 @@ export function validatePendingCardUseContinuation(state: GameState, ruleset: Ru
   if (new Set(pending.events.map(({ eventId }) => eventId)).size !== pending.events.length) return 'Card-use continuation events must have unique IDs.';
   return choice
     ? validatePendingChoiceAgainstEffect(choice, effect, state, ruleset)
-    : validatePendingCounterConsentAgainstEffect(consent!, effect);
+    : validatePendingCounterConsentAgainstEffect(consent!, effect, state, ruleset);
 }
 
 export function beginCardUseEffectPipeline(

@@ -3,7 +3,7 @@ import type { CpuActionFeature, GameCommand, PlayerView } from '@guildmaster/gam
 import { CpuTurnRunner, baseBalancedCpuProfile, decideCpuAction } from '../src/index.js';
 
 const view = (revision = 1) => ({ viewerId: 'cpu-1', gameId: 'g', status: 'playing', phase: 'purchase', round: 1, revision, activePlayerId: 'cpu-1' } as unknown as PlayerView);
-const feature = (command: GameCommand, values: Partial<CpuActionFeature> = {}): CpuActionFeature => ({ schemaVersion: 1, command, honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, overflowLoss: 0, ...values });
+const feature = (command: GameCommand, values: Partial<CpuActionFeature> = {}): CpuActionFeature => ({ schemaVersion: 1, command, honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0, ...values });
 const context = (legalCommands: GameCommand[], actionFeatures: CpuActionFeature[] = []) => ({ view: view(), legalCommands, actionFeatures, definitions: {}, rulesetFingerprint: 'rules', profile: baseBalancedCpuProfile });
 
 describe('deterministic CPU strategy', () => {
@@ -35,6 +35,14 @@ describe('deterministic CPU strategy', () => {
     const refresh = { type: 'REFRESH_MARKET' as const, row: 'item' as const, discardCardId: 'hand', refreshCardIds: ['row'] };
     const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
     expect(decideCpuAction(context([refresh, end], [feature(refresh)]))).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
+  });
+
+  it('ends combat when an authoritative failure gate removes all projected attack rewards', () => {
+    const attack = { type: 'ATTACK_TARGET' as const, targetId: 'boss-target' };
+    const end = { type: 'END_PHASE' as const, phase: 'combat' as const };
+    const combatView = { ...view(), phase: 'combat', enemyTargets: { 'boss-target': { targetId: 'boss-target', cardInstanceId: 'boss-card', kind: 'boss', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({ ...context([attack, end], [feature(attack)]), view: combatView });
+    expect(result).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
   });
 
   it('does not replace stronger equipment when the public feature reports a negative net change', () => {
@@ -108,6 +116,14 @@ describe('deterministic CPU strategy', () => {
     const typedView = { ...view(), decisionPrompt: { schemaVersion: 1 as const, decisionKind: 'discard-card' as const, choiceId: 'discard-card', minSelections: 1, maxSelections: 1, options: [{ id: 'low', cardId: 'low', definitionId: 'd-low' }, { id: 'high', cardId: 'high', definitionId: 'd-high' }] }, cards: { low: { id: 'low', definitionId: 'd-low' }, high: { id: 'high', definitionId: 'd-high' } } } as PlayerView;
     const result = decideCpuAction({ ...context([high, low]), view: typedView, definitions: { 'd-low': { id: 'd-low', name: 'Low', type: 'starter', copies: 1, source: 'test' }, 'd-high': { id: 'd-high', name: 'High', type: 'adventurer', copies: 1, combat: 5, honor: 3, source: 'test' } } });
     expect(result).toMatchObject({ status: 'ready', command: low, reasonCode: 'RESOLVE_HIGHEST_UTILITY_CHOICE' });
+  });
+
+  it('resolves a typed public-market reward by choosing the highest-utility visible card', () => {
+    const low = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'x', choiceId: 'market-card', optionId: 'low' };
+    const high = { ...low, optionId: 'high' };
+    const typedView = { ...view(), decisionPrompt: { schemaVersion: 1 as const, decisionKind: 'choose-market-card' as const, choiceId: 'market-card', minSelections: 1, maxSelections: 1, options: [{ id: 'low', cardId: 'low', definitionId: 'd-low' }, { id: 'high', cardId: 'high', definitionId: 'd-high' }] }, cards: { low: { id: 'low', definitionId: 'd-low' }, high: { id: 'high', definitionId: 'd-high' } } } as PlayerView;
+    const result = decideCpuAction({ ...context([low, high]), view: typedView, definitions: { 'd-low': { id: 'd-low', name: 'Low', type: 'item', copies: 1, source: 'test', honor: 1 }, 'd-high': { id: 'd-high', name: 'High', type: 'equipment', copies: 1, source: 'test', combat: 2, honor: 2 } } });
+    expect(result).toMatchObject({ status: 'ready', command: high, reasonCode: 'RESOLVE_HIGHEST_UTILITY_CHOICE' });
   });
 
   it('returns a structured repeat guard instead of silently stopping', () => {

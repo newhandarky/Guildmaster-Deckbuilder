@@ -53,6 +53,13 @@ describe('demo presentation package', () => {
     }
   });
 
+  it('shows resource 12 combat-only mandatory removal boundary', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:resource/resource-12')).toMatchObject({
+      shortDisplayText: expect.stringContaining('戰鬥'),
+      detailDisplayText: expect.stringContaining('隊伍超額、休息或卡牌效果造成的離場不觸發'),
+    });
+  });
+
   it('shows authoritative copy only for the enabled first monster reward batch', () => {
     const monsters = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:monster/'));
     expect(monsters).toHaveLength(14);
@@ -81,6 +88,77 @@ describe('demo presentation package', () => {
       shortDisplayText: expect.stringContaining('配戴任一裝備時'),
       detailDisplayText: expect.stringContaining('持續效果'),
     });
+  });
+
+  it('shows adventurer 05 as a controller-scoped equipment discount', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-05')).toMatchObject({
+      shortDisplayText: expect.stringContaining('裝備費用 −1'),
+      detailDisplayText: expect.stringContaining('不替其他玩家折價'),
+    });
+  });
+
+  it('shows player-facing position and target combat copy for the enabled B batch', () => {
+    const expected = new Map([
+      ['04', '第一位'], ['10', '第一位'], ['15', '第四或第五位'], ['20', '其他冒險者'], ['24', '魔物'], ['27', '相鄰'],
+    ]);
+    for (const [id, copy] of expected) {
+      expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === `base:adventurer/adventurer-${id}`)).toMatchObject({
+        shortDisplayText: expect.stringContaining(copy),
+        detailDisplayText: expect.not.stringContaining('尚未啟用'),
+      });
+    }
+  });
+
+  it('shows the complete enabled boss 05 combat and reward boundary', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-05')).toMatchObject({
+      shortDisplayText: expect.stringContaining('所有裝備失效'),
+      detailDisplayText: expect.stringContaining('商店不立即補牌'),
+    });
+  });
+
+  it('shows public combat and reward boundaries for bosses 01, 08, and 11', () => {
+    const expected = new Map([
+      ['01', ['商店中的裝備數', '費用 4 以下']],
+      ['08', ['最前方 3 名', '招募區不立即補牌']],
+      ['11', ['最前方 1 名', '裝備不是合法候選']],
+    ]);
+    for (const [id, copy] of expected) {
+      const entry = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === `base:boss/boss-${id}`);
+      expect(entry?.shortDisplayText).toContain(copy[0]);
+      expect(entry?.detailDisplayText).toContain(copy[1]);
+      expect(entry?.detailDisplayText).not.toContain('尚未啟用');
+    }
+  });
+
+  it('shows dynamic profession combat and deck reward boundaries for bosses 06, 09, and 10', () => {
+    const expected = new Map([
+      ['06', ['完整隊伍每有 1 種職業', '牌庫不足時只取得現存牌']],
+      ['09', ['左手邊玩家完整隊伍', 'active player 改變時會重新計算']],
+      ['10', ['戰力 −1', '最低戰力為 0']],
+    ]);
+    for (const [id, copy] of expected) {
+      const entry = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === `base:boss/boss-${id}`);
+      expect(entry?.shortDisplayText).toContain(copy[0]);
+      expect(entry?.detailDisplayText).toContain(copy[1]);
+      expect(entry?.detailDisplayText).not.toContain('尚未啟用');
+    }
+  });
+
+  it('shows boss 03 non-rollback combat failure and optional removal boundary', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-03')).toMatchObject({
+      shortDisplayText: expect.stringContaining('無法支付時討伐失敗'),
+      detailDisplayText: expect.stringContaining('已離場隊伍不回復'),
+    });
+  });
+
+  it('shows boss 02 participant, equipment, shortage, and reward ordering boundaries', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-02')).toMatchObject({
+      shortDisplayText: expect.stringContaining('依參戰人數補抽'),
+      detailDisplayText: expect.stringContaining('裝備依各自離場規則'),
+    });
+    const detail = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-02')?.detailDisplayText ?? '';
+    expect(detail).toContain('牌庫不足時只取得現存牌');
+    expect(detail.indexOf('依全部參戰者人數')).toBeLessThan(detail.indexOf('擊敗後再取得 5 點購買力'));
   });
 
   it('allows an approved asset manifest to cover none or part of the presentation pack', () => {

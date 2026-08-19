@@ -104,7 +104,7 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
         ? 'Pending lifecycle hook or suspension is missing.'
         : state.effectState.pendingChoice
           ? validatePendingChoiceAgainstEffect(state.effectState.pendingChoice, hook.effect, state, ruleset)
-          : validatePendingCounterConsentAgainstEffect(state.effectState.pendingCounterConsent!, hook.effect);
+          : validatePendingCounterConsentAgainstEffect(state.effectState.pendingCounterConsent!, hook.effect, state, ruleset);
       if (programError) throw new Error(programError);
     }
   }
@@ -135,6 +135,20 @@ export function restoreSnapshot(snapshot: unknown, ruleset?: Ruleset): GameState
       const optionSets = Object.values(command.optionCandidates);
       if (!choice || consent || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'PLAY_ADVENTURER' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `team-overflow:${command.envelope.commandId}` || choice.choiceId !== `team-overflow:${command.policy.policyId}` || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackState.effectState.pendingChoice || rollbackState.effectState.pendingCounterConsent || rollbackState.effectState.pendingLifecycle || rollbackState.effectState.pendingCommand || rollbackState.effectState.pendingPostCommand || new Set(command.candidateIds).size !== command.candidateIds.length || !command.candidateIds.every((id) => rollbackState.players.find(({ id: playerId }) => playerId === command.envelope.actorId)?.party.some((slot) => slot.adventurerId === id)) || !optionSets.every((set) => set.length === command.requiredSelectionCount && new Set(set).size === set.length && set.every((id) => command.candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidates[option.id])) throw new Error('Invalid team overflow continuation.');
       command.rollbackState = structuredClone(rollbackState); return state;
+    }
+    if (command.kind === 'combat-departure-choice') {
+      const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState);
+      const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };
+      const candidateIds = command.candidates.map(({ candidateId }) => candidateId); const optionSets = Object.values(command.optionCandidateIds);
+      const rollbackEffects = rollbackState.effectState;
+      if (!choice || consent || pending || state.effectState.pendingPostCommand || command.envelope.command.type !== 'ATTACK_TARGET' || command.envelope.gameId !== state.gameId || command.envelope.actorId !== state.activePlayerId || command.envelope.expectedRevision !== state.revision || choice.executionId !== `combat-departure:${command.envelope.commandId}` || choice.choiceId !== 'combat-departure:optional-replacements' || JSON.stringify(command.registry) !== JSON.stringify(registry) || rollbackEffects.pendingChoice || rollbackEffects.pendingCounterConsent || rollbackEffects.pendingLifecycle || rollbackEffects.pendingCommand || rollbackEffects.pendingPostCommand || new Set(candidateIds).size !== candidateIds.length || optionSets.length !== 2 ** candidateIds.length || !optionSets.every((set) => new Set(set).size === set.length && set.every((id) => candidateIds.includes(id))) || !choice.options.every((option) => command.optionCandidateIds[option.id])) throw new Error('Invalid combat departure replacement continuation.');
+      command.rollbackState = structuredClone(rollbackState);
+      if (!ruleset) throw new Error('Pending combat departure replacement Snapshot requires the active ruleset for canonical restore.');
+      const canonical = dispatch(structuredClone(rollbackState), ruleset, structuredClone(command.envelope));
+      if (canonical.error || canonical.state.effectState.pendingCommand?.kind !== 'combat-departure-choice') throw new Error(`Combat departure replacement canonical replay failed: ${canonical.error?.message ?? 'did not suspend'}.`);
+      const difference = firstDifference(canonical.state, state);
+      if (difference) throw new Error(`Combat departure replacement suspended state does not match canonical replay at ${difference}.`);
+      return state;
     }
     if (command.kind === 'card-use-effect') {
       const rollbackState = GameStateSchema.parse(command.rollbackState) as GameState; assertGameStateInvariants(rollbackState); const registry = { rulesetVersion: state.rulesetVersion, modules: state.rulesModules.map(({ id, version }) => ({ id, version })) };

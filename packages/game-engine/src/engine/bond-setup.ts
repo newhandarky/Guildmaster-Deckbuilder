@@ -2,6 +2,7 @@ import type { CommandEnvelope, DomainEvent, EngineResult, GameState } from '@gui
 import { getPlayer } from '../model/factories.js';
 import { nextSeat } from '../model/seats.js';
 import type { Ruleset } from '../rules/ruleset.js';
+import { dispatchLifecycle } from '../effects/lifecycle-dispatcher.js';
 import { createTurnFactLedger } from './create-game.js';
 
 export function dispatchBondSetup(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
@@ -17,6 +18,26 @@ export function dispatchBondSetup(state: GameState, ruleset: Ruleset, envelope: 
   if (nextSetup.completedPlayerIds.length === nextState.players.length) {
     nextState.status = 'playing'; nextState.activePlayerId = nextState.startingPlayerId; nextState.turnFacts = createTurnFactLedger(nextState.activePlayerId); delete nextState.bondSetup;
     events.push({ eventId: `event-${state.revision + 1}-2`, revision: state.revision + 1, type: 'BOND_SETUP_FINISHED', message: '所有玩家已完成羈絆設置。', causedByCommandId: envelope.commandId });
+    const startIndex = nextState.players.findIndex(({ id }) => id === nextState.startingPlayerId);
+    const seatOrder = Array.from(
+      { length: nextState.players.length },
+      (_, offset) => nextState.players[(startIndex + offset) % nextState.players.length]!.id,
+    );
+    const lifecycle = dispatchLifecycle(
+      nextState,
+      ruleset,
+      { schemaVersion: 1, point: 'game-start', actorId: nextState.startingPlayerId, phase: nextState.phase },
+      {
+        controllerId: nextState.startingPlayerId,
+        playerRefs: Object.fromEntries(
+          Array.from({ length: 4 }, (_, index) => [`draftPlayer${index}`, seatOrder[index] ?? seatOrder.at(-1)!]),
+        ),
+      },
+    );
+    if (lifecycle.status === 'failed' || lifecycle.status === 'unsupported') {
+      return fail('INVALID_COMMAND', `Game-start lifecycle failed: ${lifecycle.error ?? lifecycle.reason ?? 'unknown lifecycle failure'}.`);
+    }
+    events.push(...lifecycle.events);
   } else {
     const next = nextSeat(nextState.players, player.id); nextSetup.currentActorId = next.id; nextState.activePlayerId = next.id; nextState.turnFacts = createTurnFactLedger(next.id);
   }

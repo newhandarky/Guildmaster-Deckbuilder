@@ -1,6 +1,7 @@
 import { baseZoneIds } from '../model/zones.js';
 import { getDefinition } from '../model/factories.js';
 import type { RulesModule } from './ruleset.js';
+import { attachedCardIds } from '../model/attachments.js';
 
 export const baseRulesModule: RulesModule = {
   id: 'base:rules', version: '0.4.0', createInitialState: () => ({}),
@@ -28,7 +29,7 @@ export const baseRulesModule: RulesModule = {
     { id: 'base:all-bonds-completed', evaluate: (state) => state.players.some((player) => player.bonds.every((bond) => bond.completed)) }
   ],
   getScoreContributions: (state, registry) => state.players.flatMap((player) => {
-    const cardIds = [...player.drawPile, ...player.hand, ...player.discardPile, ...player.playArea, ...player.party.flatMap((slot) => [slot.adventurerId, ...(slot.equipmentId ? [slot.equipmentId] : [])])];
+    const cardIds = [...player.drawPile, ...player.hand, ...player.discardPile, ...player.playArea, ...player.party.flatMap((slot) => [slot.adventurerId, ...attachedCardIds(slot)])];
     const cardHonor = cardIds.reduce((sum, cardId) => sum + (getDefinition(registry, state, cardId).honor ?? 0), 0);
     const bondHonor = player.bonds.filter((bond) => bond.completed).reduce((sum, bond) => sum + (registry.bonds.find((definition) => definition.id === bond.bondId)?.honor ?? 0), 0);
     return [{ playerId: player.id, ruleId: 'base:card-honor', amount: cardHonor, label: '公會卡牌' }, { playerId: player.id, ruleId: 'base:bond-honor', amount: bondHonor, label: '已完成羈絆' }];

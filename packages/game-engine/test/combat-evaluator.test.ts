@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CombatRule, EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
-import { createGame, createRuleset, dispatch, envelope, evaluateCombat, getLegalCommands, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { createGame, createRuleset, dispatch, envelope, evaluateCombat, evaluateCombatPartyPrefix, evaluatePartyCombat, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, projectPlayerView, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { baseRulesModule } from '../src/rules/base-rules.js';
 import type { RulesModule, Ruleset } from '../src/rules/ruleset.js';
 import { testPack } from './fixtures.js';
@@ -174,5 +174,66 @@ describe('generic combat evaluation pipeline', () => {
     const ruleset = rules(module('test:overflow', [modifier('test:overflow', 'first', Number.MAX_VALUE, 1), modifier('test:overflow', 'second', Number.MAX_VALUE, 2)])); const state = game(ruleset); state.phase = 'combat'; const targetId = target(state); const before = structuredClone(state);
     expect(evaluateCombat(state, ruleset, 'p1', targetId)).toMatchObject({ status: 'failed', reason: 'INVALID_COMBAT_VALUE' });
     const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })); expect(result.error?.code).toBe('INVALID_COMMAND'); expect(result.state).toEqual(before); expect(result.events).toEqual([]);
+  });
+
+  it('evaluates public-zone and distinct-party dynamic combat with a hard participant limit', () => {
+    const dynamic: CombatRule[] = [
+      { schemaVersion: 1, moduleId: 'test:dynamic-combat', ruleId: 'shop-equipment-count', priority: 10, kind: 'modifier', when: { kind: 'target-kind-in', kinds: ['monster'] }, amount: { kind: 'public-zone-card-count', zoneId: 'base:item-row', definitionTypes: ['equipment'], multiplier: 1 } },
+      { schemaVersion: 1, moduleId: 'test:dynamic-combat', ruleId: 'attacker-professions', priority: 20, kind: 'modifier', when: { kind: 'target-kind-in', kinds: ['monster'] }, amount: { kind: 'distinct-party-tag-count', player: 'attacking-player', tagPrefix: 'profession:', multiplier: 1 } },
+      { schemaVersion: 1, moduleId: 'test:dynamic-combat', ruleId: 'left-professions', priority: 30, kind: 'modifier', when: { kind: 'target-kind-in', kinds: ['monster'] }, amount: { kind: 'distinct-party-tag-count', player: 'next-seat', tagPrefix: 'profession:', multiplier: 1 } },
+      { schemaVersion: 1, moduleId: 'test:dynamic-combat', ruleId: 'one-adventurer-only', priority: 40, kind: 'participant-limit', when: { kind: 'target-kind-in', kinds: ['monster'] }, maximumPartySlots: 1, reasonCode: 'MAX_ONE_ADVENTURER' },
+    ];
+    const ruleset = rules(module('test:dynamic-combat', dynamic)); const state = game(ruleset); state.phase = 'combat'; const targetId = target(state);
+    const equipmentCount = state.zones['base:item-row']!.cardIds.filter((cardId) => ruleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === 'equipment').length;
+    const evaluated = evaluateCombat(state, ruleset, 'p1', targetId);
+    expect(evaluated).toMatchObject({ status: 'ready', evaluation: { requiredCombat: 3 + equipmentCount + 2, maximumPartySlots: 1, participantLimitReasonCode: 'MAX_ONE_ADVENTURER', appliedRules: dynamic.map(({ moduleId, ruleId }) => ({ moduleId, ruleId })) } });
+    expect(evaluateCombatPartyPrefix(state, ruleset, 'p1', 2, targetId, 1)).toBeUndefined();
+    expect(getLegalCommands(state, ruleset, 'p1')).not.toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    const before = structuredClone(state);
+    expect(dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId })).state).toEqual(before);
+    const view = projectPlayerView(state, ruleset, 'p1');
+    expect(view.enemyTargets[targetId]).toMatchObject({ effectiveCombat: 3 + equipmentCount + 2, maximumPartySlots: 1, participantLimitReasonCode: 'MAX_ONE_ADVENTURER', combatEligible: true });
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), ruleset);
+    expect(evaluateCombat(restored, ruleset, 'p1', targetId)).toEqual(evaluated);
+  });
+
+  it('rejects invalid dynamic combat references and JSON shapes at registration', () => {
+    expect(() => rules(module('test:bad-zone', [{ schemaVersion: 1, moduleId: 'test:bad-zone', ruleId: 'bad-zone', kind: 'modifier', when: { kind: 'always', value: true }, amount: { kind: 'public-zone-card-count', zoneId: 'missing', definitionTypes: ['equipment'], multiplier: 1 } }]))).toThrow('unknown zone');
+    expect(() => rules(module('test:bad-limit', [{ schemaVersion: 1, moduleId: 'test:bad-limit', ruleId: 'bad-limit', kind: 'participant-limit', when: { kind: 'always', value: true }, maximumPartySlots: 0, reasonCode: 'BAD' } as CombatRule]))).toThrow('invalid runtime data');
+    expect(() => rules(module('test:bad-target-definition', [{ schemaVersion: 1, moduleId: 'test:bad-target-definition', ruleId: 'bad-target-definition', kind: 'equipment-suppression', when: { kind: 'target-definition-id-in', definitionIds: ['missing'] }, reasonCode: 'BAD' }]))).toThrow('unknown target definition');
+    expect(() => rules(module('test:bad-target-type', [{ schemaVersion: 1, moduleId: 'test:bad-target-type', ruleId: 'bad-target-type', kind: 'equipment-suppression', when: { kind: 'target-definition-id-in', definitionIds: ['test:item/spear'] }, reasonCode: 'BAD' }]))).toThrow('must be an enemy');
+  });
+
+  it('suppresses all equipment combat for one target across projection, legal, preview, CPU, dispatch and Snapshot', () => {
+    const suppression: CombatRule = { schemaVersion: 1, moduleId: 'test:suppression', ruleId: 'wolf-disables-equipment', priority: 10, kind: 'equipment-suppression', when: { kind: 'target-definition-id-in', definitionIds: ['test:monster/wolf'] }, reasonCode: 'TARGET_DISABLES_EQUIPMENT' };
+    const suppressionModule: RulesModule = {
+      ...module('test:suppression', [suppression]),
+      equipmentCombatModifierRules: [{ schemaVersion: 1, moduleId: 'test:suppression', ruleId: 'spear-bonus', priority: 10, kind: 'combat-power-modifier', when: { kind: 'equipment-definition-in', definitionIds: ['test:item/spear'] }, amount: 2 }],
+      equipmentDeparturePolicies: [{ schemaVersion: 1, moduleId: 'test:suppression', policyId: 'spear-combat-removal', priority: 10, equipmentDefinitionIds: ['test:item/spear'], cause: 'combat-discard', disposition: 'remove-from-game', reasonCode: 'SPEAR_WOULD_BE_REMOVED' }],
+    };
+    const ruleset = rules(suppressionModule); const state = game(ruleset); state.phase = 'combat';
+    const player = state.players[0]!; const slot = player.party[0]!;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== equipmentId);
+    for (const candidate of state.players) { candidate.hand = candidate.hand.filter((cardId) => cardId !== equipmentId); candidate.drawPile = candidate.drawPile.filter((cardId) => cardId !== equipmentId); candidate.discardPile = candidate.discardPile.filter((cardId) => cardId !== equipmentId); }
+    slot.equipmentId = equipmentId; state.cards[equipmentId]!.ownerId = player.id;
+    const targetId = Object.values(state.enemyTargets).find(({ cardInstanceId }) => state.cards[cardInstanceId]!.definitionId === 'test:monster/wolf')!.targetId;
+    expect(evaluateCombat(state, ruleset, player.id, targetId)).toMatchObject({ status: 'ready', evaluation: { equipmentSuppressed: true, equipmentSuppressionReasonCodes: ['TARGET_DISABLES_EQUIPMENT'], appliedRules: [{ ruleId: 'wolf-disables-equipment' }] } });
+    const normalParty = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId });
+    const suppressedParty = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId, equipmentSuppressed: true });
+    expect(normalParty.status === 'ready' ? normalParty.evaluation.members[0] : normalParty).toMatchObject({ equipmentCombat: 3, effectiveCombat: 4 });
+    expect(suppressedParty.status === 'ready' ? suppressedParty.evaluation.members[0] : suppressedParty).toMatchObject({ equipmentCombat: 0, effectiveCombat: 1 });
+    expect(getLegalCommands(state, ruleset, player.id)).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(getActionPreviewSet(state, ruleset, player.id).items).toContainEqual(expect.objectContaining({ kind: 'attack', targetId, partySlotCount: 3, committedCombat: 3, participantCardIds: expect.arrayContaining([equipmentId]) }));
+    expect(getCpuActionFeatures(state, ruleset, player.id).find(({ command }) => command.type === 'ATTACK_TARGET' && command.targetId === targetId)).toMatchObject({ partyCombatLoss: 3, equipmentLoss: 1, equipmentRemoval: 0 });
+    expect(projectPlayerView(state, ruleset, player.id).enemyTargets[targetId]).toMatchObject({ equipmentSuppressed: true, equipmentSuppressionReasonCodes: ['TARGET_DISABLES_EQUIPMENT'] });
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), ruleset);
+    expect(evaluateCombat(restored, ruleset, player.id, targetId)).toEqual(evaluateCombat(state, ruleset, player.id, targetId));
+    const result = dispatch(restored, ruleset, envelope(restored, player.id, { type: 'ATTACK_TARGET', targetId }));
+    expect(result.error).toBeUndefined(); expect(result.state.players[0]!.discardPile).toContain(equipmentId); expect(result.state.removedCards).not.toContain(equipmentId);
+
+    const insufficient = structuredClone(state); const removed = insufficient.players[0]!.party.splice(1); insufficient.players[0]!.discardPile.push(...removed.flatMap((entry) => [entry.adventurerId, ...(entry.equipmentId ? [entry.equipmentId] : [])])); const before = structuredClone(insufficient);
+    expect(getLegalCommands(insufficient, ruleset, player.id)).not.toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(dispatch(insufficient, ruleset, envelope(insufficient, player.id, { type: 'ATTACK_TARGET', targetId })).state).toEqual(before);
   });
 });

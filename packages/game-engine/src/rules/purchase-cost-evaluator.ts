@@ -28,7 +28,7 @@ export function evaluatePurchaseCost(state: GameState, ruleset: Ruleset, input: 
     const activationError = validateCardPresenceState(state, ruleset.registry, rule.activation);
     if (activationError) return { status: 'failed', reason: 'INVALID_ACTIVATION', error: activationError };
   }
-  const active = rules.filter((rule) => matchesCardPresence(state, rule.activation) && rule.target.values.includes(definition.type));
+  const active = rules.filter((rule) => matchesCardPresence(state, rule.activation, input.playerId) && rule.target.values.includes(definition.type));
   const sorted = ordered(active);
   if (!sorted) return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: 'Active purchase cost modifiers require distinct priorities.' };
   const modifier = sorted.reduce((sum, rule) => sum + rule.amount, 0);

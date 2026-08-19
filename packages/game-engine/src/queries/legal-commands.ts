@@ -14,6 +14,7 @@ import { executeEffect } from '../effects/executor.js';
 import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
+import { evaluateAttachment } from '../rules/attachment-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -148,7 +149,7 @@ function attackIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset:
     const result = evaluateCombat(state, ruleset, actorId, targetId);
     if (result.status !== 'ready' || !result.evaluation.eligible) return false;
     if (target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, targetId, result.evaluation.outcome.kind).status !== 'ready') return false;
-    return getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat) !== undefined;
+    return getCombatPrefix(state, ruleset, actorId, result.evaluation.requiredCombat, targetId, result.evaluation.maximumPartySlots, result.evaluation.equipmentSuppressed) !== undefined;
   });
 }
 
@@ -167,11 +168,12 @@ export function getPurchasePower(state: GameState, ruleset: Ruleset, playerId: s
   if (compatibility) throw new Error(compatibility);
   const player = getPlayer(state, playerId);
   const handPower = player.hand.reduce((sum, cardId) => sum + (getDefinition(ruleset.registry, state, cardId).purchasePower ?? 0), 0);
-  return handPower + player.turnPurchaseBonus - player.turnPurchaseSpent;
+  const enemyCards = player.hand.filter((cardId) => ['monster', 'boss'].includes(getDefinition(ruleset.registry, state, cardId).type)).length;
+  return handPower + enemyCards * (state.turnFacts?.playerId === playerId ? state.turnFacts.enemyCardPurchaseBonusPerCard ?? 0 : 0) + player.turnPurchaseBonus - player.turnPurchaseSpent;
 }
 
-export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number): { slotCount: number; power: number } | undefined {
-  const prefix = evaluateCombatPartyPrefix(state, ruleset, playerId, required);
+export function getCombatPrefix(state: GameState, ruleset: Ruleset, playerId: string, required: number, targetId?: string, maximumPartySlots?: number, equipmentSuppressed = false): { slotCount: number; power: number } | undefined {
+  const prefix = evaluateCombatPartyPrefix(state, ruleset, playerId, required, targetId, maximumPartySlots, equipmentSuppressed);
   return prefix ? { slotCount: prefix.slotCount, power: prefix.power } : undefined;
 }
 
@@ -217,9 +219,10 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   const pending = state.effectState.pendingChoice;
   if (pending) {
     if (pending.actorId !== actorId) return [];
+    if (pending.order) return pending.order.resolutions.map(({ orderedCardIds, removeCardId }) => ({ type: 'RESOLVE_EFFECT_ORDER' as const, executionId: pending.executionId, orderId: pending.choiceId, orderedCardIds, ...(removeCardId ? { removeCardId } : {}) }));
     if (pending.source && validatePendingDynamicCardChoice(state, ruleset)) return [];
     const pendingCommand = state.effectState.pendingCommand?.envelope.command;
-    const options = pendingCommand?.type === 'ATTACK_TARGET' && state.effectState.pendingCommand?.kind !== 'combat-reward'
+    const options = pendingCommand?.type === 'ATTACK_TARGET' && state.effectState.pendingCommand?.kind !== 'combat-reward' && state.effectState.pendingCommand?.kind !== 'combat-departure-choice'
       ? pending.options.filter((option) => attackIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand.targetId))
       : pendingCommand?.type === 'BUY_CARD'
         ? pending.options.filter((option) => purchaseIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand.cardId))
@@ -241,7 +244,18 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
       if (definition.type === 'item' && itemUseCanBegin(state, ruleset, actorId, cardId)) commands.push({ type: 'USE_ITEM', cardId });
       if (definition.type === 'equipment') for (const slot of player.party) {
         const eligibility = evaluateEquipmentEligibility(state, ruleset, { schemaVersion: 1, playerId: actorId, equipmentCardId: cardId, adventurerId: slot.adventurerId });
-        if (eligibility.status === 'ready' && eligibility.evaluation.eligible) commands.push({ type: 'EQUIP_ITEM', cardId, adventurerId: slot.adventurerId });
+        if (eligibility.status !== 'ready' || !eligibility.evaluation.eligible) continue;
+        const attachment = evaluateAttachment(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId, adventurerId: slot.adventurerId });
+        if (attachment.status !== 'ready' || !attachment.evaluation.eligible) continue;
+        if (attachment.evaluation.capacity === 1) commands.push({ type: 'EQUIP_ITEM', cardId, adventurerId: slot.adventurerId });
+        else if (attachment.evaluation.requiresReplacement) for (const replaceCardId of attachment.evaluation.attachedCardIds) commands.push({ type: 'ATTACH_CARD', cardId, adventurerId: slot.adventurerId, replaceCardId });
+        else commands.push({ type: 'ATTACH_CARD', cardId, adventurerId: slot.adventurerId });
+      }
+      if (definition.type !== 'equipment') for (const slot of player.party) {
+        const attachment = evaluateAttachment(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId, adventurerId: slot.adventurerId });
+        if (attachment.status !== 'ready' || !attachment.evaluation.eligible) continue;
+        if (attachment.evaluation.requiresReplacement) for (const replaceCardId of attachment.evaluation.attachedCardIds) commands.push({ type: 'ATTACH_CARD', cardId, adventurerId: slot.adventurerId, replaceCardId });
+        else commands.push({ type: 'ATTACH_CARD', cardId, adventurerId: slot.adventurerId });
       }
     }
   }
@@ -308,7 +322,7 @@ function readyAttackPreview(state: GameState, ruleset: Ruleset, actorId: string,
   }
   const combat = evaluateCombat(state, ruleset, actorId, command.targetId);
   if (combat.status !== 'ready' || !combat.evaluation.eligible) return undefined;
-  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat);
+  const partyPrefix = evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
   if (!partyPrefix) return undefined;
   return {
     kind: 'attack',
