@@ -223,7 +223,7 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
   await runCardAction(page, boss, '討伐');
   await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
   await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 01');
-  await expect(page.getByTestId('helper-panel')).toContainText('已離場 1 張');
+  await expect(page.getByTestId('helper-panel')).not.toContainText('已離場');
   await expect(page.locator('.log')).toContainText('隊伍上限降低');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
   expect(persisted.snapshot.state.players[0].discardPile.slice(-2)).toEqual([expectedAdventurerId, expectedEquipmentId]);
@@ -233,7 +233,7 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
   await page.reload();
   await enterGame(page);
   await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
-  await expect(page.getByTestId('helper-panel')).toContainText('已離場 1 張');
+  await expect(page.getByTestId('helper-panel')).not.toContainText('已離場');
 });
 
 test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
@@ -585,12 +585,14 @@ test('art-first cards keep their desktop and mobile ratio without page overflow'
   await expect(page.getByTestId('card-details')).toBeVisible();
   const dialogBox = await page.getByRole('dialog').boundingBox();
   expect(dialogBox?.width).toBeLessThanOrEqual(390);
-  expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(844, 0);
+  expect(dialogBox?.y).toBeCloseTo(8, 0);
+  expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(836, 0);
   const details = page.getByTestId('card-details');
   await expect(details.locator('.card-tags')).toHaveCount(0);
-  await expect(details.locator('.card-details-debug')).not.toHaveAttribute('open', '');
-  await details.getByText('開發者資訊', { exact: true }).click();
-  await expect(details.locator('.card-debug-tags')).toContainText('e2e-layout-tag');
+  await expect(details.getByText('開發者資訊', { exact: true })).toHaveCount(0);
+  await expect(details.locator('.card-debug-tags')).toHaveCount(0);
+  await expect(details.locator('.card-details-visual .game-card__nameplate')).toHaveCount(0);
+  await expect(details.locator('.card-details-visual .game-card__rules')).toHaveCount(0);
 });
 
 test('malformed local save is cleared and starts a playable new game', async ({ page }) => {
@@ -766,6 +768,15 @@ test('scoreboard keeps the memory-only warning when the final save fails', async
 test('deterministic all-bonds journey triggers the registered bond end condition through UI play', async ({ page }) => {
   await openGame(page, '/?e2eScenario=all-bonds-endgame');
   const endPhase = page.getByTestId('end-phase');
+
+  const bondPanel = page.locator('.bond-panel');
+  const bondToggle = bondPanel.getByRole('button', { name: /我的羈絆 0\/1/ });
+  await expect(bondToggle).toBeVisible();
+  await bondToggle.click();
+  await expect(bondPanel).toContainText('條件：');
+  await expect(bondPanel).not.toContainText('99 名魔王');
+  await bondPanel.press('Escape');
+  await expect(bondToggle).toHaveAttribute('aria-expanded', 'false');
 
   await endPhase.click();
   const bossRow = page.locator('section').filter({ has: page.getByRole('heading', { name: /魔王/ }) });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectPlayerView } from '../src/index.js';
+import { projectPlayerView, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { makeGame, testRuleset } from './fixtures.js';
 
 describe('PlayerView visibility boundary', () => {
@@ -18,6 +18,16 @@ describe('PlayerView visibility boundary', () => {
   it('exposes the effective party limit through the rules boundary', () => {
     const state = makeGame();
     expect(projectPlayerView(state, testRuleset, 'p1').partyLimit).toBe(5);
+  });
+
+  it('projects each private bond evaluation without exposing it to opponents and preserves it through Snapshot', () => {
+    const state = makeGame();
+    const player = state.players[0]!;
+    const view = projectPlayerView(state, testRuleset, player.id);
+    expect(view.bondEvaluations).toEqual(player.bonds.map(({ bondId }) => ({ bondId, satisfied: false, appliedRules: [] })));
+    expect(view.opponents.every((opponent) => !('bondEvaluations' in opponent))).toBe(true);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), testRuleset);
+    expect(projectPlayerView(restored, testRuleset, player.id).bondEvaluations).toEqual(view.bondEvaluations);
   });
 
   it('exposes enemy target cards and attachments without revealing unrelated private cards', () => {

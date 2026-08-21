@@ -31,6 +31,7 @@ describe('full provisional original-derived pack', () => {
     const enabled = baseProvisionalOriginalFullContentPack.definitions.filter(({ tags }) => tags?.includes('playtest:effect-enabled'));
     expect(enabled.map(({ id }) => id).sort()).toEqual([
       'base:adventurer/adventurer-02',
+      'base:adventurer/adventurer-03',
       'base:adventurer/adventurer-01',
       'base:adventurer/adventurer-04',
       'base:adventurer/adventurer-05',
@@ -60,15 +61,16 @@ describe('full provisional original-derived pack', () => {
       'base:adventurer/adventurer-29',
       'base:adventurer/adventurer-30',
       ...['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].map((id) => `base:boss/boss-${id}`),
-      ...['01','02','03','04','05','06','07','08','10','12','13','14','15','16','17','18','19','20','21','23','24','25','26','27','28'].map((id) => `base:resource/resource-${id}`),
+      ...['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28'].map((id) => `base:resource/resource-${id}`),
       ...['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14'].map((id) => `base:monster/monster-${id}`),
     ].sort());
-    expect(enabled.every((definition) => definition.useEffect || definition.equipmentEventTriggers || definition.type === 'monster' || ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].some((id) => definition.id === `base:boss/boss-${id}`) || ['01', '02', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30'].some((id) => definition.id === `base:adventurer/adventurer-${id}`) || ['02', '03', '06', '07', '12', '14', '16', '19', '20', '21', '24', '25'].some((id) => definition.id === `base:resource/resource-${id}`))).toBe(true);
+    expect(enabled.every((definition) => definition.useEffect || definition.equipmentEventTriggers || definition.type === 'monster' || ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].some((id) => definition.id === `base:boss/boss-${id}`) || ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30'].some((id) => definition.id === `base:adventurer/adventurer-${id}`) || ['02', '03', '06', '07', '09', '11', '12', '14', '16', '19', '20', '21', '22', '24', '25'].some((id) => definition.id === `base:resource/resource-${id}`))).toBe(true);
     expect(baseProvisionalOriginalFullCapabilityMatrix).toHaveLength(baseProvisionalOriginalFullContentPack.definitions.length + baseProvisionalOriginalFullContentPack.bonds!.length);
     const enabledEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'enabled');
-    expect(enabledEntries).toHaveLength(109);
+    expect(enabledEntries).toHaveLength(120);
     expect(enabledEntries.every(({ requiredCapabilities, cpuResolver, testIds, blocker }) => requiredCapabilities.length > 0 && cpuResolver !== 'none-effect-disabled' && testIds.length >= 3 && blocker === undefined)).toBe(true);
     const blockedEntries = baseProvisionalOriginalFullCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked');
+    expect(blockedEntries).toEqual([]);
     expect(blockedEntries.every(({ blocker, evidenceReference, testIds }) => blocker !== undefined && evidenceReference.length > 0 && testIds.length > 0)).toBe(true);
     expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond')).toHaveLength(30);
     expect(baseProvisionalOriginalFullCapabilityMatrix.filter(({ contentKind }) => contentKind === 'bond').every(({ effectStatus, blocker, requiredCapabilities }) => effectStatus === 'enabled' && blocker === undefined && requiredCapabilities.includes('bond-condition-rules'))).toBe(true);
@@ -86,6 +88,8 @@ describe('full provisional original-derived pack', () => {
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-09')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['equipment-combat-modifier']), testIds: expect.arrayContaining(['engine:equipment-combat-modifier']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-09')?.requiredCapabilities).not.toContain('equipment-eligibility');
     for (const id of ['04', '10', '14', '15', '20', '24', '27']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['party-combat-modifier']), testIds: expect.arrayContaining(['engine:party-combat-modifier']) });
+    expect(enabledEntries.find(({ contentId }) => contentId === 'base:resource/resource-11')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['party-combat-modifier']), testIds: expect.arrayContaining(['engine:party-combat-modifier']), cpuResolver: 'base:cpu-balanced/legal-command-scoring' });
+    expect(enabledEntries.find(({ contentId }) => contentId === 'base:resource/resource-22')).toMatchObject({ decisionKinds: ['choose-enemy-target'], requiredCapabilities: expect.arrayContaining(['temporary-target-modifier', 'combat-evaluator', 'typed-player-view-choice']), cpuResolver: 'base:cpu-balanced/effect-card-choice' });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:adventurer/adventurer-05')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['purchase-cost-modifier']), testIds: expect.arrayContaining(['engine:purchase-cost-modifier']) });
     expect(enabledEntries.find(({ contentId }) => contentId === 'base:resource/resource-12')).toMatchObject({ requiredCapabilities: expect.arrayContaining(['equipment-departure-policy']), testIds: expect.arrayContaining(['engine:equipment-departure-policy']) });
     for (const id of ['22', '25', '29']) expect(enabledEntries.find(({ contentId }) => contentId === `base:adventurer/adventurer-${id}`)).toMatchObject({ requiredCapabilities: expect.arrayContaining(['attachment-policy']), testIds: expect.arrayContaining(['engine:attachment-policy']) });

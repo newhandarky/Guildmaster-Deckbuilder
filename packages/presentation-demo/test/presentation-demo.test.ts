@@ -17,8 +17,17 @@ describe('demo presentation package', () => {
   it('covers every full provisional runtime definition with neutral copy', () => {
     expect(validatePresentationPack(provisionalOriginalFullPresentationPack)).toEqual({ valid: true, errors: [] });
     const covered = new Set([...provisionalFoundationPresentationPack.entries, ...provisionalOriginalFullPresentationPack.entries].map(({ definitionId }) => definitionId));
-    expect(covered.size).toBe(90);
+    expect(covered.size).toBe(120);
     expect(provisionalOriginalFullPresentationPack.entries.every(({ displayName, detailDisplayText }) => displayName.startsWith('候選') && detailDisplayText.includes('Provisional'))).toBe(true);
+  });
+  it('provides one non-placeholder condition summary for every full provisional bond', () => {
+    const bonds = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:bond/'));
+    expect(bonds).toHaveLength(30);
+    expect(new Set(bonds.map(({ definitionId }) => definitionId))).toHaveLength(30);
+    expect(bonds.every(({ shortDisplayText, detailDisplayText }) => shortDisplayText.length > 8 && !shortDisplayText.includes('99') && detailDisplayText.includes('Rules Module'))).toBe(true);
+    expect(bonds[12]?.shortDisplayText).toContain('一個行動階段');
+    expect(bonds[17]?.shortDisplayText).toContain('非基礎冒險者');
+    expect(bonds[29]?.shortDisplayText).toContain('非起始冒險者');
   });
   it('provides a valid complete demo Presentation Pack with stable unique asset keys', () => {
     expect(validatePresentationPack(demoPresentationPack)).toEqual({ valid: true, errors: [] });
@@ -60,7 +69,18 @@ describe('demo presentation package', () => {
     });
   });
 
-  it('shows authoritative copy only for the enabled first monster reward batch', () => {
+  it('shows the confirmed exact values and target boundaries for resources 11 and 22', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:resource/resource-11')).toMatchObject({
+      shortDisplayText: expect.stringContaining('其他冒險者戰力各 +1'),
+      detailDisplayText: expect.not.stringContaining('尚未啟用'),
+    });
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:resource/resource-22')).toMatchObject({
+      shortDisplayText: expect.stringContaining('魔物戰力 −1'),
+      detailDisplayText: expect.stringContaining('沒有可選魔物時不可使用'),
+    });
+  });
+
+  it('shows authoritative player copy for all fourteen enabled monsters', () => {
     const monsters = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:monster/'));
     expect(monsters).toHaveLength(14);
     expect(monsters.filter(({ shortDisplayText }) => shortDisplayText.startsWith('擊敗獎勵')).map(({ definitionId }) => definitionId)).toEqual([
@@ -73,7 +93,8 @@ describe('demo presentation package', () => {
       'base:monster/monster-11',
       'base:monster/monster-14',
     ]);
-    expect(monsters.filter(({ definitionId }) => !['01', '02', '03', '06', '09', '10', '11', '14'].some((id) => definitionId === `base:monster/monster-${id}`)).every(({ shortDisplayText }) => shortDisplayText.includes('尚未啟用'))).toBe(true);
+    expect(monsters.every(({ shortDisplayText, detailDisplayText }) => !shortDisplayText.includes('尚未啟用') && !detailDisplayText.includes('尚未啟用'))).toBe(true);
+    expect(monsters.filter(({ definitionId }) => ['04', '05', '07', '08', '12', '13'].some((id) => definitionId === `base:monster/monster-${id}`)).every(({ detailDisplayText }) => detailDisplayText.includes('權威效果流程'))).toBe(true);
   });
 
   it('shows the enabled adventurer equipment restriction instead of a placeholder', () => {
@@ -169,6 +190,15 @@ describe('demo presentation package', () => {
     expect(registry.resolveAsset(demoPresentationAssetKeys[0]!)).toBeUndefined();
     expect(registry.diagnostics).toHaveLength(18);
     expect(registry.diagnostics).toEqual([...registry.diagnostics].sort());
+  });
+
+  it('assigns stable unique remote portrait keys to every Boss and helper', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:boss/')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
+      Array.from({ length: 11 }, (_, index) => `base:portrait/boss-${String(index + 1).padStart(2, '0')}`),
+    );
+    expect(provisionalHelpersPresentationPack.entries.map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
+      Array.from({ length: 12 }, (_, index) => `base:portrait/helper-${String(index + 1).padStart(2, '0')}`),
+    );
   });
 
   it('provides neutral copy for the five enabled Batch A helpers', () => {

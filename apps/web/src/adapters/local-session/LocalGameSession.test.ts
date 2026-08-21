@@ -197,6 +197,11 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.view.activePlayerId).toBe('ai-3');
     update = session.stepCpu();
     expect(update.view).toMatchObject({ status: 'playing', activePlayerId: 'human-1', revision: 4 });
+    expect(update.view.bondEvaluations).toHaveLength(5);
+    expect(update.view.bondEvaluations.every(({ appliedRules }) => appliedRules.length === 1)).toBe(true);
+    const legalBondIds = new Set(update.legalCommands.flatMap((command) => command.type === 'COMPLETE_BONDS' ? command.bondIds : []));
+    expect(update.view.bondEvaluations.filter(({ satisfied }) => satisfied).map(({ bondId }) => bondId).sort()).toEqual([...legalBondIds].sort());
+    expect(new LocalGameSession(createWebRuleset(undefined, 'provisional-original-full')).current().view.bondEvaluations).toEqual(update.view.bondEvaluations);
     expect(update.cpu.decisions).toHaveLength(3);
     expect(update.cpu.decisions.every(({ command, reasonCode }) => command.type === 'SELECT_BONDS' && reasonCode === 'KEEP_HIGHEST_BOND_VALUE')).toBe(true);
   });
@@ -666,9 +671,9 @@ describe('LocalGameSession transactional boundary', () => {
     };
     for (const packs of [persisted.snapshot.contentPacks, persisted.snapshot.state.contentPacks]) {
       const pack = packs.find(({ id }) => id === 'base:provisional-original-full')!;
-      pack.version = '0.11.0'; pack.hash = 'base-provisional-original-full-v12-lich-continuation';
+      pack.version = '0.19.0'; pack.hash = 'base-provisional-original-full-v20-card-effect-completion';
     }
-    persisted.snapshot.state.rulesModules.find(({ id }) => id === 'base:provisional-original-full-rules')!.version = '2.1.0';
+    persisted.snapshot.state.rulesModules.find(({ id }) => id === 'base:provisional-original-full-rules')!.version = '2.9.0';
     localStorage.setItem(storageKey, JSON.stringify(persisted));
 
     const recoveredSession = new LocalGameSession(ruleset);
@@ -676,7 +681,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(recovered.view).toMatchObject({ revision: 0, status: 'setup' });
     expect(recovered.persistence).toMatchObject({
       state: 'fresh',
-      recovery: { reasonCode: 'card-rules-upgraded', previousPackVersion: '0.11.0', previousModuleVersion: '2.1.0' },
+      recovery: { reasonCode: 'card-rules-upgraded', previousPackVersion: '0.19.0', previousModuleVersion: '2.9.0' },
     });
     expect(localStorage.getItem(storageKey)).toBeNull();
     expect(recoveredSession.current().persistence.recovery).toBeUndefined();

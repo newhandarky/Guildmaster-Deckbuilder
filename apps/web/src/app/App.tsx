@@ -57,6 +57,18 @@ export function App() {
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
   );
+  const displayedBondDefinitions = useMemo(() => bondDefinitions.map((bond) => {
+    const copy = presentationResolver.resolve(bond.id);
+    const hasPresentationCopy = copy.source === 'pack';
+    return {
+      id: bond.id,
+      name: hasPresentationCopy ? copy.displayName : bond.name,
+      honor: bond.honor,
+      conditionSummary: hasPresentationCopy
+        ? copy.shortDisplayText
+        : bond.requiredBosses === 99 ? '依 Rules Module 的權威條件完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
+    };
+  }), [bondDefinitions]);
   const lifecycleInteraction = useMemo(
     () => buildLifecycleInteractionModel(view, legalCommands, events, lifecycleCopyResolver, (_choiceId, optionId) => {
       const definitionId = view.cards[optionId]?.definitionId;
@@ -231,7 +243,7 @@ export function App() {
       cards={view.cards}
       definitions={definitions}
       presentation={presentationResolver}
-      bondDefinitions={bondDefinitions}
+      bondDefinitions={displayedBondDefinitions}
       suspendDetails={lifecyclePending}
     />}
     publicTable={<BoardPanel
@@ -255,7 +267,7 @@ export function App() {
       legalEquipCommands={legalEquipCommands}
       onInspect={inspectCard}
       onCommand={submitAndClear}
-    /><BondPanel bonds={view.self.bonds} definitions={bondDefinitions} completableBondIds={completableBondIds} /></>}
+    /><BondPanel bonds={view.self.bonds} evaluations={view.bondEvaluations} definitions={displayedBondDefinitions} completableBondIds={completableBondIds} /></>}
     hand={<HandPanel
       cardIds={view.self.hand}
       definitions={definitions}
@@ -271,7 +283,7 @@ export function App() {
         ? <section className="bond-setup-panel blocking-choice-panel" role="dialog" aria-labelledby="bond-setup-heading">
             <h2 ref={bondSetupHeadingRef} id="bond-setup-heading" tabIndex={-1}>從七張私人羈絆保留五張</h2>
             <div className="bond-choice-grid">{view.bondSetup.offeredBondIds.map((bondId) => {
-              const bond = bondDefinitions.find(({ id }) => id === bondId);
+              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
               const checked = selectedBondIds.includes(bondId);
               return <label key={bondId}><input type="checkbox" checked={checked} disabled={!checked && selectedBondIds.length >= 5} onChange={() => setSelectedBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
             })}</div>
@@ -283,7 +295,7 @@ export function App() {
             <h2 id="bond-completion-heading">羈絆條件已成立</h2>
             <p>可以完成任意子集合，也可以暫不完成；暫不完成不會保存資格。</p>
             <div className="bond-choice-grid">{completableBondIds.map((bondId) => {
-              const bond = bondDefinitions.find(({ id }) => id === bondId);
+              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
               const checked = selectedCompletionBondIds.includes(bondId);
               return <label key={bondId}><input type="checkbox" checked={checked} onChange={() => setSelectedCompletionBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
             })}</div>

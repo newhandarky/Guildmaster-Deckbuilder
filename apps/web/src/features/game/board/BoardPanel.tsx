@@ -86,7 +86,6 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
           {helperCard
             ? <div className="card-row public-card-grid" aria-label="目前協助者卡片"><Card card={helperCard} onInspect={onInspect} /></div>
             : <p>目前沒有協助者在場。</p>}
-          <p className="helper-retired-count">已離場 {cardsIn('base:helper-retired').length} 張</p>
         </section> : null}
         {renderRow('base:boss-row', `魔王（牌庫 ${cardsIn('base:boss-deck').length}）`, cardsIn('base:boss-row'), 'attack')}
         {renderRow('base:monster-row', `魔物區（牌庫 ${cardsIn('base:monster-deck').length}）`, cardsIn('base:monster-row'), 'attack')}

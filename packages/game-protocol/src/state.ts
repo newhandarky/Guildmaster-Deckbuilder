@@ -43,6 +43,7 @@ export type TurnFactLedger = {
   monstersUsedForPurchase?: number;
   effectUses?: Record<string, number>;
   enemyCardPurchaseBonusPerCard?: number;
+  partyCombatBonuses?: { definitionId: string; amount: number }[];
   partyCombatMultipliers?: { definitionId: string; numerator: number; denominator: number; rounding: 'floor' }[];
   marketRefreshed: boolean; combatResolved: boolean; combatSkipped: boolean;
 };
@@ -68,6 +69,7 @@ export type GameState = {
 export type PlayerView = {
   viewerId: string; gameId: string; status: GameStatus; phase: Phase; round: number; revision: number; activePlayerId: string;
   self: Omit<PlayerState, 'drawPile'> & { drawPileCount: number }; partyLimit: number;
+  bondEvaluations: readonly { bondId: string; satisfied: boolean; appliedRules: readonly { moduleId: string; ruleId: string }[] }[];
   opponents: OpponentPlayerView[];
   bondSetup?: { schemaVersion: 1; offerId: string; currentActorId: string; offeredBondIds?: readonly string[]; completedPlayerIds: readonly string[] };
   decisionPrompt?: PlayerDecisionPrompt;

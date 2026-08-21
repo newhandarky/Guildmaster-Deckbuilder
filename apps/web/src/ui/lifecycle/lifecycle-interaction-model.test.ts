@@ -30,6 +30,7 @@ function view(overrides: Partial<PlayerView> = {}): PlayerView {
       history: { defeatedBosses: 0, defeatedMonsters: 0 },
     },
     partyLimit: 5,
+    bondEvaluations: [],
     opponents: [{ id: 'p2', name: '同伴', kind: 'human', seatIndex: 1, isActive: false, handCount: 0, partyCount: 0, discardCount: 0, partyCombat: 0, party: [], defeatedBosses: 0, defeatedMonsters: 0, bonds: [], counters: [] }],
     zones: {},
     enemyTargets: {},

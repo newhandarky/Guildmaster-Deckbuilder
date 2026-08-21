@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPresentationResolver, validatePresentationPack } from '@guildmaster/presentation-core';
 import {
+  baseRemoteAssetKeys,
   customAdventurerPresentationPack,
   customAmbiguousEffectDefinitionIds,
   customRemoteAssetHost,
@@ -28,6 +29,20 @@ describe('custom adventurer presentation', () => {
     }
   });
 
+  it('allowlists all base Boss and helper remote images on the same HTTPS host', () => {
+    expect(baseRemoteAssetKeys).toEqual([
+      ...Array.from({ length: 12 }, (_, index) => `base:portrait/helper-${String(index + 1).padStart(2, '0')}`),
+      ...Array.from({ length: 11 }, (_, index) => `base:portrait/boss-${String(index + 1).padStart(2, '0')}`),
+    ]);
+    for (const key of baseRemoteAssetKeys) {
+      const asset = resolveCustomRemoteAsset(key);
+      expect(asset).toBeDefined();
+      expect(new URL(asset!.src).hostname).toBe(customRemoteAssetHost);
+      expect(new URL(asset!.src).protocol).toBe('https:');
+      expect(decodeURIComponent(new URL(asset!.src).pathname)).toContain(key.replace('base:portrait/', ''));
+    }
+  });
+
   it('keeps missing and unknown artwork on the presentation fallback path', () => {
     expect(customAdventurerPresentationPack.entries.filter(({ portraitAssetKey }) => portraitAssetKey === 'placeholder:custom-adventurer').map(({ definitionId }) => definitionId)).toEqual([
       'custom:adventurer/melee-08',
@@ -52,5 +67,17 @@ describe('custom adventurer presentation', () => {
       expect(entry.shortDisplayText).toContain('技能尚未啟用');
       expect(entry.detailDisplayText).toContain('本模式僅套用卡牌數值');
     }
+  });
+
+  it('presents the confirmed mage and tank profession-threshold auras', () => {
+    const resolver = createPresentationResolver([customAdventurerPresentationPack], { resolveAsset: resolveCustomRemoteAsset });
+    expect(resolver.resolve('custom:adventurer/mage-07')).toMatchObject({
+      displayName: 'ロキシー・ミグルディア',
+      shortDisplayText: '隊伍中至少有 3 位法師時，每位法師戰力 +2。',
+    });
+    expect(resolver.resolve('custom:adventurer/tank-09')).toMatchObject({
+      displayName: 'ヨル・フォージャー',
+      shortDisplayText: '隊伍中至少有 3 位坦克時，每位坦克戰力 +2。',
+    });
   });
 });

@@ -17,8 +17,10 @@ test('responsive presentation art is shared by cards and details without changin
   await cardArt.locator('xpath=ancestor::button').click();
   const details = page.getByTestId('card-details');
   await expect(details.locator('[data-asset-key="demo:starter/newcomer"] img')).toBeVisible();
-  await expect(details.locator('img')).toHaveAttribute('sizes', /\b252px\b/);
+  await expect(details.locator('img')).toHaveAttribute('sizes', /\b480px\b/);
   await expect(details.locator('img')).toHaveAttribute('alt', '起始牌 A的原創示範插畫');
+  await expect(details.locator('img')).toHaveCSS('object-fit', 'contain');
+  await expect(details.locator('.card-details-visual .game-card__rules')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();

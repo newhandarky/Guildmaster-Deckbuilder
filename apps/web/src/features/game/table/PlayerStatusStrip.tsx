@@ -5,7 +5,7 @@ import { CompactPlayerSummary } from './CompactPlayerSummary.js';
 import { PlayerPublicDetails } from './PlayerPublicDetails.js';
 
 type OpponentSummary = PlayerView['opponents'][number];
-type BondDefinition = { id: string; name: string; honor: number };
+type BondDefinition = { id: string; name: string; honor: number; conditionSummary: string };
 
 type SelfSummary = {
   handCount: number;

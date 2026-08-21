@@ -94,7 +94,7 @@ const data: RulesData = rewriteRulesData({
  */
 export const customAdventurerRulesModule: RulesModule = {
   id: customAdventurerRulesModuleId,
-  version: '0.5.0',
+  version: '0.8.0',
   ...data,
   lifecycleHooks: [...(data.lifecycleHooks ?? []), {
     schemaVersion: 1,
@@ -131,6 +131,31 @@ export const customAdventurerRulesModule: RulesModule = {
     schemaVersion: 1, moduleId: customAdventurerRulesModuleId, policyId: 'custom-ranged-03-reserve-combat', priority: 400,
     sourceDefinitionIds: ['custom:adventurer/ranged-03'], contribution: 'effective-combat', destination: 'first-participant', onlyWhileSourceNotParticipant: true,
     reasonCode: 'CUSTOM_RANGED_03_RESERVE_COMBAT',
+  }],
+  partyCombatModifierRules: [...(data.partyCombatModifierRules ?? []), {
+    schemaVersion: 1,
+    moduleId: customAdventurerRulesModuleId,
+    ruleId: 'custom-mage-07-three-mage-aura',
+    priority: 450,
+    sourceDefinitionIds: ['custom:adventurer/mage-07'],
+    subject: 'all',
+    when: { kind: 'all', conditions: [
+      { kind: 'party-tag-count-at-least', tags: ['profession:mage'], amount: 3 },
+      { kind: 'subject-tag-in', tags: ['profession:mage'] },
+    ] },
+    amount: { kind: 'fixed', value: 2 },
+  }, {
+    schemaVersion: 1,
+    moduleId: customAdventurerRulesModuleId,
+    ruleId: 'custom-tank-09-three-tank-aura',
+    priority: 460,
+    sourceDefinitionIds: ['custom:adventurer/tank-09'],
+    subject: 'all',
+    when: { kind: 'all', conditions: [
+      { kind: 'party-tag-count-at-least', tags: ['profession:tank'], amount: 3 },
+      { kind: 'subject-tag-in', tags: ['profession:tank'] },
+    ] },
+    amount: { kind: 'fixed', value: 2 },
   }],
   diceDefinitions: [...(data.diceDefinitions ?? []), { schemaVersion: 1, moduleId: customAdventurerRulesModuleId, diceId: 'custom-melee-07-combat-d6', sides: 6 }],
   getPartyLimit: baseProvisionalOriginalFullRulesModule.getPartyLimit,

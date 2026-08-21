@@ -216,6 +216,14 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
       if (!id || !facts || facts.playerId !== id) return { status: 'failed', events, error: 'Enemy-card purchase bonus requires the active player ledger.' };
       facts.enemyCardPurchaseBonusPerCard = (facts.enemyCardPurchaseBonusPerCard ?? 0) + node.amount; domainEvent(state, events, 'TURN_ENEMY_PURCHASE_BONUS_ADDED', `${getPlayer(state, id).name} 的敵人卡購買力暫時增加。`); continue;
     }
+    if (node.kind === 'add-turn-card-combat-bonus') {
+      const id = playerId(node.player, context); const facts = state.turnFacts;
+      if (!id || !facts || facts.playerId !== id || !ruleset.registry.definitions[node.definitionId]) return { status: 'failed', events, error: 'Turn card combat bonus requires an active player and known definition.' };
+      const values = facts.partyCombatBonuses ?? (facts.partyCombatBonuses = []);
+      const existing = values.find(({ definitionId }) => definitionId === node.definitionId);
+      if (existing) existing.amount += node.amount; else values.push({ definitionId: node.definitionId, amount: node.amount });
+      domainEvent(state, events, 'TURN_PARTY_COMBAT_BONUS_ADDED', `Added a turn combat bonus for ${node.definitionId}.`); continue;
+    }
     if (node.kind === 'set-turn-card-combat-multiplier') {
       const id = playerId(node.player, context); const facts = state.turnFacts;
       if (!id || !facts || facts.playerId !== id || !ruleset.registry.definitions[node.definitionId]) return { status: 'failed', events, error: 'Turn combat multiplier requires an active player and known definition.' };

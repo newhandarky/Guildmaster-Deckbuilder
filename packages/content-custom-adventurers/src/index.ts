@@ -22,7 +22,7 @@ type CustomCardRow = readonly [
  * Display names, rules copy, and remote artwork deliberately live in the
  * Presentation Pack rather than authoritative mechanics.
  */
-export const customCardRows: readonly CustomCardRow[] = [
+const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:starter/melee", "melee", 1, undefined, 2, undefined, "none", undefined],
   ["custom:adventurer/melee-01", "melee", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-06"],
   ["custom:adventurer/melee-02", "melee", 2, 3, 3, 2, "enabled", "base:adventurer/adventurer-02"],
@@ -35,12 +35,12 @@ export const customCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/melee-09", "melee", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-24"],
   ["custom:starter/mage", "mage", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/mage-01", "mage", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-11"],
-  ["custom:adventurer/mage-02", "mage", 2, 4, 3, 1, "blocked", "base:adventurer/adventurer-03"],
+  ["custom:adventurer/mage-02", "mage", 2, 4, 3, 1, "enabled", "base:adventurer/adventurer-03"],
   ["custom:adventurer/mage-03", "mage", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-19"],
   ["custom:adventurer/mage-04", "mage", 2, 3, 5, 1, "enabled", "base:adventurer/adventurer-20"],
   ["custom:adventurer/mage-05", "mage", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-23"],
   ["custom:adventurer/mage-06", "mage", 2, 5, 0, 1, "blocked", undefined],
-  ["custom:adventurer/mage-07", "mage", 2, 4, 1, 1, "blocked", undefined],
+  ["custom:adventurer/mage-07", "mage", 2, 4, 1, 1, "enabled", undefined],
   ["custom:adventurer/mage-08", "mage", 2, 5, 1, 1, "enabled", "base:adventurer/adventurer-29"],
   ["custom:starter/tank", "tank", 1, undefined, 2, undefined, "none", undefined],
   ["custom:adventurer/tank-01", "tank", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-04"],
@@ -51,7 +51,7 @@ export const customCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/tank-06", "tank", 2, 4, 1, 1, "blocked", undefined],
   ["custom:adventurer/tank-07", "tank", 2, 5, 1, 1, "blocked", undefined],
   ["custom:adventurer/tank-08", "tank", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-25"],
-  ["custom:adventurer/tank-09", "tank", 2, 4, 2, 2, "none", undefined],
+  ["custom:adventurer/tank-09", "tank", 2, 4, 2, 2, "enabled", undefined],
   ["custom:adventurer/tank-10", "tank", 2, 4, 2, 2, "none", undefined],
   ["custom:starter/support", "support", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/support-01", "support", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-13"],
@@ -72,6 +72,11 @@ export const customCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/ranged-05", "ranged", 2, 5, 1, 1, "enabled", undefined],
   ["custom:adventurer/ranged-06", "ranged", 2, 5, 0, 3, "none", undefined]
 ];
+
+/** Custom mode uses one physical copy of every custom adventurer and starter. */
+export const customCardRows: readonly CustomCardRow[] = provisionalCustomCardRows.map(([
+  id, profession, , cost, combat, honor, effectStatus, inheritsMechanicFrom,
+]) => [id, profession, 1, cost, combat, honor, effectStatus, inheritsMechanicFrom]);
 
 export const customAdventurerMechanicBindings: Readonly<Record<string, string>> = {
   'base:adventurer/adventurer-10': 'custom:adventurer/melee-04',
@@ -171,8 +176,8 @@ const customDefinitions: CardDefinition[] = customCardRows.map(([
 export const customAdventurerContentPack: ContentPack = {
   manifest: {
     id: customAdventurerContentPackId,
-    version: '0.5.0',
-    hash: 'custom-adventurers-full-v5-audited-effects',
+    version: '0.7.0',
+    hash: 'custom-adventurers-full-v7-single-copy-profession-auras',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
     dependencies: ['base:provisional-original-full'],
@@ -200,7 +205,8 @@ const additionalMechanics: Readonly<Record<string, { readonly family: string; re
   'custom:adventurer/support-06': { family: 'party/choose-order', decisions: ['choose-order'], testId: 'custom-support-06-party-order' },
   'custom:adventurer/ranged-03': { family: 'combat/reserve-contribution', decisions: [], testId: 'custom-ranged-03-reserve-combat' },
   'custom:adventurer/ranged-05': { family: 'item/repeat-use-effect', decisions: ['choose-effect-option'], testId: 'custom-ranged-05-repeat-item' },
-  'custom:adventurer/tank-09': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
+  'custom:adventurer/mage-07': { family: 'party/profession-threshold-aura', decisions: [], testId: 'custom-profession-threshold-aura' },
+  'custom:adventurer/tank-09': { family: 'party/profession-threshold-aura', decisions: [], testId: 'custom-profession-threshold-aura' },
   'custom:adventurer/tank-10': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
   'custom:adventurer/support-10': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
   'custom:adventurer/ranged-06': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },

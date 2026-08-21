@@ -63,6 +63,34 @@ describe('party combat modifier evaluator', () => {
     expect(evaluatePartyCombat(restored, ruleset, { schemaVersion: 1, playerId: 'p1', targetId })).toEqual(evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1', targetId }));
   });
 
+  it('accepts attached equipment as a data-driven source and suppresses its aura with equipment', () => {
+    const { state, ruleset, sourceId } = game(moduleWith(rule({
+      ruleId: 'equipment-other-bonus',
+      sourceDefinitionIds: ['test:item/spear'],
+      subject: 'other',
+      amount: { kind: 'fixed', value: 1 },
+    })));
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'test:item/spear')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== equipmentId);
+    for (const player of state.players) for (const key of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) player[key] = player[key].filter((cardId) => cardId !== equipmentId);
+    state.players[0]!.party[1] = { adventurerId: sourceId, equipmentId };
+    state.cards[equipmentId]!.ownerId = 'p1';
+
+    const active = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1' });
+    expect(active).toMatchObject({ status: 'ready', evaluation: { members: [
+      { modifierCombat: 1, appliedRules: [expect.objectContaining({ ruleId: 'equipment-other-bonus', sourceCardId: equipmentId, amount: 1 })] },
+      { adventurerId: sourceId, equipmentCombat: 1, modifierCombat: 0 },
+      { modifierCombat: 1 },
+      { modifierCombat: 1 },
+      { modifierCombat: 1 },
+    ] } });
+    const suppressed = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1', equipmentSuppressed: true });
+    expect(suppressed.status === 'ready' ? suppressed.evaluation.members : []).toEqual(
+      expect.arrayContaining([expect.objectContaining({ adventurerId: sourceId, equipmentCombat: 0, modifierCombat: 0 })]),
+    );
+    expect(suppressed.status === 'ready' ? suppressed.evaluation.members.every(({ modifierCombat }) => modifierCombat === 0) : false).toBe(true);
+  });
+
   it('returns stable reason codes and rejects ambiguous or non-JSON policy registration', () => {
     const { state, ruleset } = game(moduleWith(rule()));
     expect(evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'missing' })).toMatchObject({ status: 'failed', reason: 'UNKNOWN_PLAYER' });
@@ -71,7 +99,7 @@ describe('party combat modifier evaluator', () => {
     expect(evaluatePartyCombat(ambiguous.state, ambiguous.ruleset, { schemaVersion: 1, playerId: 'p1' })).toMatchObject({ status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED' });
     expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(rule(), { ...rule(), priority: 20 })])).toThrow('Duplicate party combat modifier rule');
     expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(rule({ sourceDefinitionIds: ['test:missing'] }))])).toThrow('unknown source definition');
-    expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(rule({ sourceDefinitionIds: ['test:item/spear'] }))])).toThrow('must be an adventurer or starter');
+    expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(rule({ sourceDefinitionIds: ['test:item/ration'] }))])).toThrow('must be an adventurer, starter, or equipment');
     expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(rule({ sourceDefinitionIds: ['test:adventurer/a', 'test:adventurer/a'] }))])).toThrow('must be unique');
     const cyclic = rule() as PartyCombatModifierRule & { cycle?: unknown }; cyclic.cycle = cyclic;
     expect(() => createRuleset([testPack], [baseRulesModule, moduleWith(cyclic)])).toThrow('JSON-only');

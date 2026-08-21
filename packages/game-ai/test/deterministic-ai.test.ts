@@ -105,6 +105,62 @@ describe('deterministic CPU strategy', () => {
     expect(result).toMatchObject({ status: 'ready', command: combatBuy, reasonCode: 'BUY_HIGHEST_UTILITY' });
   });
 
+  it('rotates the item market for equipment after monster progression is exhausted', () => {
+    const refreshAdventurer = { type: 'REFRESH_MARKET' as const, row: 'adventurer' as const, discardCardId: 'discard', refreshCardIds: ['adventurer'] };
+    const refreshItem = { type: 'REFRESH_MARKET' as const, row: 'item' as const, discardCardId: 'discard', refreshCardIds: ['item'] };
+    const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
+    const purchaseView = {
+      ...view(),
+      self: { turnCombatBonus: 0, party: [{ adventurerId: 'party' }], history: { defeatedBosses: 0, defeatedMonsters: 10 } },
+      cards: { boss: { id: 'boss', definitionId: 'boss-def' }, party: { id: 'party', definitionId: 'party-def' } },
+      enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss', kind: 'boss', status: 'available' } },
+    } as unknown as PlayerView;
+    const result = decideCpuAction({
+      ...context([refreshAdventurer, refreshItem, end], [feature(refreshAdventurer), feature(refreshItem)]),
+      view: purchaseView,
+      definitions: {
+        'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 6 },
+        'party-def': { id: 'party-def', name: 'Party', type: 'adventurer', copies: 1, source: 'test', combat: 4 },
+      },
+    });
+    expect(result).toMatchObject({ status: 'ready', command: refreshItem, reasonCode: 'REFRESH_LOW_VALUE_MARKET' });
+  });
+
+  it('builds economy early, then stops spending an underpowered party on monsters', () => {
+    const attackMonster = { type: 'ATTACK_TARGET' as const, targetId: 'monster' };
+    const end = { type: 'END_PHASE' as const, phase: 'combat' as const };
+    const combatView = {
+      ...view(),
+      phase: 'combat',
+      self: { turnCombatBonus: 0, party: [{ adventurerId: 'party' }], history: { defeatedBosses: 0, defeatedMonsters: 5 } },
+      cards: { boss: { id: 'boss', definitionId: 'boss-def' }, monster: { id: 'monster', definitionId: 'monster-def' }, party: { id: 'party', definitionId: 'party-def' } },
+      enemyTargets: {
+        boss: { targetId: 'boss', cardInstanceId: 'boss', kind: 'boss', status: 'available' },
+        monster: { targetId: 'monster', cardInstanceId: 'monster', kind: 'monster', status: 'available' },
+      },
+    } as unknown as PlayerView;
+    const result = decideCpuAction({
+      ...context([attackMonster, end], [feature(attackMonster, { monsterDefeat: 1, honorGain: 3 })]),
+      view: combatView,
+      definitions: {
+        'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 6 },
+        'monster-def': { id: 'monster-def', name: 'Monster', type: 'monster', copies: 1, source: 'test', combat: 2 },
+        'party-def': { id: 'party-def', name: 'Party', type: 'adventurer', copies: 1, source: 'test', combat: 2 },
+      },
+    });
+    expect(result).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
+    const earlyResult = decideCpuAction({
+      ...context([attackMonster, end], [feature(attackMonster, { monsterDefeat: 1, honorGain: 3 })]),
+      view: { ...combatView, self: { ...combatView.self, history: { defeatedBosses: 0, defeatedMonsters: 4 } } } as PlayerView,
+      definitions: {
+        'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 6 },
+        'monster-def': { id: 'monster-def', name: 'Monster', type: 'monster', copies: 1, source: 'test', combat: 2 },
+        'party-def': { id: 'party-def', name: 'Party', type: 'adventurer', copies: 1, source: 'test', combat: 2 },
+      },
+    });
+    expect(earlyResult).toMatchObject({ status: 'ready', command: attackMonster, reasonCode: 'ATTACK_BEST_NET_VALUE' });
+  });
+
   it('fails closed for an untyped mandatory effect choice', () => {
     const choice = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'x', choiceId: 'unknown', optionId: 'first' };
     expect(decideCpuAction(context([choice]))).toMatchObject({ status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND' });

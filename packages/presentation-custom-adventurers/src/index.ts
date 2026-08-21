@@ -50,7 +50,30 @@ const remoteAssetUrls: Readonly<Record<string, string>> = {
   "custom:portrait/adventurer-ranged-01": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E8%A7%92%E8%89%B2/1786688154665-7b5041df-a788-4b7d-a013-64e933a3826f-.png",
   "custom:portrait/adventurer-ranged-02": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E8%A7%92%E8%89%B2/1786688154665-70348efd-fb00-4d7c-ba89-7d809cb2dee6-.png",
   "custom:portrait/adventurer-ranged-03": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E8%A7%92%E8%89%B2/1786688154665-3516e9de-68c7-4a4a-981e-b59dbe0f3f97-SHINO.png",
-  "custom:portrait/adventurer-ranged-05": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E8%A7%92%E8%89%B2/1786688132023-f3efe1a3-836c-43a0-bf3a-85f20e69e204-.png"
+  "custom:portrait/adventurer-ranged-05": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E8%A7%92%E8%89%B2/1786688132023-f3efe1a3-836c-43a0-bf3a-85f20e69e204-.png",
+  "base:portrait/helper-01": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-08385f2e-6a53-4a54-be6a-f57248197742-helper-01-wandering-item-merchant-01.png",
+  "base:portrait/helper-02": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-0b51ecee-0a73-4918-b4e2-0634998adb06-helper-02-wandering-item-merchant-02.png",
+  "base:portrait/helper-03": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-1487066d-881a-4e88-b52b-11edc3b65035-helper-03-guild-receptionist-01.png",
+  "base:portrait/helper-04": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-bcad8e6a-0b47-422c-bec3-de2d6ae6d84a-helper-04-guild-receptionist-02.png",
+  "base:portrait/helper-05": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-b6616177-9f7c-4e10-a37a-26296712fb9b-helper-05-tavern-owner-01.png",
+  "base:portrait/helper-06": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-321598dc-c061-4170-8feb-7cccaffec2df-helper-06-tavern-owner-02.png",
+  "base:portrait/helper-07": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-05234e7e-ad05-4663-b825-3a12f87b1ee1-helper-07-mysterious-girl-01.png",
+  "base:portrait/helper-08": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-b3d68e6e-6c16-4243-a474-3de66e3a88b8-helper-08-mysterious-girl-02.png",
+  "base:portrait/helper-09": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-ba972e5b-6d62-4a62-bb5e-3944d1c32889-helper-09-weapon-shop-owner-01.png",
+  "base:portrait/helper-10": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-254faf7a-6c85-4116-9289-b470761e3d3c-helper-10-weapon-shop-owner-02.png",
+  "base:portrait/helper-11": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-6fbdad60-b1de-41cb-9939-d55e7134873a-helper-11-information-broker-01.png",
+  "base:portrait/helper-12": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-%E5%85%AC%E6%9C%83%E5%A8%98/1787277874194-7bef310e-7127-4f51-8032-f8a0e53c9d96-helper-12-information-broker-02.png",
+  "base:portrait/boss-01": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-5501e9c7-95e8-46da-aa12-a4d269690b54-boss-01-red-dragon.png",
+  "base:portrait/boss-02": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-40449794-318d-43b9-ae4b-b152c53c4152-boss-02-baphomet.png",
+  "base:portrait/boss-03": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-b5c22c6a-308d-4f1c-979a-12fb6eaf48f6-boss-03-lich.png",
+  "base:portrait/boss-04": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-9ae8f008-dea3-4265-904d-a2155b69eef0-boss-04-chimera.png",
+  "base:portrait/boss-05": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-9ef04913-b771-4443-9396-827cfc951b5b-boss-05-ultimate-mechanical-beast-ex.png",
+  "base:portrait/boss-06": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-2943cf25-52cc-4357-88c7-71241e466b9a-boss-06-troll.png",
+  "base:portrait/boss-07": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-d898c698-918e-4a13-a9d3-7d272960322c-boss-07-succubus.png",
+  "base:portrait/boss-08": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-e05d0544-b46c-4ecc-b412-6cb311d0a930-boss-08-dark-elf.png",
+  "base:portrait/boss-09": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-d1e58543-7401-475f-9fbf-8d5c6f784c72-boss-09-harpy.png",
+  "base:portrait/boss-10": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-c03cf82c-2f40-4bc6-976f-e15a8e9bc75f-boss-10-slime-girl.png",
+  "base:portrait/boss-11": "https://pub-0238f59b333e4bf38dac0e35da86c1a0.r2.dev/uploads/%E5%86%92%E9%9A%AA%E5%85%AC%E6%9C%83-BOSS/1787277864327-84f1dbb7-5a7d-428b-8dca-a217d9a637a5-boss-11-wolf-woman.png"
 };
 
 function validatedRemoteSource(source: string): PresentationAssetSource | undefined {
@@ -75,12 +98,11 @@ export function resolveCustomRemoteAsset(assetKey: string): PresentationAssetSou
   return source ? validatedRemoteSource(source) : undefined;
 }
 
-export const customRemoteAssetKeys = Object.freeze(Object.keys(remoteAssetUrls));
+export const customRemoteAssetKeys = Object.freeze(Object.keys(remoteAssetUrls).filter((key) => key.startsWith('custom:')));
+export const baseRemoteAssetKeys = Object.freeze(Object.keys(remoteAssetUrls).filter((key) => key.startsWith('base:')));
 
 export const customAmbiguousEffectDefinitionIds = Object.freeze([
-  'custom:adventurer/mage-02',
   'custom:adventurer/mage-06',
-  'custom:adventurer/mage-07',
   'custom:adventurer/tank-06',
   'custom:adventurer/tank-07',
   'custom:adventurer/support-09',
@@ -90,7 +112,7 @@ const ambiguousEffects = new Set<string>(customAmbiguousEffectDefinitionIds);
 export const customAdventurerPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:custom-adventurers-public',
-    version: '0.1.0',
+    version: '0.3.0',
     theme: 'custom-adventurers',
     locale: 'zh-TW',
   },
@@ -107,12 +129,12 @@ export const customAdventurerPresentationPack: PresentationPack = {
     { definitionId: "custom:adventurer/melee-09", displayName: "索娜莉亞", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "索娜莉亞的自定義冒險者圖片", shortDisplayText: "若本回合討伐對象為魔物，增加戰力 3。", detailDisplayText: "若本回合討伐對象為魔物，增加戰力 3。 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：目前回合。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:starter/mage", displayName: "天城 紫苑", portraitAssetKey: "custom:portrait/starter-mage", portraitAltText: "天城 紫苑的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：遊戲設置時直接置入玩家隊伍；因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/mage-01", displayName: "布蕾斯", portraitAssetKey: "custom:portrait/adventurer-mage-01", portraitAltText: "布蕾斯的自定義冒險者圖片", shortDisplayText: "進入隊伍時，查看自己牌庫頂 3 張牌；可以移除其中 1 張，其餘牌以任意順序放回自己的牌庫頂。", detailDisplayText: "進入隊伍時，查看自己牌庫頂 3 張牌；可以移除其中 1 張，其餘牌以任意順序放回自己的牌庫頂。 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：可改置於自己的牌庫頂；未替代時置入棄牌堆。" },
-    { definitionId: "custom:adventurer/mage-02", displayName: "ヒカリ", portraitAssetKey: "custom:portrait/adventurer-mage-02", portraitAltText: "ヒカリ的自定義冒險者圖片", shortDisplayText: "討伐階段開始時，擲 1 顆骰子；若擲出單數，此冒險者增加戰力。", detailDisplayText: "討伐階段開始時，擲 1 顆骰子；若擲出單數，此冒險者增加戰力。 發動時點：討伐階段開始時。 可略過：否。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
+    { definitionId: "custom:adventurer/mage-02", displayName: "ヒカリ", portraitAssetKey: "custom:portrait/adventurer-mage-02", portraitAltText: "ヒカリ的自定義冒險者圖片", shortDisplayText: "討伐階段開始時，擲 1 顆骰子；若擲出單數，此冒險者戰力 +1。", detailDisplayText: "討伐階段開始時，擲 1 顆骰子；若擲出單數，此冒險者戰力 +1。 發動時點：討伐階段開始時。 可略過：否。 持續時間：本回合。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/mage-03", displayName: "アクア", portraitAssetKey: "custom:portrait/adventurer-mage-03", portraitAltText: "アクア的自定義冒險者圖片", shortDisplayText: "可以將魔物或魔王作為裝備配戴在此冒險者上。當此冒險者因戰鬥棄至棄牌堆時，可以用配戴的魔物或魔王作為替代。", detailDisplayText: "可以將魔物或魔王作為裝備配戴在此冒險者上。當此冒險者因戰鬥棄至棄牌堆時，可以用配戴的魔物或魔王作為替代。 發動時點：因討伐即將離開隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/mage-04", displayName: "エアリス・ゲインズブール", portraitAssetKey: "custom:portrait/adventurer-mage-04", portraitAltText: "エアリス・ゲインズブール的自定義冒險者圖片", shortDisplayText: "戰力扣除隊伍中其他冒險者的數量；結果最低為 0。", detailDisplayText: "戰力扣除隊伍中其他冒險者的數量；結果最低為 0。 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/mage-05", displayName: "フリーレン", portraitAssetKey: "custom:portrait/adventurer-mage-05", portraitAltText: "フリーレン的自定義冒險者圖片", shortDisplayText: "討伐階段開始時，擲 1 顆骰子；指定場上 1 隻魔物，回合結束前其戰力減少骰子點數的一半，向上取整。", detailDisplayText: "討伐階段開始時，擲 1 顆骰子；指定場上 1 隻魔物，回合結束前其戰力減少骰子點數的一半，向上取整。 發動時點：討伐階段開始時。 可略過：否。 持續時間：直到目前回合結束。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/mage-06", displayName: "めぐみん", portraitAssetKey: "custom:portrait/adventurer-mage-06", portraitAltText: "めぐみん的自定義冒險者圖片", shortDisplayText: "存在於隊伍時 可指定一個敵方的對象生命值減半 然後自身卡片移除遊戲", detailDisplayText: "存在於隊伍時 可指定一個敵方的對象生命值減半 然後自身卡片移除遊戲 發動時點：位於隊伍期間持續生效。 可略過：是。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：效果結算後移出遊戲。" },
-    { definitionId: "custom:adventurer/mage-07", displayName: "ロキシー・ミグルディア", portraitAssetKey: "custom:portrait/adventurer-mage-07", portraitAltText: "ロキシー・ミグルディア的自定義冒險者圖片", shortDisplayText: "待確認（原始資料：xxxxxxx）", detailDisplayText: "待確認（原始資料：xxxxxxx） 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
+    { definitionId: "custom:adventurer/mage-07", displayName: "ロキシー・ミグルディア", portraitAssetKey: "custom:portrait/adventurer-mage-07", portraitAltText: "ロキシー・ミグルディア的自定義冒險者圖片", shortDisplayText: "隊伍中至少有 3 位法師時，每位法師戰力 +2。", detailDisplayText: "隊伍中至少有 3 位法師時，隊伍內每位法師戰力 +2，包含ロキシー自己；只計目前隊伍中的冒險者。條件不成立時立即失去加成。" },
     { definitionId: "custom:adventurer/mage-08", displayName: "莉迪亞", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "莉迪亞的自定義冒險者圖片", shortDisplayText: "此冒險者可以配戴 3 張裝備。", detailDisplayText: "此冒險者可以配戴 3 張裝備。 發動時點：位於隊伍期間持續生效。 可略過：是。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:starter/tank", displayName: "黑瀨 玲奈", portraitAssetKey: "custom:portrait/starter-tank", portraitAltText: "黑瀨 玲奈的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：遊戲設置時直接置入玩家隊伍；因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/tank-01", displayName: "不知火舞", portraitAssetKey: "custom:portrait/adventurer-tank-01", portraitAltText: "不知火舞的自定義冒險者圖片", shortDisplayText: "隊伍第一位冒險者增加戰力 2；修爾蒂本身不適用本效果。", detailDisplayText: "隊伍第一位冒險者增加戰力 2；修爾蒂本身不適用本效果。 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
@@ -123,7 +145,7 @@ export const customAdventurerPresentationPack: PresentationPack = {
     { definitionId: "custom:adventurer/tank-06", displayName: "ダークネス", portraitAssetKey: "custom:portrait/adventurer-tank-06", portraitAltText: "ダークネス的自定義冒險者圖片", shortDisplayText: "討伐的對象如果攻擊力為 1-5 的話 自身攻擊力+1 6-10的話+2 10以上+3", detailDisplayText: "討伐的對象如果攻擊力為 1-5 的話 自身攻擊力+1 6-10的話+2 10以上+3 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/tank-07", displayName: "ゆんゆん", portraitAssetKey: "custom:portrait/adventurer-tank-07", portraitAltText: "ゆんゆん的自定義冒險者圖片", shortDisplayText: "一回合中可以忽略一次因討伐而進入棄牌區的效果", detailDisplayText: "一回合中可以忽略一次因討伐而進入棄牌區的效果 發動時點：因討伐即將離開隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：成功忽略時留在隊伍；否則置入棄牌堆。" },
     { definitionId: "custom:adventurer/tank-08", displayName: "ルミナス・バレンタイン", portraitAssetKey: "custom:portrait/adventurer-tank-08", portraitAltText: "ルミナス・バレンタイン的自定義冒險者圖片", shortDisplayText: "此冒險者可以作為裝備，配戴在其他冒險者上；配戴的冒險者增加戰力 2。", detailDisplayText: "此冒險者可以作為裝備，配戴在其他冒險者上；配戴的冒險者增加戰力 2。 發動時點：位於隊伍期間持續生效。 可略過：是。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：作為裝備時附著於指定冒險者；附件離場規則待確認。" },
-    { definitionId: "custom:adventurer/tank-09", displayName: "ヨル・フォージャー", portraitAssetKey: "custom:portrait/adventurer-tank-09", portraitAltText: "ヨル・フォージャー的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
+    { definitionId: "custom:adventurer/tank-09", displayName: "ヨル・フォージャー", portraitAssetKey: "custom:portrait/adventurer-tank-09", portraitAltText: "ヨル・フォージャー的自定義冒險者圖片", shortDisplayText: "隊伍中至少有 3 位坦克時，每位坦克戰力 +2。", detailDisplayText: "隊伍中至少有 3 位坦克時，隊伍內每位坦克戰力 +2，包含ヨル・フォージャー自己；只計目前隊伍中的冒險者。條件不成立時立即失去加成。" },
     { definitionId: "custom:adventurer/tank-10", displayName: "米莉安", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "米莉安的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:starter/support", displayName: "夜凪 櫻", portraitAssetKey: "custom:portrait/starter-support", portraitAltText: "夜凪 櫻的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：遊戲設置時直接置入玩家隊伍；因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/support-01", displayName: "月詠", portraitAssetKey: "custom:portrait/adventurer-support-01", portraitAltText: "月詠的自定義冒險者圖片", shortDisplayText: "進入隊伍時，可以移除自己棄牌堆中的 1 張牌。", detailDisplayText: "進入隊伍時，可以移除自己棄牌堆中的 1 張牌。 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
