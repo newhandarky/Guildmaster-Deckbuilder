@@ -1,7 +1,19 @@
 import type { GameCommand } from './commands.js';
 
+export type CpuTargetCombatProgress = {
+  targetId: string;
+  targetKind: string;
+  requiredCombat: number;
+  effectiveCombatBefore: number;
+  effectiveCombatAfter: number;
+  shortfallBefore: number;
+  shortfallAfter: number;
+  attackReadyBefore: boolean;
+  attackReadyAfter: boolean;
+};
+
 export type CpuActionFeature = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   command: GameCommand;
   honorGain: number;
   bondHonorGain: number;
@@ -18,4 +30,5 @@ export type CpuActionFeature = {
   equipmentLoss: number;
   equipmentRemoval: number;
   overflowLoss: number;
+  targetCombatProgress: readonly CpuTargetCombatProgress[];
 };

@@ -1,6 +1,6 @@
 import { CpuTurnRunner, baseBalancedCpuProfile, simpleAiStrategy, asEnvelope } from '@guildmaster/game-ai';
 import { createGame, dispatch, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getScoreboard, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset } from '@guildmaster/game-engine';
-import { stableJsonFingerprint, type CommandEnvelope, type DomainEvent, type EngineError, type GameCommand, type GameState, type ReplayAutomationDecision, type ReplayBundle, type ReplayInitialConfig } from '@guildmaster/game-protocol';
+import { stableJsonDigest, stableJsonFingerprint, type CommandEnvelope, type DomainEvent, type EngineError, type GameCommand, type GameState, type ReplayAutomationDecision, type ReplayBundle, type ReplayInitialConfig } from '@guildmaster/game-protocol';
 import type { ReplayDiagnosticExport, ReplayRunnerReport, SessionPersistenceStatus, SessionUpdate } from '../game-session.js';
 import { clearLocalGame, loadLocalGame, saveLocalGame } from './local-storage.js';
 import { auditCpuReplay } from './cpu-replay-audit.js';
@@ -212,7 +212,7 @@ export class LocalGameSession {
     }
     this.cpuDiagnostic = undefined;
     const commandId = this.nextCommandId(actor.id);
-    const recordedDecision = { commandId, revision: view.revision, actorId: actor.id, command: structuredClone(decision.command), reasonCode: decision.reasonCode, score: decision.score, scoreBreakdown: structuredClone(decision.scoreBreakdown), contextFingerprint: decision.contextFingerprint, legalCommandsFingerprint: stableJsonFingerprint(legalCommands), actionFeaturesFingerprint: stableJsonFingerprint(actionFeatures) };
+    const recordedDecision = { commandId, revision: view.revision, actorId: actor.id, command: structuredClone(decision.command), reasonCode: decision.reasonCode, score: decision.score, scoreBreakdown: structuredClone(decision.scoreBreakdown), contextFingerprint: decision.contextFingerprint, legalCommandsFingerprint: stableJsonDigest(legalCommands), actionFeaturesFingerprint: stableJsonDigest(actionFeatures) };
     return this.submitEnvelope(asEnvelope(view, actor.id, decision.command, commandId), {
       accepted: () => this.cpuDecisions.push(recordedDecision),
       rejected: () => this.cpuRunner.restore(runnerBeforeDecision),

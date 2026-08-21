@@ -14,6 +14,42 @@ export type CombatEvaluationResult =
   | { status: 'failed'; reason: 'UNKNOWN_MODULE' | 'REGISTRY_VERSION_MISMATCH' | 'INVALID_TARGET' | 'INVALID_COMBAT_VALUE'; error: string };
 export type CombatPartyPrefix = { slotCount: number; power: number; participantCardIds: readonly string[] };
 
+function reserveCombatAt(
+  state: GameState,
+  ruleset: Ruleset,
+  playerId: string,
+  effectiveCombat: readonly number[],
+  participantIndex: number,
+): number | undefined {
+  const player = getPlayer(state, playerId);
+  const reservePolicies = ruleset.modules.flatMap((module) => module.combatReserveContributionPolicies ?? []).sort((left, right) => left.priority - right.priority);
+  if (reservePolicies.some((policy, policyIndex) => policyIndex > 0 && policy.priority === reservePolicies[policyIndex - 1]!.priority)) return undefined;
+  return player.party.slice(participantIndex + 1).reduce((sum, reserveSlot, offset) => {
+    const sourceIndex = participantIndex + 1 + offset;
+    const active = reservePolicies.some((policy) => policy.sourceDefinitionIds.includes(state.cards[reserveSlot.adventurerId]?.definitionId ?? ''));
+    return sum + (active ? effectiveCombat[sourceIndex]! : 0);
+  }, 0);
+}
+
+/** Maximum target-aware combat reachable under the authoritative participant limit. */
+export function evaluateCombatPartyCapacity(state: GameState, ruleset: Ruleset, playerId: string, targetId?: string, maximumPartySlots?: number, equipmentSuppressed = false): number | undefined {
+  if (validateRulesetStateCompatibility(state, ruleset)) return undefined;
+  const player = getPlayer(state, playerId);
+  const partyCombat = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId, ...(targetId ? { targetId } : {}), ...(equipmentSuppressed ? { equipmentSuppressed: true } : {}) });
+  if (partyCombat.status !== 'ready' || !Number.isFinite(player.turnCombatBonus)) return undefined;
+  const effectiveCombat = partyCombat.evaluation.members.map(({ effectiveCombat: value }) => value);
+  let participantPower = player.turnCombatBonus;
+  let capacity = participantPower;
+  const partySlots = Math.min(player.party.length, maximumPartySlots ?? player.party.length);
+  for (let index = 0; index < partySlots; index += 1) {
+    participantPower += effectiveCombat[index]!;
+    const reservePower = reserveCombatAt(state, ruleset, playerId, effectiveCombat, index);
+    if (reservePower === undefined || !Number.isFinite(participantPower + reservePower)) return undefined;
+    capacity = Math.max(capacity, participantPower + reservePower);
+  }
+  return capacity;
+}
+
 function registryError(state: GameState, ruleset: Ruleset): Extract<CombatEvaluationResult, { status: 'failed' }> | undefined {
   if (state.rulesModules.some(({ id }) => !ruleset.modules.some((module) => module.id === id)) || ruleset.modules.some(({ id }) => !state.rulesModules.some((module) => module.id === id))) return { status: 'failed', reason: 'UNKNOWN_MODULE', error: 'Combat Rules Module registry contains an unknown module.' };
   const compatibility = validateRulesetStateCompatibility(state, ruleset);
@@ -128,14 +164,8 @@ export function evaluateCombatPartyPrefix(state: GameState, ruleset: Ruleset, pl
     power += partyCombat.evaluation.members[index]!.effectiveCombat;
     participantCardIds.push(...attachedCardIds(slot));
     if (!Number.isFinite(power)) return undefined;
-    const reservePolicies = ruleset.modules.flatMap((module) => module.combatReserveContributionPolicies ?? []).sort((left, right) => left.priority - right.priority);
-    if (reservePolicies.some((policy, policyIndex) => policyIndex > 0 && policy.priority === reservePolicies[policyIndex - 1]!.priority)) return undefined;
-    const reservePower = player.party.slice(index + 1).reduce((sum, reserveSlot, offset) => {
-      const sourceIndex = index + 1 + offset;
-      if (sourceIndex === 0) return sum;
-      const matches = reservePolicies.filter((policy) => policy.sourceDefinitionIds.includes(state.cards[reserveSlot.adventurerId]?.definitionId ?? ''));
-      return sum + (matches.length ? partyCombat.evaluation.members[sourceIndex]!.effectiveCombat : 0);
-    }, 0);
+    const reservePower = reserveCombatAt(state, ruleset, playerId, partyCombat.evaluation.members.map(({ effectiveCombat }) => effectiveCombat), index);
+    if (reservePower === undefined) return undefined;
     if (power + reservePower >= requiredCombat) return { slotCount: index + 1, power: power + reservePower, participantCardIds };
   }
   return undefined;

@@ -1,10 +1,11 @@
-import type { CardDefinition, ContentPack, CpuActionFeature, GameCommand, PlayerView } from '@guildmaster/game-protocol';
+import { stableJsonDigest, type CardDefinition, type ContentPack, type CpuActionFeature, type GameCommand, type PlayerView } from '@guildmaster/game-protocol';
 
 export type CpuReasonCode =
   | 'KEEP_HIGHEST_BOND_VALUE' | 'ATTACK_BEST_NET_VALUE' | 'PLAY_FOR_PARTY_POWER'
   | 'EQUIP_FOR_COMBAT_GAIN' | 'USE_ITEM_FOR_IMMEDIATE_VALUE' | 'BUY_HIGHEST_UTILITY'
   | 'REFRESH_LOW_VALUE_MARKET' | 'DISCARD_LOWEST_UTILITY' | 'END_NO_POSITIVE_ACTION'
-  | 'RESOLVE_HIGHEST_UTILITY_CHOICE' | 'RESPOND_REQUIRED_CONSENT' | 'COMPLETE_ELIGIBLE_BONDS' | 'BLOCKED_UNSUPPORTED_DECISION';
+  | 'RESOLVE_HIGHEST_UTILITY_CHOICE' | 'RESPOND_REQUIRED_CONSENT' | 'COMPLETE_ELIGIBLE_BONDS'
+  | 'BLOCKED_UNSUPPORTED_DECISION' | 'ADVANCE_BOSS_COMBAT';
 
 export type CpuScoringWeights = {
   honor: number; bondHonor: number; bossProgress: number; monsterDefeat: number;
@@ -12,7 +13,7 @@ export type CpuScoringWeights = {
   immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; equipmentRemoval: number; overflowLoss: number;
 };
 export type CpuProfile = {
-  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.4.0';
+  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.5.0';
   commandPriority: readonly GameCommand['type'][]; weights: CpuScoringWeights;
   maxActionsPerTurn: 128; maxAutonomousSteps: 512; repeatedVisibleStateLimit: 3;
 };
@@ -27,7 +28,7 @@ export type CpuDecisionResult =
   | { status: 'blocked'; reasonCode: 'UNSUPPORTED_DECISION_KIND' | 'NO_LEGAL_COMMAND' | 'MISSING_ACTION_FEATURE' | 'REPEATED_VISIBLE_STATE' | 'MAX_ACTIONS_EXCEEDED'; diagnostic: string };
 
 export const baseBalancedCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
-  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.4.0',
+  schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.5.0',
   commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESOLVE_EFFECT_ORDER', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'ATTACH_CARD', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
   weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, equipmentRemoval: -8, overflowLoss: -1 },
   maxActionsPerTurn: 128, maxAutonomousSteps: 512, repeatedVisibleStateLimit: 3,
@@ -40,7 +41,7 @@ function stable(value: unknown): string {
 }
 export const canonicalCommand = (command: GameCommand): string => stable(command);
 export function cpuContextFingerprint(context: CpuDecisionContext): string {
-  return stable({ view: context.view, legalCommands: context.legalCommands, actionFeatures: context.actionFeatures, rulesetFingerprint: context.rulesetFingerprint, profile: { id: context.profile.profileId, version: context.profile.version } });
+  return stableJsonDigest({ view: context.view, legalCommands: context.legalCommands, actionFeatures: context.actionFeatures, rulesetFingerprint: context.rulesetFingerprint, profile: { id: context.profile.profileId, version: context.profile.version } });
 }
 
 function reason(command: GameCommand): CpuReasonCode {
@@ -73,12 +74,14 @@ function scoreFeature(feature: CpuActionFeature, weights: CpuScoringWeights): { 
 }
 
 export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult {
-  const fingerprint = cpuContextFingerprint(context);
   if (!context.legalCommands.length) return { status: 'blocked', reasonCode: 'NO_LEGAL_COMMAND', diagnostic: `No legal command at revision ${context.view.revision}.` };
+  if (context.actionFeatures.some((feature) => feature.schemaVersion !== 2 || !Array.isArray(feature.targetCombatProgress))) return { status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE', diagnostic: 'CPU action features require schemaVersion 2 targetCombatProgress.' };
+  const fingerprint = cpuContextFingerprint(context);
   if (context.legalCommands.some(({ type }) => type === 'RESOLVE_EFFECT_CHOICE' || type === 'RESOLVE_EFFECT_ORDER') && !context.view.decisionPrompt) return { status: 'blocked', reasonCode: 'UNSUPPORTED_DECISION_KIND', diagnostic: 'Effect decision has no typed PlayerDecisionPrompt; CPU stopped without guessing.' };
   const availableBoss = Object.values(context.view.enemyTargets ?? {}).some(({ kind, status }) => kind === 'boss' && status === 'available');
   const legalBossAttack = context.legalCommands.some((command) => command.type === 'ATTACK_TARGET' && context.view.enemyTargets[command.targetId]?.kind === 'boss');
-  const needsBossPower = availableBoss && !legalBossAttack;
+  const bossCombatReady = context.actionFeatures.some((feature) => feature.targetCombatProgress.some(({ targetId, attackReadyBefore }) => attackReadyBefore && context.view.enemyTargets[targetId]?.kind === 'boss'));
+  const needsBossPower = availableBoss && !legalBossAttack && !bossCombatReady;
   const reservePartyForBoss = needsBossPower && (context.view.self?.history?.defeatedMonsters ?? 0) >= 5;
   const strategicCommands = reservePartyForBoss && !legalBossAttack
     ? context.legalCommands.filter((command) => command.type !== 'ATTACK_TARGET')
@@ -110,7 +113,21 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
   }).sort((left, right) => right.score - left.score || (priority.get(left.command.type) ?? 999) - (priority.get(right.command.type) ?? 999) || canonicalCommand(left.command).localeCompare(canonicalCommand(right.command)));
   let best = ranked[0]!;
   let strategicRotation = false;
-  if (needsBossPower && context.view.phase === 'purchase') {
+  let advancesBossCombat = false;
+  if (needsBossPower) {
+    const progress = ranked.map((entry) => {
+      const feature = context.actionFeatures.find((candidate) => canonicalCommand(candidate.command) === canonicalCommand(entry.command));
+      const bosses = feature?.targetCombatProgress.filter(({ targetId }) => context.view.enemyTargets[targetId]?.kind === 'boss') ?? [];
+      return {
+        entry,
+        unlocks: bosses.some(({ attackReadyBefore, attackReadyAfter }) => !attackReadyBefore && attackReadyAfter),
+        reduction: bosses.reduce((largest, target) => Math.max(largest, target.shortfallBefore - target.shortfallAfter), 0),
+      };
+    });
+    const immediate = progress.filter(({ unlocks, reduction }) => unlocks || reduction > 0).sort((left, right) => Number(right.unlocks) - Number(left.unlocks) || right.reduction - left.reduction || right.entry.score - left.entry.score || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
+    if (immediate) { best = immediate.entry; strategicRotation = true; advancesBossCombat = true; }
+  }
+  if (!advancesBossCombat && needsBossPower && context.view.phase === 'purchase') {
     const combatBuy = ranked.filter(({ command }) => command.type === 'BUY_CARD').map((entry) => ({
       entry,
       combat: context.actionFeatures.find((feature) => canonicalCommand(feature.command) === canonicalCommand(entry.command))?.partyCombatGain ?? 0,
@@ -125,20 +142,9 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
       strategicRotation = Boolean(refresh);
     }
   }
-  const lateGameQueueRotation = (context.view.self?.history?.defeatedMonsters ?? 0) >= 10;
-  if ((best.score <= 0 || lateGameQueueRotation) && needsBossPower && (context.view.phase === 'action1' || context.view.phase === 'action2') && context.view.self.party.length >= context.view.partyLimit) {
-    // Once the finite monster progression is exhausted, rotate the FIFO queue only
-    // with a strong (3+) visible recruit. Five such slots can defeat the hardest
-    // printed provisional-base boss, while ordinary play still requires net gain.
-    const rotation = ranked.filter(({ command }) => command.type === 'PLAY_ADVENTURER').map((entry) => ({
-      entry,
-      ...(() => { const feature = context.actionFeatures.find((candidate) => canonicalCommand(candidate.command) === canonicalCommand(entry.command)); return { gain: feature?.partyCombatGain ?? Number.NEGATIVE_INFINITY, netGain: feature ? feature.partyCombatGain - feature.partyCombatLoss : Number.NEGATIVE_INFINITY }; })(),
-    })).filter(({ gain, netGain }) => lateGameQueueRotation ? gain >= 3 : netGain > 0).sort((left, right) => (lateGameQueueRotation ? right.gain - left.gain : right.netGain - left.netGain) || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
-    if (rotation) { best = rotation.entry; strategicRotation = true; }
-  }
   if (best.score <= 0 && !strategicRotation) best = ranked.find(({ command }) => command.type === 'END_PHASE') ?? best;
   if (!Number.isFinite(best.score) && best.command.type !== 'END_PHASE') return { status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE', diagnostic: `Missing public action feature for ${best.command.type}.` };
-  return { status: 'ready', command: structuredClone(best.command), reasonCode: reason(best.command), score: best.command.type === 'END_PHASE' ? 0 : best.score, scoreBreakdown: best.terms, contextFingerprint: fingerprint };
+  return { status: 'ready', command: structuredClone(best.command), reasonCode: advancesBossCombat ? 'ADVANCE_BOSS_COMBAT' : reason(best.command), score: best.command.type === 'END_PHASE' ? 0 : best.score, scoreBreakdown: best.terms, contextFingerprint: fingerprint };
 }
 
 export class CpuTurnRunner {
@@ -151,6 +157,7 @@ export class CpuTurnRunner {
     const turnKey = `${context.view.round}:${context.view.activePlayerId}`;
     const turnCount = this.turnActions.get(turnKey) ?? 0;
     if (turnCount >= this.profile.maxActionsPerTurn) return { status: 'blocked', reasonCode: 'MAX_ACTIONS_EXCEEDED', diagnostic: `Turn action limit ${this.profile.maxActionsPerTurn} reached for ${turnKey}.` };
+    if (context.actionFeatures.some((feature) => feature.schemaVersion !== 2 || !Array.isArray(feature.targetCombatProgress))) return { status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE', diagnostic: 'CPU action features require schemaVersion 2 targetCombatProgress.' };
     const visibleKey = cpuContextFingerprint(context);
     const repeats = (this.visibleStates.get(visibleKey) ?? 0) + 1;
     if (repeats > this.profile.repeatedVisibleStateLimit) return { status: 'blocked', reasonCode: 'REPEATED_VISIBLE_STATE', diagnostic: `Visible state repeated more than ${this.profile.repeatedVisibleStateLimit} times.` };

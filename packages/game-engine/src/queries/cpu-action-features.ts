@@ -3,7 +3,7 @@ import { getDefinition } from '../model/factories.js';
 import { getLegalCommands } from './legal-commands.js';
 import type { Ruleset } from '../rules/ruleset.js';
 import { evaluateTeamOverflow } from '../rules/team-overflow-evaluator.js';
-import { evaluateCombat, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
+import { evaluateCombat, evaluateCombatPartyCapacity, evaluateCombatPartyPrefix } from '../rules/combat-evaluator.js';
 import { evaluatePartyCombat } from '../rules/party-combat-modifier-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { evaluateEquipmentDeparture } from '../rules/equipment-departure-evaluator.js';
@@ -12,6 +12,9 @@ import { effectStartsWithUnpayableCombatFailureGate } from '../effects/executor.
 import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
 import { attachmentCombat } from '../rules/attachment-evaluator.js';
 import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modifier-evaluator.js';
+import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
+import { evaluateMonsterDefeatContinuity } from '../rules/supply-continuity-evaluator.js';
+import { dispatch } from '../engine/dispatch.js';
 
 function attachedContribution(state: GameState, ruleset: Ruleset, playerId: string, adventurerId: string, cardId: string): number {
   const base = attachmentCombat(state, ruleset, playerId, adventurerId, cardId);
@@ -21,8 +24,36 @@ function attachedContribution(state: GameState, ruleset: Ruleset, playerId: stri
   return base + modifiers.evaluation.powerBonus;
 }
 
-function blank(command: GameCommand): CpuActionFeature {
-  return { schemaVersion: 1, command: structuredClone(command), honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0 };
+function targetCombatProgress(state: GameState, ruleset: Ruleset, playerId: string) {
+  const combatState = state.phase === 'combat' ? state : { ...structuredClone(state), phase: 'combat' as const };
+  return Object.values(combatState.enemyTargets).filter(({ status }) => status === 'available').sort((left, right) => left.targetId.localeCompare(right.targetId)).map((target) => {
+    const combat = evaluateCombat(combatState, ruleset, playerId, target.targetId);
+    if (combat.status !== 'ready') throw new Error(`CPU action features require valid target combat evaluation: ${combat.reason}: ${combat.error}`);
+    const capacity = evaluateCombatPartyCapacity(combatState, ruleset, playerId, target.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
+    if (capacity === undefined) throw new Error(`CPU action features require valid target combat capacity for ${target.targetId}.`);
+    const healthAttack = target.health ? evaluateAttackResolution(combatState, ruleset, { schemaVersion: 1, playerId, targetId: target.targetId, registry: { rulesetVersion: combatState.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }) : undefined;
+    const continuityReady = target.kind !== 'monster' || evaluateMonsterDefeatContinuity(combatState, ruleset, target.targetId, combat.evaluation.outcome.kind).status === 'ready';
+    const attackReady = healthAttack ? healthAttack.status === 'ready' : combat.evaluation.eligible && capacity >= combat.evaluation.requiredCombat && continuityReady;
+    return { targetId: target.targetId, targetKind: target.kind, requiredCombat: combat.evaluation.requiredCombat, effectiveCombat: capacity, shortfall: Math.max(0, combat.evaluation.requiredCombat - capacity), attackReady };
+  });
+}
+
+function blank(command: GameCommand, targets: ReturnType<typeof targetCombatProgress>): CpuActionFeature {
+  return { schemaVersion: 2, command: structuredClone(command), honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0, targetCombatProgress: targets.map((target) => ({ targetId: target.targetId, targetKind: target.targetKind, requiredCombat: target.requiredCombat, effectiveCombatBefore: target.effectiveCombat, effectiveCombatAfter: target.effectiveCombat, shortfallBefore: target.shortfall, shortfallAfter: target.shortfall, attackReadyBefore: target.attackReady, attackReadyAfter: target.attackReady })) };
+}
+
+function applyTargetCombatAfter(feature: CpuActionFeature, state: GameState, ruleset: Ruleset, actorId: string): void {
+  const after = new Map(targetCombatProgress(state, ruleset, actorId).map((target) => [target.targetId, target]));
+  feature.targetCombatProgress = feature.targetCombatProgress.map((target) => {
+    const next = after.get(target.targetId);
+    return next ? { ...target, effectiveCombatAfter: next.effectiveCombat, shortfallAfter: next.shortfall, attackReadyAfter: next.attackReady } : target;
+  });
+}
+
+function applyDispatchedTargetCombatAfter(feature: CpuActionFeature, state: GameState, ruleset: Ruleset, actorId: string, command: GameCommand): void {
+  const result = dispatch(state, ruleset, { protocolVersion: 1, gameId: state.gameId, commandId: `cpu-feature-preview-${state.revision}`, actorId, expectedRevision: state.revision, command: structuredClone(command) });
+  if (result.error || result.state.rngState !== state.rngState || result.state.effectState.pendingChoice || result.state.effectState.pendingCounterConsent || result.state.effectState.pendingCommand || result.state.effectState.pendingLifecycle || result.state.effectState.pendingPostCommand) return;
+  applyTargetCombatAfter(feature, result.state, ruleset, actorId);
 }
 
 function partyCombatTotal(state: GameState, ruleset: Ruleset, playerId: string, targetId?: string, equipmentSuppressed = false): number {
@@ -53,8 +84,9 @@ function candidateSets(values: readonly string[], count: number, limit = 257): s
 
 /** Public, deterministic features for a legal command; this query never mutates state or advances RNG. */
 export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId: string): CpuActionFeature[] {
+  const targets = targetCombatProgress(state, ruleset, actorId);
   return getLegalCommands(state, ruleset, actorId).map((command) => {
-    const feature = blank(command);
+    const feature = blank(command, targets);
     if (command.type === 'ATTACK_TARGET') {
       const target = state.enemyTargets[command.targetId];
       if (target) {
@@ -119,7 +151,10 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         feature.partyCombatLoss = selected.partyCombatLoss;
         feature.equipmentLoss = selected.equipmentLoss;
         feature.overflowLoss = selected.removedIds.length;
+        const removed = new Set(selected.removedIds);
+        previewPlayer.party = previewPlayer.party.filter(({ adventurerId }) => !removed.has(adventurerId));
       }
+      applyDispatchedTargetCombatAfter(feature, state, ruleset, actorId, command);
     }
     if (command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD') {
       const previewState = structuredClone(state);
@@ -141,11 +176,19 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
       const afterCombat = partyCombatTotal(previewState, ruleset, actorId);
       feature.partyCombatGain = attachedContribution(previewState, ruleset, actorId, command.adventurerId, command.cardId);
       if (!replacedCardId && afterCombat < beforeCombat) feature.partyCombatLoss += beforeCombat - afterCombat;
+      applyTargetCombatAfter(feature, previewState, ruleset, actorId);
     }
     if (command.type === 'USE_ITEM') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);
       feature.immediateCombatPower = definition.itemEffect === 'combat+2' ? 2 : 0;
       feature.immediatePurchasePower = definition.itemEffect === 'purchase+2' ? 2 : 0;
+      if (feature.immediateCombatPower) {
+        const preview = structuredClone(state);
+        const player = preview.players.find(({ id }) => id === actorId);
+        if (!player) throw new Error(`CPU action features require an existing player ${actorId}.`);
+        player.turnCombatBonus += feature.immediateCombatPower;
+        applyTargetCombatAfter(feature, preview, ruleset, actorId);
+      }
     }
     if (command.type === 'BUY_CARD') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);
@@ -159,6 +202,7 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
     if (command.type === 'COMPLETE_BONDS') {
       feature.bondHonorGain = command.bondIds.reduce((sum, bondId) => sum + (ruleset.registry.bonds.find(({ id }) => id === bondId)?.honor ?? 0), 0);
     }
+    if (command.type === 'RESOLVE_EFFECT_CHOICE' || command.type === 'RESOLVE_EFFECT_ORDER') applyDispatchedTargetCombatAfter(feature, state, ruleset, actorId, command);
     return feature;
   });
 }

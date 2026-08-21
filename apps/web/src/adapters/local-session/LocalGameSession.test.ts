@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base';
 import { CpuTurnRunner, baseBalancedCpuProfile } from '@guildmaster/game-ai';
-import { baseRulesModule, createGame, createRuleset, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type RulesModule } from '@guildmaster/game-engine';
+import { baseRulesModule, createGame, createRuleset, dispatch, evaluateCombat, evaluateCombatPartyCapacity, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type RulesModule } from '@guildmaster/game-engine';
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
 import type { SessionUpdate } from '../game-session.js';
@@ -9,6 +9,27 @@ import { LocalGameSession } from './LocalGameSession.js';
 import { createWebRuleset } from '../../app/ruleset.js';
 
 const storageKey = 'guildmaster-mvp-save-v2';
+const diagnosticHash = (value: unknown): string => {
+  const text = JSON.stringify(value); let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+const headlessProgress = (state: ReturnType<typeof createGame>, ruleset: Ruleset) => ({
+  round: state.round, phase: state.phase, activePlayerId: state.activePlayerId,
+  bossTargets: Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'boss' && status === 'available').map((target) => {
+    const definitionId = state.cards[target.cardInstanceId]?.definitionId;
+    return {
+      targetId: target.targetId, definitionId,
+      players: state.players.map((player) => {
+        const combat = evaluateCombat(state, ruleset, player.id, target.targetId);
+        const maximumPartySlots = combat.status === 'ready' ? combat.evaluation.maximumPartySlots ?? player.party.length : player.party.length;
+        const permittedCombat = combat.status === 'ready' ? evaluateCombatPartyCapacity(state, ruleset, player.id, target.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed) : undefined;
+        return { playerId: player.id, permittedCombat, maximumPartySlots, legalAttack: getLegalCommands(state, ruleset, player.id).some((command) => command.type === 'ATTACK_TARGET' && command.targetId === target.targetId) };
+      }),
+    };
+  }),
+  players: state.players.map(({ id, history, party }) => ({ id, history, partySize: party.length })),
+});
 const modify = (amount: number): EffectDefinition['body'] => ({
   kind: 'modify-value',
   target: { kind: 'turn-purchase-bonus', player: { kind: 'controller' } },
@@ -204,6 +225,10 @@ describe('LocalGameSession transactional boundary', () => {
     expect(new LocalGameSession(createWebRuleset(undefined, 'provisional-original-full')).current().view.bondEvaluations).toEqual(update.view.bondEvaluations);
     expect(update.cpu.decisions).toHaveLength(3);
     expect(update.cpu.decisions.every(({ command, reasonCode }) => command.type === 'SELECT_BONDS' && reasonCode === 'KEEP_HIGHEST_BOND_VALUE')).toBe(true);
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as { cpuAutomation: { decisions: { contextFingerprint: string; legalCommandsFingerprint: string; actionFeaturesFingerprint: string }[] } };
+    expect(persisted.cpuAutomation.decisions).toHaveLength(3);
+    expect(persisted.cpuAutomation.decisions.flatMap((decision) => [decision.contextFingerprint, decision.legalCommandsFingerprint, decision.actionFeaturesFingerprint]).every((fingerprint) => /^v1:[0-9a-f]{32}$/.test(fingerprint))).toBe(true);
+    expect(JSON.stringify(persisted.cpuAutomation.decisions).length).toBeLessThan(4_000);
   });
 
   it('starts and restores the custom-adventurer mode as one human plus three CPU players', () => {
@@ -438,11 +463,17 @@ describe('LocalGameSession transactional boundary', () => {
     ];
     const seedStart = Number(import.meta.env.HEADLESS_SEED_START ?? 10_001);
     const seedCount = Number(import.meta.env.HEADLESS_SEED_COUNT ?? 20);
+    const traceEnabled = import.meta.env.HEADLESS_TRACE === '1';
     const maximumShardSize = import.meta.env.RUN_HEADLESS_SOAK === '1' ? 100 : 20;
     if (!Number.isSafeInteger(seedStart) || !Number.isSafeInteger(seedCount) || seedCount < 1 || seedCount > maximumShardSize) throw new Error(`Headless seed shard must contain 1–${maximumShardSize} safe integer seeds.`);
     for (const seed of Array.from({ length: seedCount }, (_, index) => seedStart + index)) {
+      console.info(`[headless] seed ${seed} started`);
       let state = createGame({ gameId: `headless-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
       const runner = new CpuTurnRunner(baseBalancedCpuProfile);
+      const trace: unknown[] = [];
+      const progress: unknown[] = [];
+      const fail = (message: string): never => { throw new Error(`${message}\nHeadless diagnostics: ${JSON.stringify({ progress, trace })}`); };
+      let lastProgressRound = 0;
       let actorKey = '';
       for (let step = 0; step < 20_000 && state.status !== 'finished'; step += 1) {
         const consent = state.effectState.pendingCounterConsent;
@@ -462,9 +493,12 @@ describe('LocalGameSession transactional boundary', () => {
           rulesetFingerprint: registryFingerprint,
           profile: baseBalancedCpuProfile,
         });
-        if (decision.status === 'blocked') throw new Error(`Seed ${seed} blocked at revision ${state.revision}: ${decision.reasonCode} ${decision.diagnostic}`);
-        const command = decision.command;
-        if (!command) throw new Error(`Seed ${seed} produced no command at revision ${state.revision}.`);
+        const readyDecision = decision.status === 'ready'
+          ? decision
+          : fail(`Seed ${seed} blocked at revision ${state.revision}: ${decision.reasonCode} ${decision.diagnostic}`);
+        const command = readyDecision.command;
+        if (!command) fail(`Seed ${seed} produced no command at revision ${state.revision}.`);
+        const stateHashBefore = diagnosticHash(state);
         const result = dispatch(state, ruleset, {
           protocolVersion: 1,
           gameId: state.gameId,
@@ -473,11 +507,25 @@ describe('LocalGameSession transactional boundary', () => {
           expectedRevision: state.revision,
           command,
         });
-        if (result.error) throw new Error(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message} ${JSON.stringify({ phase: state.phase, actorId, command, helper: state.zones['base:helper-active']?.cardIds.map((id) => state.cards[id]?.definitionId), pendingChoice: state.effectState.pendingChoice?.choiceId, player: state.players.find(({ id }) => id === actorId) })}`);
+        trace.push({
+          step, round: state.round, activePlayerId: state.activePlayerId, actorId, phase: state.phase, command,
+          pendingChoice: state.effectState.pendingChoice ? { executionId: state.effectState.pendingChoice.executionId, choiceId: state.effectState.pendingChoice.choiceId } : undefined,
+          pendingCommandKind: state.effectState.pendingCommand?.kind,
+          stateHashBefore, stateHashAfter: result.error ? stateHashBefore : diagnosticHash(result.state),
+          reasonCode: readyDecision.reasonCode, score: readyDecision.score, contextHash: diagnosticHash(readyDecision.contextFingerprint),
+        });
+        if (trace.length > 256) trace.shift();
+        if (result.error) fail(`Seed ${seed} rejected ${command.type}: ${result.error.code} ${result.error.message} ${JSON.stringify({ phase: state.phase, actorId, command, helper: state.zones['base:helper-active']?.cardIds.map((id) => state.cards[id]?.definitionId), pendingChoice: state.effectState.pendingChoice?.choiceId, player: state.players.find(({ id }) => id === actorId) })}`);
         state = result.state;
-        if (state.round > 250) throw new Error(`Seed ${seed} exceeded 250 rounds: ${JSON.stringify({ activePlayerId: state.activePlayerId, phase: state.phase, bossTargets: Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'boss' && status === 'available').map(({ cardInstanceId }) => state.cards[cardInstanceId]?.definitionId), adventurerRow: state.zones['base:adventurer-row']?.cardIds.map((id) => state.cards[id]?.definitionId), players: state.players.map((player) => ({ id: player.id, history: player.history, party: player.party.map(({ adventurerId, equipmentId }) => [state.cards[adventurerId]?.definitionId, equipmentId ? state.cards[equipmentId]?.definitionId : null]), hand: player.hand.map((id) => state.cards[id]?.definitionId), draw: player.drawPile.map((id) => state.cards[id]?.definitionId), discard: player.discardPile.map((id) => state.cards[id]?.definitionId) })) })}`);
+        if (state.round >= lastProgressRound + 10) {
+          const summary = headlessProgress(state, ruleset); progress.push(summary); lastProgressRound = state.round;
+          if (traceEnabled) console.info(`[headless] seed ${seed} progress ${JSON.stringify(summary)}`);
+        }
+        if (state.round > 250) fail(`Seed ${seed} exceeded 250 rounds: ${JSON.stringify({ activePlayerId: state.activePlayerId, phase: state.phase, bossTargets: Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'boss' && status === 'available').map(({ cardInstanceId }) => state.cards[cardInstanceId]?.definitionId), adventurerRow: state.zones['base:adventurer-row']?.cardIds.map((id) => state.cards[id]?.definitionId), players: state.players.map((player) => ({ id: player.id, history: player.history, party: player.party.map(({ adventurerId, equipmentId }) => [state.cards[adventurerId]?.definitionId, equipmentId ? state.cards[equipmentId]?.definitionId : null]), hand: player.hand.map((id) => state.cards[id]?.definitionId), draw: player.drawPile.map((id) => state.cards[id]?.definitionId), discard: player.discardPile.map((id) => state.cards[id]?.definitionId) })) })}`);
       }
+      if (state.status !== 'finished') fail(`Seed ${seed} exhausted the 20,000-step headless guard at revision ${state.revision}.`);
       expect(state.status, `seed ${seed}`).toBe('finished');
+      console.info(`[headless] seed ${seed} completed at round ${state.round}`);
     }
   }, 2_400_000);
 
