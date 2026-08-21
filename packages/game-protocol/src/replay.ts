@@ -95,3 +95,18 @@ export function stableJsonFingerprint(value: unknown): string {
   jsonValue.parse(value);
   return visit(value);
 }
+
+/** Fixed-size deterministic digest for persisted audit fingerprints. */
+export function stableJsonDigest(value: unknown): string {
+  const source = stableJsonFingerprint(value);
+  let first = 0x811c9dc5; let second = 0x9e3779b9; let third = 0x85ebca6b; let fourth = 0xc2b2ae35;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x27d4eb2d);
+    third = Math.imul(third ^ code, 0x165667b1);
+    fourth = Math.imul(fourth ^ code, 0x85ebca6b);
+  }
+  const hex = (part: number) => (part >>> 0).toString(16).padStart(8, '0');
+  return `v1:${hex(first)}${hex(second)}${hex(third)}${hex(fourth)}`;
+}

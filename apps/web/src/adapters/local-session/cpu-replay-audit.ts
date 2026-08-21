@@ -1,6 +1,6 @@
 import { CpuTurnRunner, baseBalancedCpuProfile, canonicalCommand } from '@guildmaster/game-ai';
 import { createGame, dispatch, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayRegistryFingerprint, type Ruleset } from '@guildmaster/game-engine';
-import { ReplayBundleSchema, stableJsonFingerprint, type ReplayBundle } from '@guildmaster/game-protocol';
+import { ReplayBundleSchema, stableJsonDigest, stableJsonFingerprint, type ReplayBundle } from '@guildmaster/game-protocol';
 
 export type CpuReplayAuditResult =
   | { status: 'verified' }
@@ -30,7 +30,7 @@ export function auditCpuReplay(bundle: ReplayBundle | unknown, ruleset: Ruleset)
       const actionFeatures = getCpuActionFeatures(state, ruleset, player.id);
       const decision = runner.step({ view, legalCommands, actionFeatures, definitions: ruleset.registry.definitions, bonds: ruleset.registry.bonds, rulesetFingerprint: registryFingerprint, profile: baseBalancedCpuProfile });
       if (!stored || decision.status !== 'ready') return { status: 'failed', commandId: envelope.commandId, diagnostic: decision.status === 'blocked' ? `${decision.reasonCode}: ${decision.diagnostic}` : 'Missing CPU decision.' };
-      const expected = { commandId: envelope.commandId, revision: view.revision, actorId: player.id, command: decision.command, reasonCode: decision.reasonCode, score: decision.score, scoreBreakdown: decision.scoreBreakdown, contextFingerprint: decision.contextFingerprint, legalCommandsFingerprint: stableJsonFingerprint(legalCommands), actionFeaturesFingerprint: stableJsonFingerprint(actionFeatures) };
+      const expected = { commandId: envelope.commandId, revision: view.revision, actorId: player.id, command: decision.command, reasonCode: decision.reasonCode, score: decision.score, scoreBreakdown: decision.scoreBreakdown, contextFingerprint: decision.contextFingerprint, legalCommandsFingerprint: stableJsonDigest(legalCommands), actionFeaturesFingerprint: stableJsonDigest(actionFeatures) };
       if (stableJsonFingerprint(stored) !== stableJsonFingerprint(expected) || canonicalCommand(envelope.command) !== canonicalCommand(decision.command)) return { status: 'failed', commandId: envelope.commandId, diagnostic: 'Stored CPU decision does not match canonical recomputation.' };
     }
     const result = dispatch(state, ruleset, structuredClone(envelope));

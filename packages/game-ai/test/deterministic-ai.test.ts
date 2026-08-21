@@ -3,10 +3,43 @@ import type { CpuActionFeature, GameCommand, PlayerView } from '@guildmaster/gam
 import { CpuTurnRunner, baseBalancedCpuProfile, decideCpuAction } from '../src/index.js';
 
 const view = (revision = 1) => ({ viewerId: 'cpu-1', gameId: 'g', status: 'playing', phase: 'purchase', round: 1, revision, activePlayerId: 'cpu-1' } as unknown as PlayerView);
-const feature = (command: GameCommand, values: Partial<CpuActionFeature> = {}): CpuActionFeature => ({ schemaVersion: 1, command, honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0, ...values });
+const feature = (command: GameCommand, values: Partial<CpuActionFeature> = {}): CpuActionFeature => ({ schemaVersion: 2, command, honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0, targetCombatProgress: [], ...values });
 const context = (legalCommands: GameCommand[], actionFeatures: CpuActionFeature[] = []) => ({ view: view(), legalCommands, actionFeatures, definitions: {}, rulesetFingerprint: 'rules', profile: baseBalancedCpuProfile });
 
 describe('deterministic CPU strategy', () => {
+  it('equips the participant that unlocks a public boss attack and reports the boss-progress reason', () => {
+    const equipFirst = { type: 'EQUIP_ITEM' as const, cardId: 'spear', adventurerId: 'first' };
+    const equipOther = { type: 'EQUIP_ITEM' as const, cardId: 'spear', adventurerId: 'other' };
+    const end = { type: 'END_PHASE' as const, phase: 'action1' as const };
+    const progress = (effectiveCombatAfter: number) => [{ targetId: 'boss', targetKind: 'boss', requiredCombat: 6, effectiveCombatBefore: 4, effectiveCombatAfter, shortfallBefore: 2, shortfallAfter: Math.max(0, 6 - effectiveCombatAfter), attackReadyBefore: false, attackReadyAfter: effectiveCombatAfter >= 6 }];
+    const actionView = { ...view(), phase: 'action1', self: { party: [{ adventurerId: 'first' }, { adventurerId: 'other' }], history: { defeatedBosses: 0, defeatedMonsters: 5 } }, enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss-card', kind: 'boss', status: 'available', maximumPartySlots: 1 } } } as unknown as PlayerView;
+    const input = { ...context([equipOther, equipFirst, end], [feature(equipOther, { partyCombatGain: 3, targetCombatProgress: progress(4) }), feature(equipFirst, { partyCombatGain: 3, targetCombatProgress: progress(7) })]), view: actionView };
+    const first = decideCpuAction(input);
+    const second = decideCpuAction(structuredClone(input));
+    expect(first).toMatchObject({ status: 'ready', command: equipFirst, reasonCode: 'ADVANCE_BOSS_COMBAT' });
+    expect(second).toEqual(first);
+    if (first.status === 'ready') expect(first.contextFingerprint).toMatch(/^v1:[0-9a-f]{32}$/);
+  });
+
+  it('uses utility score before canonical order when commands make equal boss progress', () => {
+    const destructive = { type: 'EQUIP_ITEM' as const, cardId: 'a-destructive', adventurerId: 'first' };
+    const safe = { type: 'EQUIP_ITEM' as const, cardId: 'z-safe', adventurerId: 'first' };
+    const end = { type: 'END_PHASE' as const, phase: 'action1' as const };
+    const progress = [{ targetId: 'boss', targetKind: 'boss', requiredCombat: 6, effectiveCombatBefore: 4, effectiveCombatAfter: 6, shortfallBefore: 2, shortfallAfter: 0, attackReadyBefore: false, attackReadyAfter: true }];
+    const actionView = { ...view(), phase: 'action1', self: { party: [{ adventurerId: 'first' }], history: { defeatedBosses: 0, defeatedMonsters: 5 } }, enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss-card', kind: 'boss', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({ ...context([destructive, safe, end], [feature(destructive, { partyCombatGain: 2, partyCombatLoss: 4, equipmentLoss: 1, targetCombatProgress: progress }), feature(safe, { partyCombatGain: 2, targetCombatProgress: progress })]), view: actionView });
+    expect(result).toMatchObject({ status: 'ready', command: safe, reasonCode: 'ADVANCE_BOSS_COMBAT' });
+  });
+
+  it('blocks obsolete action-feature inputs with a structured diagnostic', () => {
+    const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
+    const legacyRecord = structuredClone(feature(end)) as unknown as Record<string, unknown>;
+    delete legacyRecord.targetCombatProgress; legacyRecord.schemaVersion = 1;
+    const legacy = legacyRecord as unknown as CpuActionFeature;
+    expect(decideCpuAction(context([end], [legacy]))).toMatchObject({ status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE', diagnostic: expect.stringContaining('schemaVersion 2') });
+    expect(new CpuTurnRunner().step(context([end], [legacy]))).toMatchObject({ status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE' });
+  });
+
   it('returns exactly the same command, score and fingerprint for identical input', () => {
     const buy = { type: 'BUY_CARD' as const, cardId: 'card-1' };
     const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
@@ -85,7 +118,7 @@ describe('deterministic CPU strategy', () => {
       ...context([play, end], [feature(play, { partyCombatGain: 3, partyCombatLoss: 5, overflowLoss: 1 })]), view: lateGameView,
       definitions: { strong: { id: 'strong', name: 'Strong', type: 'adventurer', copies: 1, source: 'test', combat: 5 }, weak: { id: 'weak', name: 'Weak', type: 'adventurer', copies: 1, source: 'test', combat: 1 }, medium: { id: 'medium', name: 'Medium', type: 'adventurer', copies: 1, source: 'test', combat: 2 } },
     });
-    expect(boundedRotation).toMatchObject({ status: 'ready', command: play, reasonCode: 'PLAY_FOR_PARTY_POWER' });
+    expect(boundedRotation).toMatchObject({ status: 'ready', command: end, reasonCode: 'END_NO_POSITIVE_ACTION' });
     const beneficial = decideCpuAction({
       ...context([play, end], [feature(play, { partyCombatGain: 6, partyCombatLoss: 5, overflowLoss: 1 })]), view: actionView,
       definitions: { strong: { id: 'strong', name: 'Strong', type: 'adventurer', copies: 1, source: 'test', combat: 5 }, weak: { id: 'weak', name: 'Weak', type: 'adventurer', copies: 1, source: 'test', combat: 1 }, medium: { id: 'medium', name: 'Medium', type: 'adventurer', copies: 1, source: 'test', combat: 6 } },
@@ -103,6 +136,17 @@ describe('deterministic CPU strategy', () => {
       definitions: { 'boss-def': { id: 'boss-def', name: 'Boss', type: 'boss', copies: 1, source: 'test', combat: 14 }, 'honor-def': { id: 'honor-def', name: 'Honor', type: 'adventurer', copies: 1, source: 'test', honor: 5 }, 'combat-def': { id: 'combat-def', name: 'Combat', type: 'adventurer', copies: 1, source: 'test', combat: 3, honor: 1 } },
     });
     expect(result).toMatchObject({ status: 'ready', command: combatBuy, reasonCode: 'BUY_HIGHEST_UTILITY' });
+  });
+
+  it('does not force combat purchases or refreshes when public features show the boss is already attack-ready', () => {
+    const honorBuy = { type: 'BUY_CARD' as const, cardId: 'honor-card' };
+    const combatBuy = { type: 'BUY_CARD' as const, cardId: 'combat-card' };
+    const refresh = { type: 'REFRESH_MARKET' as const, row: 'item' as const, discardCardId: 'discard', refreshCardIds: ['item'] };
+    const end = { type: 'END_PHASE' as const, phase: 'purchase' as const };
+    const ready = [{ targetId: 'boss', targetKind: 'boss', requiredCombat: 6, effectiveCombatBefore: 6, effectiveCombatAfter: 6, shortfallBefore: 0, shortfallAfter: 0, attackReadyBefore: true, attackReadyAfter: true }];
+    const purchaseView = { ...view(), self: { turnCombatBonus: 0, party: [{ adventurerId: 'first' }], history: { defeatedBosses: 0, defeatedMonsters: 5 } }, enemyTargets: { boss: { targetId: 'boss', cardInstanceId: 'boss-card', kind: 'boss', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({ ...context([combatBuy, honorBuy, refresh, end], [feature(combatBuy, { partyCombatGain: 3, purchaseCost: 3, targetCombatProgress: ready }), feature(honorBuy, { honorGain: 5, purchaseCost: 3, targetCombatProgress: ready }), feature(refresh, { targetCombatProgress: ready })]), view: purchaseView });
+    expect(result).toMatchObject({ status: 'ready', command: honorBuy, reasonCode: 'BUY_HIGHEST_UTILITY' });
   });
 
   it('rotates the item market for equipment after monster progression is exhausted', () => {
