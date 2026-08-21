@@ -10,7 +10,7 @@ export type PartyCombatEvaluationResult =
   | { status: 'failed'; reason: 'INVALID_INPUT' | 'REGISTRY_VERSION_MISMATCH' | 'UNKNOWN_PLAYER' | 'UNKNOWN_TARGET' | 'INVALID_COMBAT_VALUE'; error: string }
   | { status: 'unsupported'; reason: 'ORDER_POLICY_REQUIRED'; error: string };
 
-function matches(condition: PartyCombatCondition, state: GameState, input: PartyCombatEvaluationInput, sourceIndex: number, subjectIndex: number, partySize: number): boolean {
+function matches(condition: PartyCombatCondition, state: GameState, ruleset: Ruleset, input: PartyCombatEvaluationInput, sourceIndex: number, subjectIndex: number, partySize: number): boolean {
   switch (condition.kind) {
     case 'always': return condition.value;
     case 'phase-is': return state.phase === condition.phase;
@@ -21,9 +21,15 @@ function matches(condition: PartyCombatCondition, state: GameState, input: Party
     case 'source-position-in': return condition.positions.includes(sourceIndex + 1);
     case 'subject-position-in': return condition.positions.includes(subjectIndex + 1);
     case 'party-size-at-least': return partySize >= condition.amount;
-    case 'all': return condition.conditions.every((child) => matches(child, state, input, sourceIndex, subjectIndex, partySize));
-    case 'any': return condition.conditions.some((child) => matches(child, state, input, sourceIndex, subjectIndex, partySize));
-    case 'not': return !matches(condition.condition, state, input, sourceIndex, subjectIndex, partySize);
+    case 'party-tag-count-at-least': return state.players.find(({ id }) => id === input.playerId)!.party
+      .filter(({ adventurerId }) => condition.tags.some((tag) => getDefinition(ruleset.registry, state, adventurerId).tags?.includes(tag))).length >= condition.amount;
+    case 'subject-tag-in': {
+      const subject = state.players.find(({ id }) => id === input.playerId)!.party[subjectIndex];
+      return Boolean(subject && condition.tags.some((tag) => getDefinition(ruleset.registry, state, subject.adventurerId).tags?.includes(tag)));
+    }
+    case 'all': return condition.conditions.every((child) => matches(child, state, ruleset, input, sourceIndex, subjectIndex, partySize));
+    case 'any': return condition.conditions.some((child) => matches(child, state, ruleset, input, sourceIndex, subjectIndex, partySize));
+    case 'not': return !matches(condition.condition, state, ruleset, input, sourceIndex, subjectIndex, partySize);
   }
 }
 
@@ -33,6 +39,7 @@ function targets(rule: PartyCombatModifierRule, sourceIndex: number, subjectInde
     case 'other': return subjectIndex !== sourceIndex;
     case 'first': return subjectIndex === 0 && subjectIndex !== sourceIndex;
     case 'adjacent': return Math.abs(subjectIndex - sourceIndex) === 1;
+    case 'all': return true;
   }
 }
 
@@ -58,7 +65,7 @@ export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: P
       const definition = getDefinition(ruleset.registry, state, attachmentId);
       equipmentCombat += attachmentCombat(state, ruleset, input.playerId, slot.adventurerId, attachmentId);
       if (definition.type !== 'equipment') continue;
-      const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId: input.playerId, equipmentCardId: attachmentId, adventurerId: slot.adventurerId });
+      const modifiers = evaluateEquipmentCombatModifiers(state, ruleset, { schemaVersion: 1, playerId: input.playerId, equipmentCardId: attachmentId, adventurerId: slot.adventurerId, ...(input.targetId ? { targetId: input.targetId } : {}) });
       if (modifiers.status === 'unsupported') return { status: 'unsupported', reason: 'ORDER_POLICY_REQUIRED', error: modifiers.error };
       if (modifiers.status === 'failed') return { status: 'failed', reason: modifiers.reason === 'INVALID_COMBAT_VALUE' ? 'INVALID_COMBAT_VALUE' : 'INVALID_INPUT', error: modifiers.error };
       equipmentCombat += modifiers.evaluation.powerBonus;
@@ -66,17 +73,20 @@ export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: P
     const appliedRules: PartyCombatEvaluation['members'][number]['appliedRules'][number][] = [];
     for (const rule of ordered) {
       player.party.forEach((sourceSlot, sourceIndex) => {
-        if (!rule.sourceDefinitionIds.includes(state.cards[sourceSlot.adventurerId]!.definitionId) || !targets(rule, sourceIndex, subjectIndex) || !matches(rule.when, state, input, sourceIndex, subjectIndex, player.party.length)) return;
+        if (!targets(rule, sourceIndex, subjectIndex) || !matches(rule.when, state, ruleset, input, sourceIndex, subjectIndex, player.party.length)) return;
+        const sourceCardIds = [sourceSlot.adventurerId, ...(input.equipmentSuppressed ? [] : attachedCardIds(sourceSlot))]
+          .filter((cardId) => rule.sourceDefinitionIds.includes(state.cards[cardId]!.definitionId));
         const amount = rule.amount.kind === 'fixed' ? rule.amount.value : rule.amount.value * Math.max(0, player.party.length - 1);
-        appliedRules.push({ moduleId: rule.moduleId, ruleId: rule.ruleId, sourceCardId: sourceSlot.adventurerId, amount });
+        for (const sourceCardId of sourceCardIds) appliedRules.push({ moduleId: rule.moduleId, ruleId: rule.ruleId, sourceCardId, amount });
       });
     }
     const printedCombat = adventurer.combat ?? 0;
     const modifierCombat = appliedRules.reduce((sum, rule) => sum + rule.amount, 0);
-    const subtotal = Math.max(0, printedCombat + equipmentCombat + modifierCombat);
+    const turnBonus = state.turnFacts?.playerId === input.playerId ? state.turnFacts.partyCombatBonuses?.find(({ definitionId }) => definitionId === adventurer.id)?.amount ?? 0 : 0;
+    const subtotal = Math.max(0, printedCombat + equipmentCombat + modifierCombat + turnBonus);
     const multiplier = state.turnFacts?.playerId === input.playerId ? state.turnFacts.partyCombatMultipliers?.find(({ definitionId }) => definitionId === adventurer.id) : undefined;
     const effectiveCombat = multiplier ? Math.floor(subtotal * multiplier.numerator / multiplier.denominator) : subtotal;
-    if (![printedCombat, equipmentCombat, modifierCombat, effectiveCombat].every(Number.isSafeInteger)) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Party combat overflowed for ${slot.adventurerId}.` };
+    if (![printedCombat, equipmentCombat, modifierCombat, turnBonus, effectiveCombat].every(Number.isSafeInteger)) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Party combat overflowed for ${slot.adventurerId}.` };
     members.push({ adventurerId: slot.adventurerId, ...(attachmentIds.length === 1 ? { equipmentId: attachmentIds[0] } : {}), ...(attachmentIds.length > 1 ? { equipmentIds: attachmentIds } : {}), printedCombat, equipmentCombat, modifierCombat, effectiveCombat, appliedRules });
   }
   return { status: 'ready', evaluation: { schemaVersion: 1, members, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } } };

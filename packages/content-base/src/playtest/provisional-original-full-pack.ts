@@ -4,15 +4,15 @@ import { baseProvisionalFoundationContentPack } from './provisional-foundation-p
 const source = 'provisional-original-full-playtest';
 const pad = (value: number) => String(value).padStart(2, '0');
 const disabled = ['playtest:effects-disabled', 'project-policy:digital-copy-count'];
-const enabledFoundationIds = new Set(['resource-01', 'resource-02', 'resource-03', 'resource-04', 'resource-05', 'resource-06', 'resource-07', 'resource-08', 'resource-10', 'resource-12', 'resource-13', 'resource-14', 'resource-15', 'resource-16', 'resource-17', 'resource-18', 'resource-19', 'resource-20', 'resource-21', 'resource-23', 'resource-24', 'resource-25', 'resource-26', 'resource-27', 'resource-28']);
-const enabledAdventurerRuleIds = new Set(['adventurer-01', 'adventurer-02', 'adventurer-04', 'adventurer-05', 'adventurer-06', 'adventurer-07', 'adventurer-08', 'adventurer-09', 'adventurer-10', 'adventurer-11', 'adventurer-12', 'adventurer-13', 'adventurer-14', 'adventurer-15', 'adventurer-16', 'adventurer-17', 'adventurer-18', 'adventurer-19', 'adventurer-20', 'adventurer-21', 'adventurer-22', 'adventurer-23', 'adventurer-24', 'adventurer-25', 'adventurer-26', 'adventurer-27', 'adventurer-28', 'adventurer-29', 'adventurer-30']);
+const enabledFoundationIds = new Set(['resource-01', 'resource-02', 'resource-03', 'resource-04', 'resource-05', 'resource-06', 'resource-07', 'resource-08', 'resource-09', 'resource-10', 'resource-11', 'resource-12', 'resource-13', 'resource-14', 'resource-15', 'resource-16', 'resource-17', 'resource-18', 'resource-19', 'resource-20', 'resource-21', 'resource-22', 'resource-23', 'resource-24', 'resource-25', 'resource-26', 'resource-27', 'resource-28']);
+const enabledAdventurerRuleIds = new Set(['adventurer-01', 'adventurer-02', 'adventurer-03', 'adventurer-04', 'adventurer-05', 'adventurer-06', 'adventurer-07', 'adventurer-08', 'adventurer-09', 'adventurer-10', 'adventurer-11', 'adventurer-12', 'adventurer-13', 'adventurer-14', 'adventurer-15', 'adventurer-16', 'adventurer-17', 'adventurer-18', 'adventurer-19', 'adventurer-20', 'adventurer-21', 'adventurer-22', 'adventurer-23', 'adventurer-24', 'adventurer-25', 'adventurer-26', 'adventurer-27', 'adventurer-28', 'adventurer-29', 'adventurer-30']);
 const enabledAdventurerRestrictionIds = new Set(['adventurer-02']);
 const enabledEquipmentEligibilityResourceIds = new Set(['resource-14', 'resource-16', 'resource-19']);
 const enabledAdventurerModifierIds = new Set(['adventurer-09']);
-const enabledPartyCombatModifierIds = new Set(['adventurer-04', 'adventurer-10', 'adventurer-14', 'adventurer-15', 'adventurer-20', 'adventurer-24', 'adventurer-27']);
+const enabledPartyCombatModifierIds = new Set(['adventurer-04', 'adventurer-10', 'adventurer-14', 'adventurer-15', 'adventurer-20', 'adventurer-24', 'adventurer-27', 'resource-11']);
 const enabledPurchaseCostModifierIds = new Set(['adventurer-05']);
 const enabledEquipmentDepartureIds = new Set(['resource-12', 'resource-14', 'resource-24']);
-const enabledLifecycleIds = new Set(['adventurer-01', 'adventurer-06', 'adventurer-07', 'adventurer-08', 'adventurer-11', 'adventurer-12', 'adventurer-13', 'adventurer-14', 'adventurer-16', 'adventurer-17', 'adventurer-18', 'adventurer-23', 'adventurer-26', 'adventurer-28', 'adventurer-30', 'resource-16', 'resource-19', 'resource-20', 'resource-21']);
+const enabledLifecycleIds = new Set(['adventurer-01', 'adventurer-03', 'adventurer-06', 'adventurer-07', 'adventurer-08', 'adventurer-11', 'adventurer-12', 'adventurer-13', 'adventurer-14', 'adventurer-16', 'adventurer-17', 'adventurer-18', 'adventurer-23', 'adventurer-26', 'adventurer-28', 'adventurer-30', 'resource-16', 'resource-19', 'resource-20', 'resource-21']);
 const enabledMonsterRewardIds = new Set(['monster-01', 'monster-02', 'monster-03', 'monster-04', 'monster-05', 'monster-06', 'monster-07', 'monster-08', 'monster-09', 'monster-10', 'monster-11', 'monster-12', 'monster-13', 'monster-14']);
 const enabledBossRuleIds = new Set(['boss-01', 'boss-02', 'boss-03', 'boss-04', 'boss-05', 'boss-06', 'boss-07', 'boss-08', 'boss-09', 'boss-10', 'boss-11']);
 const publicRowBossRewardIds = new Set(['boss-01', 'boss-05', 'boss-08', 'boss-11']);
@@ -54,7 +54,7 @@ const lifecycleChoiceMetadata = new Map<string, readonly PlayerDecisionKind[]>([
   ['resource-16', ['discard-card']],
   ['resource-20', ['discard-card']],
 ]);
-const enabledEquipmentModifierIds = new Set(['resource-02', 'resource-03', 'resource-07', 'resource-25']);
+const enabledEquipmentModifierIds = new Set(['resource-02', 'resource-03', 'resource-07', 'resource-09', 'resource-25']);
 const foundationById = new Map(baseProvisionalFoundationContentPack.definitions.map((definition) => [definition.id, definition]));
 
 const starters: CardDefinition[] = [
@@ -111,6 +111,19 @@ const resources: CardDefinition[] = resourceStats.map(([type, cost, combat, hono
         { kind: 'draw', player: { kind: 'controller' }, count: { kind: 'card-stat', card: { kind: 'context-card', key: 'resource28Adventurer' }, stat: 'combat' } },
       ] },
     },
+  } : suffix === 'resource-22' ? {
+    schemaVersion: 1,
+    effectId: 'base:provisional-original-full-rules/resource-22-use',
+    body: {
+      kind: 'choose-card',
+      choiceId: 'base:resource/resource-22-target-monster',
+      decisionKind: 'choose-enemy-target',
+      actor: { kind: 'controller' },
+      from: { kind: 'shared-zone', zoneId: 'base:monster-row' },
+      predicate: { kind: 'definition-type-in', values: ['monster'] },
+      selectedCardKey: 'resource22Target',
+      effect: { kind: 'add-temporary-target-combat-modifier', modifierId: 'resource-22-monster-penalty', moduleId: 'base:rules', targetCard: { kind: 'context-card', key: 'resource22Target' }, amount: -1, expires: 'turn-end' },
+    },
   } : undefined;
   const useEffect = effectEnabled ? audited?.useEffect ?? localUseEffect : undefined;
   return {
@@ -144,7 +157,7 @@ const bosses: CardDefinition[] = bossStats.map(([combat, purchasePower, honor], 
 const bondHonor = [4,4,3,3,3,3,4,4,4,4,5,5,4,6,5,5,7,5,5,5,5,4,6,3,4,4,4,4,4,4];
 
 export const baseProvisionalOriginalFullContentPack: ContentPack = {
-  manifest: { id: 'base:provisional-original-full', version: '0.18.0', hash: 'base-provisional-original-full-v19-complete-audited-effects', role: 'base', contentStatus: 'provisional-playtest' },
+  manifest: { id: 'base:provisional-original-full', version: '0.20.0', hash: 'base-provisional-original-full-v21-all-base-card-effects-enabled', role: 'base', contentStatus: 'provisional-playtest' },
   definitions: [...starters, ...adventurers, ...resources, ...monsters, ...bosses],
   starter: { partyDefinitionIds: starters.slice(0, 5).map(({ id }) => id), summonStoneDefinitionId: 'base:starter/summoning-stone', crystalDefinitionId: 'base:starter/spirit-crystal' },
   bonds: bondHonor.map((honor, index) => ({ id: `base:bond/bond-${pad(index + 1)}`, name: `候選羈絆 ${pad(index + 1)}`, honor, requiredBosses: 99 })),
@@ -175,6 +188,8 @@ function effectChoices(node: EffectNode, path = '$'): { path: string; decisionKi
 
 const definitionCapabilities = baseProvisionalOriginalFullContentPack.definitions.map((definition): FullProvisionalCapabilityEntry => {
   const enabled = definition.tags?.includes('playtest:effect-enabled') ?? false;
+  const hasNoIndividualEffect = definition.id.startsWith('base:starter/');
+  const complete = enabled || hasNoIndividualEffect;
   const suffix = definition.id.split('/').at(-1) ?? '';
   const usesCombatRewardPolicy = (definition.type === 'monster' && enabledMonsterRewardIds.has(suffix)) || (definition.type === 'boss' && enabledBossRuleIds.has(suffix));
   const usesLifecycle = enabledLifecycleIds.has(suffix);
@@ -186,8 +201,8 @@ const definitionCapabilities = baseProvisionalOriginalFullContentPack.definition
   const usesPrivateDeckOrder = definition.id === 'base:adventurer/adventurer-11';
   const usesParticipantDeparture = definition.id === 'base:boss/boss-02';
   const usesDepartureReplacement = definition.id === 'base:adventurer/adventurer-19' || definition.id === 'base:adventurer/adventurer-21';
-  const usesDice = definition.id === 'base:monster/monster-02' || definition.id === 'base:adventurer/adventurer-23';
-  const usesTemporaryTargetModifier = definition.id === 'base:adventurer/adventurer-08' || definition.id === 'base:adventurer/adventurer-23';
+  const usesDice = definition.id === 'base:monster/monster-02' || definition.id === 'base:adventurer/adventurer-03' || definition.id === 'base:adventurer/adventurer-23';
+  const usesTemporaryTargetModifier = definition.id === 'base:adventurer/adventurer-08' || definition.id === 'base:adventurer/adventurer-23' || definition.id === 'base:resource/resource-22';
   const usesTurnEffectLedger = definition.id === 'base:resource/resource-23' || definition.id === 'base:resource/resource-26';
   const usesDiscardRedirect = definition.id === 'base:resource/resource-06';
   const usesAttachment = ['base:adventurer/adventurer-22', 'base:adventurer/adventurer-25', 'base:adventurer/adventurer-29'].includes(definition.id);
@@ -195,7 +210,7 @@ const definitionCapabilities = baseProvisionalOriginalFullContentPack.definition
   const usesEquipmentEligibility = definition.type === 'adventurer' && enabledAdventurerRestrictionIds.has(suffix)
     || definition.type === 'equipment' && enabledEquipmentEligibilityResourceIds.has(suffix);
   const usesEquipmentCombatModifier = (definition.type === 'equipment' && enabledEquipmentModifierIds.has(suffix)) || (definition.type === 'adventurer' && enabledAdventurerModifierIds.has(suffix));
-  const usesPartyCombatModifier = definition.type === 'adventurer' && enabledPartyCombatModifierIds.has(suffix);
+  const usesPartyCombatModifier = (definition.type === 'adventurer' || definition.type === 'equipment') && enabledPartyCombatModifierIds.has(suffix);
   const usesPurchaseCostModifier = definition.type === 'adventurer' && enabledPurchaseCostModifierIds.has(suffix);
   const usesEquipmentDeparture = definition.type === 'equipment' && enabledEquipmentDepartureIds.has(suffix);
   const roots = [definition.useEffect?.body, ...(definition.equipmentEventTriggers ?? []).map(({ effect }) => effect.body)].filter((node): node is EffectNode => node !== undefined);
@@ -207,8 +222,10 @@ const definitionCapabilities = baseProvisionalOriginalFullContentPack.definition
     ...(usesDepartureReplacement ? [{ path: '$rules.combatDepartureReplacement[0]', decisionKind: 'choose-party-member' as const }] : []),
   ];
   const hasChoice = choices.length > 0;
-  const requiredCapabilities = enabled
-    ? ['snapshot-continuation', ...(usesCombatRule ? ['combat-evaluator'] : []), ...(usesCombatRewardPolicy ? ['effect-ast', 'combat-reward-policy'] : []), ...(usesParticipantDeparture ? ['combat-participant-departure-policy'] : []), ...(usesDepartureReplacement ? ['combat-departure-replacement-policy'] : []), ...(usesDiscardRedirect ? ['discard-redirect-policy'] : []), ...(usesAttachment ? ['attachment-policy'] : []), ...(usesEnemyAttachment ? ['enemy-attachment-policy'] : []), ...(usesPublicRowChoice ? ['public-row-card-choice'] : []), ...(usesSharedDeckDraw ? ['shared-deck-draw'] : []), ...(usesPrivateDeckOrder ? ['private-deck-order'] : []), ...(usesTurnEffectLedger ? ['turn-fact-ledger'] : []), ...(usesDice ? ['dice-roll'] : []), ...(usesTemporaryTargetModifier ? ['temporary-target-modifier', 'combat-evaluator'] : []), ...(usesEquipmentEligibility ? ['equipment-eligibility'] : []), ...(usesEquipmentCombatModifier ? ['equipment-combat-modifier'] : []), ...(usesEquipmentDeparture ? ['equipment-departure-policy'] : []), ...(usesPartyCombatModifier ? ['party-combat-modifier'] : []), ...(usesPurchaseCostModifier ? ['purchase-cost-modifier'] : []), ...(!usesCombatRewardPolicy && !usesCombatRule && !usesAttachment && !usesEnemyAttachment && !usesEquipmentEligibility && !usesEquipmentCombatModifier && !usesEquipmentDeparture && !usesPartyCombatModifier && !usesPurchaseCostModifier && !usesDepartureReplacement ? ['effect-ast'] : []), ...(definition.equipmentEventTriggers ? ['equipment-event-lifecycle'] : []), ...(usesLifecycle ? ['lifecycle-source-activation'] : []), ...(hasChoice ? ['typed-player-view-choice'] : [])]
+  const requiredCapabilities = hasNoIndividualEffect
+    ? ['snapshot-continuation']
+    : enabled
+      ? ['snapshot-continuation', ...(usesCombatRule ? ['combat-evaluator'] : []), ...(usesCombatRewardPolicy ? ['effect-ast', 'combat-reward-policy'] : []), ...(usesParticipantDeparture ? ['combat-participant-departure-policy'] : []), ...(usesDepartureReplacement ? ['combat-departure-replacement-policy'] : []), ...(usesDiscardRedirect ? ['discard-redirect-policy'] : []), ...(usesAttachment ? ['attachment-policy'] : []), ...(usesEnemyAttachment ? ['enemy-attachment-policy'] : []), ...(usesPublicRowChoice ? ['public-row-card-choice'] : []), ...(usesSharedDeckDraw ? ['shared-deck-draw'] : []), ...(usesPrivateDeckOrder ? ['private-deck-order'] : []), ...(usesTurnEffectLedger ? ['turn-fact-ledger'] : []), ...(usesDice ? ['dice-roll'] : []), ...(usesTemporaryTargetModifier ? ['temporary-target-modifier', 'combat-evaluator'] : []), ...(usesEquipmentEligibility ? ['equipment-eligibility'] : []), ...(usesEquipmentCombatModifier ? ['equipment-combat-modifier'] : []), ...(usesEquipmentDeparture ? ['equipment-departure-policy'] : []), ...(usesPartyCombatModifier ? ['party-combat-modifier'] : []), ...(usesPurchaseCostModifier ? ['purchase-cost-modifier'] : []), ...(!usesCombatRewardPolicy && !usesCombatRule && !usesAttachment && !usesEnemyAttachment && !usesEquipmentEligibility && !usesEquipmentCombatModifier && !usesEquipmentDeparture && !usesPartyCombatModifier && !usesPurchaseCostModifier && !usesDepartureReplacement ? ['effect-ast'] : []), ...(definition.equipmentEventTriggers ? ['equipment-event-lifecycle'] : []), ...(usesLifecycle ? ['lifecycle-source-activation'] : []), ...(hasChoice ? ['typed-player-view-choice'] : [])]
     : [];
   return {
     contentId: definition.id,
@@ -224,13 +241,15 @@ const definitionCapabilities = baseProvisionalOriginalFullContentPack.definition
           : definition.type === 'item' || definition.type === 'equipment'
             ? 'project-policy:59-card-distribution'
             : 'visual-provisional',
-    effectStatus: enabled ? 'enabled' : 'blocked',
+    effectStatus: complete ? 'enabled' : 'blocked',
     requiredCapabilities,
     decisionKinds: choices.flatMap(({ decisionKind }) => decisionKind ? [decisionKind] : []),
     effectPaths: choices.map(({ path }) => path),
-    cpuResolver: enabled ? (hasChoice ? 'base:cpu-balanced/effect-card-choice' : 'base:cpu-balanced/legal-command-scoring') : 'none-effect-disabled',
-    testIds: enabled ? [...new Set([usesCombatRewardPolicy ? 'engine:combat-reward-policy' : 'content:provisional-foundation-pack', ...(usesParticipantDeparture ? ['engine:combat-participant-departure-policy'] : []), ...(usesDepartureReplacement ? ['engine:combat-departure-replacement-policy'] : []), ...(usesAttachment ? ['engine:attachment-policy'] : []), ...(usesEnemyAttachment ? ['engine:enemy-attachment-policy'] : []), ...(usesEquipmentEligibility ? ['engine:equipment-eligibility'] : []), ...(usesEquipmentCombatModifier ? ['engine:equipment-combat-modifier'] : []), ...(usesEquipmentDeparture ? ['engine:equipment-departure-policy'] : []), ...(usesPartyCombatModifier ? ['engine:party-combat-modifier'] : []), ...(usesPurchaseCostModifier ? ['engine:purchase-cost-modifier'] : []), definition.equipmentEventTriggers ? 'engine:post-command-pipeline' : usesCombatRewardPolicy || usesAttachment || usesEnemyAttachment || usesEquipmentEligibility || usesEquipmentCombatModifier || usesEquipmentDeparture || usesPartyCombatModifier || usesPurchaseCostModifier || usesDepartureReplacement ? 'content:provisional-original-full-rules' : 'engine:card-use-effect', ...(usesDice ? ['engine:dice-roll'] : []), hasChoice ? 'cpu:deterministic-choice' : 'cpu:deterministic-legal-scoring'])] : ['content:provisional-original-full-roster'],
-    ...(!enabled ? { blocker: 'unverified-effect-semantics' as const } : {}),
+    cpuResolver: complete ? (hasChoice ? 'base:cpu-balanced/effect-card-choice' : 'base:cpu-balanced/legal-command-scoring') : 'none-effect-disabled',
+    testIds: hasNoIndividualEffect
+      ? ['content:provisional-original-full-roster', 'engine:bond-setup', 'cpu:deterministic-legal-scoring']
+      : enabled ? [...new Set([usesCombatRewardPolicy ? 'engine:combat-reward-policy' : 'content:provisional-foundation-pack', ...(usesParticipantDeparture ? ['engine:combat-participant-departure-policy'] : []), ...(usesDepartureReplacement ? ['engine:combat-departure-replacement-policy'] : []), ...(usesAttachment ? ['engine:attachment-policy'] : []), ...(usesEnemyAttachment ? ['engine:enemy-attachment-policy'] : []), ...(usesEquipmentEligibility ? ['engine:equipment-eligibility'] : []), ...(usesEquipmentCombatModifier ? ['engine:equipment-combat-modifier'] : []), ...(usesEquipmentDeparture ? ['engine:equipment-departure-policy'] : []), ...(usesPartyCombatModifier ? ['engine:party-combat-modifier'] : []), ...(usesPurchaseCostModifier ? ['engine:purchase-cost-modifier'] : []), definition.equipmentEventTriggers ? 'engine:post-command-pipeline' : usesCombatRewardPolicy || usesAttachment || usesEnemyAttachment || usesEquipmentEligibility || usesEquipmentCombatModifier || usesEquipmentDeparture || usesPartyCombatModifier || usesPurchaseCostModifier || usesDepartureReplacement ? 'content:provisional-original-full-rules' : 'engine:card-use-effect', ...(usesDice ? ['engine:dice-roll'] : []), hasChoice ? 'cpu:deterministic-choice' : 'cpu:deterministic-legal-scoring'])] : ['content:provisional-original-full-roster'],
+    ...(!complete ? { blocker: 'unverified-effect-semantics' as const } : {}),
   };
 });
 

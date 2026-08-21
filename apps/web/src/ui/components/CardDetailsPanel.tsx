@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
 import { CardIcon } from '../cards/card-icons.js';
 import { ActionPreviewPanel } from './ActionPreviewPanel.js';
-import { CardFace } from './Card.js';
+import { CardPresentationImage } from './CardPresentationImage.js';
 
 type Props = {
   card: CardVisualViewModel | undefined;
@@ -63,49 +63,46 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
     }}
   >
     {card ? <article className="card-details" data-testid="card-details">
-      <header className="card-details-header">
-        <div>
-          <p className="card-details-type">{card.cardTypeLabel}</p>
-          <h2 id="card-details-title">{card.displayName}</h2>
+      <div className="card-details-visual" data-testid="card-details-visual">
+        <div className="card-details-art" data-asset-key={card.art.key}>
+          <CardPresentationImage
+            art={card.art}
+            sizes="(max-width: 767px) 100vw, min(46vw, 480px)"
+            placeholderAccessible
+          />
         </div>
-        <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={close}>×</button>
-      </header>
-      <div className="card-details-body">
-        <div
-          className={`card game-card card-details-art card-${card.template}`}
-          data-card-type={card.cardType}
-          data-card-appearance={card.appearance}
-          data-profession={card.profession}
-        >
-          <CardFace card={card} showState={false} sizes="(max-width: 767px) 112px, 252px" placeholderAccessible />
-        </div>
-        <p className="card-details-copy">{card.detailDisplayText}</p>
-        {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
-          {card.detailMetrics.map((metric) => <div key={metric.kind}>
-            <dt><CardIcon iconKey={metric.iconKey} /> {metric.label}</dt>
-            <dd>{metric.value}</dd>
-          </div>)}
-        </dl> : null}
-        {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
-        <div className="card-details-meta">
-          {card.publicTags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
-            {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
-          </div> : null}
-          <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
-        </div>
-        {card.debugTags.length > 0 ? <details className="card-details-debug">
-          <summary>開發者資訊</summary>
-          <div className="card-debug-tags" aria-label="原始卡牌標籤">
-            {card.debugTags.map((tag) => <code key={tag}>{tag}</code>)}
-          </div>
-        </details> : null}
       </div>
-      <footer className="card-details-footer">
-        {card.action?.kind === 'action-menu'
-          ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
-          : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
-        <button type="button" onClick={close}>關閉</button>
-      </footer>
+      <div className="card-details-content">
+        <header className="card-details-header">
+          <div>
+            <p className="card-details-type">{card.cardTypeLabel}</p>
+            <h2 id="card-details-title">{card.displayName}</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={close}>×</button>
+        </header>
+        <div className="card-details-body">
+          <p className="card-details-copy">{card.detailDisplayText}</p>
+          {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
+            {card.detailMetrics.map((metric) => <div key={metric.kind}>
+              <dt><CardIcon iconKey={metric.iconKey} /> {metric.label}</dt>
+              <dd>{metric.value}</dd>
+            </div>)}
+          </dl> : null}
+          {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
+          <div className="card-details-meta">
+            {card.publicTags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
+              {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
+            </div> : null}
+            <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
+          </div>
+        </div>
+        <footer className="card-details-footer">
+          {card.action?.kind === 'action-menu'
+            ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
+            : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
+          <button type="button" onClick={close}>關閉</button>
+        </footer>
+      </div>
     </article> : null}
   </dialog>;
 }

@@ -6,6 +6,7 @@ import { evaluatePartyCombat } from '../rules/party-combat-modifier-evaluator.js
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
 import { attachedCardIds } from '../model/attachments.js';
+import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 
 function projectPublicParty(state: GameState, ruleset: Ruleset, player: GameState['players'][number]) {
   const combat = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: player.id });
@@ -36,9 +37,14 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
     if (combat.status !== 'ready') throw new Error(`Cannot project public enemy combat: ${combat.reason}: ${combat.error}`);
     return [targetId, { ...structuredClone(target), effectiveCombat: combat.evaluation.requiredCombat, combatEligible: combat.evaluation.eligible, combatRestrictionReasonCodes: [...combat.evaluation.restrictionReasonCodes], equipmentSuppressed: combat.evaluation.equipmentSuppressed, equipmentSuppressionReasonCodes: [...combat.evaluation.equipmentSuppressionReasonCodes], ...(combat.evaluation.maximumPartySlots ? { maximumPartySlots: combat.evaluation.maximumPartySlots } : {}), ...(combat.evaluation.participantLimitReasonCode ? { participantLimitReasonCode: combat.evaluation.participantLimitReasonCode } : {}) }];
   }));
+  const bondEvaluations = player.bonds.map(({ bondId }) => {
+    const result = evaluateBondCondition(state, ruleset, player.id, bondId);
+    if (result.status !== 'ready') throw new Error(`Cannot project bond evaluation ${bondId}: ${result.reason}: ${result.error}`);
+    return { bondId, satisfied: result.evaluation.satisfied, appliedRules: structuredClone(result.evaluation.appliedRules) };
+  });
   return {
     viewerId, gameId: state.gameId, status: state.status, phase: state.phase, round: state.round, revision: state.revision, activePlayerId: state.activePlayerId,
-    self: { ...visibleSelf, drawPileCount: drawPile.length }, partyLimit: getPartyLimit(ruleset, state, player),
+    self: { ...visibleSelf, drawPileCount: drawPile.length }, partyLimit: getPartyLimit(ruleset, state, player), bondEvaluations,
     opponents: state.players.filter((candidate) => candidate.id !== viewerId).map((candidate) => {
       const party = opponentParties.get(candidate.id)!;
       return { id: candidate.id, name: candidate.name, kind: candidate.kind, seatIndex: state.players.findIndex(({ id }) => id === candidate.id), isActive: candidate.id === state.activePlayerId, handCount: candidate.hand.length, partyCount: candidate.party.length, discardCount: candidate.discardPile.length, partyCombat: party.reduce((sum, member) => sum + member.effectiveCombat, 0), party, defeatedBosses: candidate.history.defeatedBosses, defeatedMonsters: candidate.history.defeatedMonsters, bonds: structuredClone(candidate.bonds.filter(({ completed }) => completed)), counters: structuredClone(candidate.counters.filter(({ visibility }) => visibility === 'public')) };

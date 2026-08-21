@@ -41,7 +41,7 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
-test('card frame stays rectangular with a thin fixed outer border in compact, desktop, and details sizes', async ({ page }) => {
+test('card frame stays rectangular while details use an artwork-only visual pane', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openGame(page);
   const compactCard = page.getByTestId('hand').getByRole('button').first();
@@ -56,10 +56,11 @@ test('card frame stays rectangular with a thin fixed outer border in compact, de
   expect((await desktopCard.boundingBox())?.width).toBeCloseTo(86, 0);
 
   await desktopCard.click();
-  const detailsCard = page.locator('.card-details-art');
-  await expect(detailsCard).toHaveCSS('border-radius', '10px');
-  await expect(detailsCard).toHaveCSS('border-top-width', '1px');
-  expect((await detailsCard.boundingBox())?.width).toBeCloseTo(252, 0);
+  const visual = page.getByTestId('card-details-visual');
+  await expect(visual).toBeVisible();
+  await expect(visual.locator('.game-card__nameplate')).toHaveCount(0);
+  await expect(visual.locator('.game-card__rules')).toHaveCount(0);
+  await expect(visual.locator('.card-details-art')).toHaveCSS('overflow', 'hidden');
 });
 
 for (const viewport of [
@@ -151,22 +152,32 @@ test('Replay diagnostics are collapsed by default and keyboard operable', async 
   await expect(diagnostics).not.toHaveAttribute('open', '');
 });
 
-test('card details use a bottom sheet in portrait and a side sheet in landscape', async ({ page }) => {
+test('card details stay centered and adapt from stacked portrait to split landscape layout', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openGame(page);
   await page.getByTestId('hand').getByRole('button').first().click();
 
-  const portraitBox = await page.getByRole('dialog').boundingBox();
-  expect(portraitBox?.width).toBeCloseTo(390, 0);
-  expect((portraitBox?.y ?? 0) + (portraitBox?.height ?? 0)).toBeCloseTo(844, 0);
+  const dialog = page.getByRole('dialog');
+  const portraitBox = await dialog.boundingBox();
+  const portraitVisual = await dialog.locator('.card-details-visual').boundingBox();
+  const portraitContent = await dialog.locator('.card-details-content').boundingBox();
+  expect(portraitBox?.width).toBeCloseTo(374, 0);
+  expect(portraitBox?.height).toBeCloseTo(828, 0);
+  expect(portraitBox?.x).toBeCloseTo(8, 0);
+  expect(portraitBox?.y).toBeCloseTo(8, 0);
+  expect((portraitVisual?.y ?? 0) + (portraitVisual?.height ?? 0)).toBeLessThanOrEqual((portraitContent?.y ?? 0) + 1);
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
 
   await page.setViewportSize({ width: 844, height: 390 });
   await page.getByTestId('hand').getByRole('button').first().click();
   const landscapeBox = await page.getByRole('dialog').boundingBox();
-  expect((landscapeBox?.x ?? 0) + (landscapeBox?.width ?? 0)).toBeCloseTo(844, 0);
-  expect(landscapeBox?.height).toBeCloseTo(390, 0);
-  expect(landscapeBox?.width).toBeLessThan(844);
+  const landscapeVisual = await dialog.locator('.card-details-visual').boundingBox();
+  const landscapeContent = await dialog.locator('.card-details-content').boundingBox();
+  expect(landscapeBox?.x).toBeCloseTo(8, 0);
+  expect(landscapeBox?.y).toBeCloseTo(8, 0);
+  expect(landscapeBox?.width).toBeCloseTo(828, 0);
+  expect(landscapeBox?.height).toBeCloseTo(374, 0);
+  expect((landscapeVisual?.x ?? 0) + (landscapeVisual?.width ?? 0)).toBeLessThanOrEqual((landscapeContent?.x ?? 0) + 1);
 });
 
 test('encounter and tavern areas stay simultaneously visible without tab semantics or game mutations', async ({ page }) => {
@@ -192,7 +203,7 @@ for (const viewport of [
   { width: 1366, height: 768 },
   { width: 844, height: 500 },
 ]) {
-  test(`card details keep header, scrolling body, and footer separate at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`card details keep artwork and scrolling copy in separate regions at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await openGame(page);
     await page.getByTestId('hand').getByRole('button').first().click();
@@ -201,11 +212,15 @@ for (const viewport of [
     const header = dialog.locator('.card-details-header');
     const body = dialog.locator('.card-details-body');
     const footer = dialog.locator('.card-details-footer');
-    const [dialogBox, headerBox, bodyBox, footerBox] = await Promise.all([
+    const visual = dialog.locator('.card-details-visual');
+    const content = dialog.locator('.card-details-content');
+    const [dialogBox, headerBox, bodyBox, footerBox, visualBox, contentBox] = await Promise.all([
       dialog.boundingBox(),
       header.boundingBox(),
       body.boundingBox(),
       footer.boundingBox(),
+      visual.boundingBox(),
+      content.boundingBox(),
     ]);
 
     expect(headerBox?.y).toBeGreaterThanOrEqual(dialogBox?.y ?? 0);
@@ -213,13 +228,19 @@ for (const viewport of [
     expect((bodyBox?.y ?? 0) + (bodyBox?.height ?? 0)).toBeLessThanOrEqual((footerBox?.y ?? 0) + 1);
     expect((footerBox?.y ?? 0) + (footerBox?.height ?? 0)).toBeLessThanOrEqual((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0) + 1);
     await expect(body).toHaveCSS('overflow-y', 'auto');
+    await expect(visual.locator('.game-card__nameplate')).toHaveCount(0);
+    await expect(visual.locator('.game-card__rules')).toHaveCount(0);
 
-    if (viewport.width < 768 && viewport.height >= 500) {
-      expect(dialogBox?.width).toBeCloseTo(viewport.width, 0);
-      expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeCloseTo(viewport.height, 0);
+    if (viewport.width < 768 && viewport.height > 500) {
+      expect((visualBox?.y ?? 0) + (visualBox?.height ?? 0)).toBeLessThanOrEqual((contentBox?.y ?? 0) + 1);
     } else {
-      expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeCloseTo(viewport.width, 0);
+      expect((visualBox?.x ?? 0) + (visualBox?.width ?? 0)).toBeLessThanOrEqual((contentBox?.x ?? 0) + 1);
     }
+
+    expect(dialogBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect(dialogBox?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width + 1);
+    expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeLessThanOrEqual(viewport.height + 1);
 
     for (const button of await footer.getByRole('button').all()) {
       const buttonBox = await button.boundingBox();

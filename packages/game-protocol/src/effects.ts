@@ -53,6 +53,7 @@ export type EffectNode =
   | { kind: 'record-turn-effect-use'; player: EffectPlayerRef; usageId: string; maxUses: number }
   | { kind: 'skip-combat-this-turn'; player: EffectPlayerRef }
   | { kind: 'add-turn-enemy-card-purchase-bonus'; player: EffectPlayerRef; amount: number }
+  | { kind: 'add-turn-card-combat-bonus'; player: EffectPlayerRef; definitionId: string; amount: number }
   | { kind: 'set-turn-card-combat-multiplier'; player: EffectPlayerRef; definitionId: string; numerator: number; denominator: number; rounding: 'floor' }
   | { kind: 'repeat-item-use-effect'; card: EffectCardRef; player: EffectPlayerRef; times: number }
   | { kind: 'repeat-discard-hand-for-combat'; choiceId: string; actor: EffectPlayerRef; player: EffectPlayerRef; amountPerCard: number; stopOptionId: string }
@@ -246,6 +247,7 @@ export const EffectNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('record-turn-effect-use'), player: playerRefSchema, usageId: nonEmpty, maxUses: z.number().finite().int().positive() }).strict(),
   z.object({ kind: z.literal('skip-combat-this-turn'), player: playerRefSchema }).strict(),
   z.object({ kind: z.literal('add-turn-enemy-card-purchase-bonus'), player: playerRefSchema, amount: z.number().finite().int() }).strict(),
+  z.object({ kind: z.literal('add-turn-card-combat-bonus'), player: playerRefSchema, definitionId: canonicalPredicateValue, amount: z.number().finite().int() }).strict(),
   z.object({ kind: z.literal('set-turn-card-combat-multiplier'), player: playerRefSchema, definitionId: canonicalPredicateValue, numerator: z.number().finite().int().positive(), denominator: z.number().finite().int().positive(), rounding: z.literal('floor') }).strict(),
   z.object({ kind: z.literal('repeat-item-use-effect'), card: cardRefSchema, player: playerRefSchema, times: z.number().finite().int().min(2).max(4) }).strict(),
   z.object({ kind: z.literal('repeat-discard-hand-for-combat'), choiceId: nonEmpty, actor: playerRefSchema, player: playerRefSchema, amountPerCard: z.number().finite().int().positive(), stopOptionId: nonEmpty }).strict(),

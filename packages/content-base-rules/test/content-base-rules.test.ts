@@ -1,5 +1,5 @@
 import { baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base/runtime';
-import { applyEnemyEntryAttachment, attachedCardIds, baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateAttachment, evaluateBondCondition, evaluateCombat, evaluateEquipmentCombatModifiers, evaluateEquipmentDeparture, evaluateEquipmentEligibility, evaluatePartyCombat, evaluatePurchaseCost, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getPurchasePower, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
+import { applyEnemyEntryAttachment, attachedCardIds, baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateAttachment, evaluateBondCondition, evaluateCombat, evaluateCombatPartyPrefix, evaluateEquipmentCombatModifiers, evaluateEquipmentDeparture, evaluateEquipmentEligibility, evaluatePartyCombat, evaluatePurchaseCost, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getPurchasePower, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
 import { baseProvisionalOriginalFullRulesModule, baseProvisionalOriginalFullZoneIds } from '../src/index.js';
 
@@ -108,6 +108,7 @@ describe('full provisional base rules contribution', () => {
       Array.from({ length: 30 }, (_, index) => `base:bond/bond-${String(index + 1).padStart(2, '0')}`),
     );
     expect(baseProvisionalOriginalFullRulesModule.lifecycleHooks?.map(({ hookId }) => hookId)).toEqual([
+      'adventurer-03-odd-roll-combat-at-combat-start',
       'adventurer-01-recover-after-combat',
       'adventurer-06-draw-resource-after-combat',
       'adventurer-18-purchase-after-combat',
@@ -180,6 +181,11 @@ describe('full provisional base rules contribution', () => {
     }, {
       schemaVersion: 1,
       moduleId: 'base:provisional-original-full-rules',
+      diceId: 'adventurer-03-combat-d6',
+      sides: 6,
+    }, {
+      schemaVersion: 1,
+      moduleId: 'base:provisional-original-full-rules',
       diceId: 'adventurer-23-combat-d6',
       sides: 6,
     }]);
@@ -188,6 +194,7 @@ describe('full provisional base rules contribution', () => {
       expect.objectContaining({ ruleId: 'resource-02-melee-bonus', amount: 1, when: expect.objectContaining({ kind: 'all' }) }),
       expect.objectContaining({ ruleId: 'resource-03-support-bonus', amount: 1, when: expect.objectContaining({ kind: 'all' }) }),
       expect.objectContaining({ ruleId: 'resource-07-ranged-bonus', amount: 1, when: expect.objectContaining({ kind: 'all' }) }),
+      expect.objectContaining({ ruleId: 'resource-09-boss-bonus', amount: 2, when: expect.objectContaining({ kind: 'all' }) }),
       expect.objectContaining({ ruleId: 'resource-25-tank-bonus', amount: 1, when: expect.objectContaining({ kind: 'all' }) }),
     ]);
     expect(baseProvisionalOriginalFullRulesModule.equipmentEligibilityRules).toEqual([
@@ -198,7 +205,7 @@ describe('full provisional base rules contribution', () => {
     ]);
     expect(baseProvisionalOriginalFullRulesModule.partyCombatModifierRules?.map(({ ruleId }) => ruleId)).toEqual([
       'adventurer-04-first-other-bonus', 'adventurer-14-other-party-bonus', 'adventurer-10-first-self-bonus', 'adventurer-15-rear-self-bonus',
-      'adventurer-20-party-size-penalty', 'adventurer-24-monster-self-bonus', 'adventurer-27-adjacent-bonus',
+      'adventurer-20-party-size-penalty', 'adventurer-24-monster-self-bonus', 'adventurer-27-adjacent-bonus', 'resource-11-other-party-bonus',
     ]);
     expect(baseProvisionalOriginalFullRulesModule.purchaseCostModifierRules).toEqual([expect.objectContaining({ ruleId: 'adventurer-05-equipment-discount', amount: -1, activation: { kind: 'definition-in-player-party', player: 'evaluated-player', definitionId: 'base:adventurer/adventurer-05' } })]);
     expect(baseProvisionalOriginalFullRulesModule.equipmentDeparturePolicies).toEqual([
@@ -547,6 +554,122 @@ describe('full provisional base rules contribution', () => {
     const completed = dispatch(restored, activeRuleset, envelope(restored, player.id, choice, 'adventurer-23-target'));
     expect(completed.error).toBeUndefined(); expect(completed.state.phase).toBe('combat');
     expect(evaluateCombat(completed.state, activeRuleset, player.id, target.targetId)).toMatchObject({ status: 'ready', evaluation: { requiredCombat: before.evaluation.requiredCombat - Math.ceil(face / 2) } });
+  });
+
+  it('rolls adventurer 03 at combat start and adds exactly one combat only on odd faces', () => {
+    const { state, activeRuleset } = gameWithParty(['base:adventurer/adventurer-03']); const player = state.players[0]!;
+    state.phase = 'action1';
+    const before = structuredClone(state);
+    const rejected = dispatch(state, activeRuleset, envelope(state, player.id, { type: 'END_PHASE', phase: 'combat' }, 'adventurer-03-forged'));
+    expect(rejected.error?.code).toBe('INVALID_COMMAND'); expect(rejected.state).toEqual(before);
+
+    const combat = dispatch(state, activeRuleset, envelope(state, player.id, { type: 'END_PHASE', phase: 'action1' }, 'adventurer-03-combat'));
+    expect(combat.error).toBeUndefined(); expect(combat.state.phase).toBe('combat'); expect(combat.state.effectState.pendingChoice).toBeUndefined();
+    const roll = combat.events.find((event) => event.type === 'DIE_ROLLED' && JSON.stringify(event.payload).includes('adventurer-03-combat-d6'));
+    const face = Number((roll?.payload as { evaluation?: { face?: number } } | undefined)?.evaluation?.face);
+    expect(face).toBeGreaterThanOrEqual(1); expect(face).toBeLessThanOrEqual(6);
+    expect(combat.state.players[0]!.turnCombatBonus).toBe(0);
+    expect(evaluatePartyCombat(combat.state, activeRuleset, { schemaVersion: 1, playerId: player.id })).toMatchObject({
+      status: 'ready', evaluation: { members: [{ effectiveCombat: 3 + (face % 2 === 1 ? 1 : 0) }] },
+    });
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(combat.state))), activeRuleset);
+    expect(restored.turnFacts?.partyCombatBonuses).toEqual(combat.state.turnFacts?.partyCombatBonuses);
+    expect(() => getCpuActionFeatures(restored, activeRuleset, player.id)).not.toThrow();
+  });
+
+  it('does not count adventurer 03 turn combat bonus while it is outside the committed party prefix', () => {
+    const { state, activeRuleset } = gameWithParty(['base:starter/adventurer-01', 'base:adventurer/adventurer-03']);
+    const player = state.players[0]!;
+    state.phase = 'combat';
+    state.turnFacts!.partyCombatBonuses = [{ definitionId: 'base:adventurer/adventurer-03', amount: 1 }];
+    const party = evaluatePartyCombat(state, activeRuleset, { schemaVersion: 1, playerId: player.id });
+    if (party.status !== 'ready') throw new Error(party.error);
+    const firstMemberCombat = party.evaluation.members[0]!.effectiveCombat;
+    expect(evaluateCombatPartyPrefix(state, activeRuleset, player.id, firstMemberCombat)).toMatchObject({
+      slotCount: 1,
+      power: firstMemberCombat,
+      participantCardIds: [player.party[0]!.adventurerId],
+    });
+  });
+
+  it('applies resource 11 plus one to every other party member through Legal Commands, CPU, rollback, and Snapshot', () => {
+    const { state, activeRuleset } = gameWithParty(['base:starter/adventurer-01', 'base:starter/adventurer-02', 'base:starter/adventurer-03']);
+    const player = state.players[0]!;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-11')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== equipmentId);
+    for (const candidate of state.players) for (const key of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) candidate[key] = candidate[key].filter((cardId) => cardId !== equipmentId);
+    player.party[1]!.equipmentId = equipmentId; state.cards[equipmentId]!.ownerId = player.id; state.phase = 'combat'; player.turnCombatBonus = 100;
+
+    const evaluation = evaluatePartyCombat(state, activeRuleset, { schemaVersion: 1, playerId: player.id });
+    expect(evaluation).toMatchObject({ status: 'ready', evaluation: { members: [
+      { modifierCombat: 1, appliedRules: [expect.objectContaining({ ruleId: 'resource-11-other-party-bonus', sourceCardId: equipmentId, amount: 1 })] },
+      { equipmentId, equipmentCombat: 2, modifierCombat: 0 },
+      { modifierCombat: 1, appliedRules: [expect.objectContaining({ sourceCardId: equipmentId })] },
+    ] } });
+    const targetId = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'monster' && status === 'available')!.targetId;
+    expect(getLegalCommands(state, activeRuleset, player.id)).toContainEqual({ type: 'ATTACK_TARGET', targetId });
+    expect(getCpuActionFeatures(state, activeRuleset, player.id).some(({ command }) => command.type === 'ATTACK_TARGET' && command.targetId === targetId)).toBe(true);
+    const restored = restoreSnapshot(serializeSnapshot(state), activeRuleset);
+    expect(evaluatePartyCombat(restored, activeRuleset, { schemaVersion: 1, playerId: player.id })).toEqual(evaluation);
+    const before = structuredClone(restored);
+    const rejected = dispatch(restored, activeRuleset, envelope(restored, player.id, { type: 'ATTACK_TARGET', targetId: 'missing-target' }, 'resource-11-forged'));
+    expect(rejected.error?.code).toBe('INVALID_COMMAND'); expect(rejected.state).toEqual(before);
+  });
+
+  it('uses resource 22 to reduce one public monster by exactly one until turn end with resumable authoritative choice', () => {
+    const { state, activeRuleset } = gameWithParty(['base:starter/adventurer-01']); const player = state.players[0]!;
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-22')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== itemId);
+    for (const candidate of state.players) for (const key of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) candidate[key] = candidate[key].filter((cardId) => cardId !== itemId);
+    player.hand.push(itemId); state.cards[itemId]!.ownerId = player.id; state.phase = 'action1';
+    const monsters = Object.values(state.enemyTargets).filter(({ kind, status }) => kind === 'monster' && status === 'available');
+    const target = monsters[0]!; const other = monsters[1]!;
+    const before = evaluateCombat(state, activeRuleset, player.id, target.targetId);
+    const otherBefore = evaluateCombat(state, activeRuleset, player.id, other.targetId);
+    if (before.status !== 'ready' || otherBefore.status !== 'ready') throw new Error('Monster fixture is not combat-ready.');
+    expect(getLegalCommands(state, activeRuleset, player.id)).toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    expect(getCpuActionFeatures(state, activeRuleset, player.id).some(({ command }) => command.type === 'USE_ITEM' && command.cardId === itemId)).toBe(true);
+
+    const used = dispatch(state, activeRuleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'resource-22-use'));
+    expect(used.error).toBeUndefined(); expect(used.state.effectState.pendingChoice).toMatchObject({ decisionKind: 'choose-enemy-target' });
+    const pending = used.state.effectState.pendingChoice!;
+    const forged = dispatch(used.state, activeRuleset, envelope(used.state, player.id, { type: 'RESOLVE_EFFECT_CHOICE', executionId: pending.executionId, choiceId: pending.choiceId, optionId: 'forged' }, 'resource-22-forged'));
+    expect(forged.error?.code).toBe('INVALID_COMMAND'); expect(forged.state).toEqual(used.state);
+
+    const restored = restoreSnapshot(serializeSnapshot(used.state), activeRuleset);
+    const choices = getLegalCommands(restored, activeRuleset, player.id).filter((command) => command.type === 'RESOLVE_EFFECT_CHOICE');
+    expect(choices.map((command) => command.type === 'RESOLVE_EFFECT_CHOICE' ? command.optionId : '')).toEqual(state.zones['base:monster-row']!.cardIds);
+    expect(getCpuActionFeatures(restored, activeRuleset, player.id).some(({ command }) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === target.cardInstanceId)).toBe(true);
+    const choice = choices.find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === target.cardInstanceId)!;
+    const completed = dispatch(restored, activeRuleset, envelope(restored, player.id, choice, 'resource-22-target'));
+    expect(completed.error).toBeUndefined(); expect(completed.state.players[0]!.playArea).toContain(itemId);
+    expect(completed.events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'TEMPORARY_TARGET_MODIFIER_ADDED' })]));
+    expect(evaluateCombat(completed.state, activeRuleset, player.id, target.targetId)).toMatchObject({ status: 'ready', evaluation: { requiredCombat: before.evaluation.requiredCombat - 1 } });
+    expect(evaluateCombat(completed.state, activeRuleset, player.id, other.targetId)).toMatchObject({ status: 'ready', evaluation: { requiredCombat: otherBefore.evaluation.requiredCombat } });
+    expect(restoreSnapshot(serializeSnapshot(completed.state), activeRuleset)).toEqual(completed.state);
+    completed.state.phase = 'rest';
+    const ended = dispatch(completed.state, activeRuleset, envelope(completed.state, player.id, { type: 'END_PHASE', phase: 'rest' }, 'resource-22-expire'));
+    expect(ended.error).toBeUndefined(); expect(ended.state.temporaryTargetModifiers).toEqual([]);
+    expect(evaluateCombat(ended.state, activeRuleset, ended.state.activePlayerId, target.targetId)).toMatchObject({ status: 'ready', evaluation: { requiredCombat: before.evaluation.requiredCombat } });
+  });
+
+  it('keeps resource 22 unavailable and rolls back direct dispatch when the public monster row has no candidate', () => {
+    const { state, activeRuleset } = gameWithParty(['base:starter/adventurer-01']); const player = state.players[0]!;
+    const itemId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-22')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== itemId);
+    for (const candidate of state.players) for (const key of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) candidate[key] = candidate[key].filter((cardId) => cardId !== itemId);
+    player.hand.push(itemId); state.cards[itemId]!.ownerId = player.id; state.phase = 'action1';
+    const row = state.zones['base:monster-row']!; const deck = state.zones['base:monster-deck']!;
+    for (const cardId of row.cardIds) {
+      const target = Object.values(state.enemyTargets).find((candidate) => candidate.cardInstanceId === cardId);
+      if (target) target.status = 'removed';
+    }
+    deck.cardIds.unshift(...row.cardIds); row.cardIds = [];
+    const before = structuredClone(state);
+    expect(getLegalCommands(state, activeRuleset, player.id)).not.toContainEqual({ type: 'USE_ITEM', cardId: itemId });
+    expect(getCpuActionFeatures(state, activeRuleset, player.id).some(({ command }) => command.type === 'USE_ITEM' && command.cardId === itemId)).toBe(false);
+    const rejected = dispatch(state, activeRuleset, envelope(state, player.id, { type: 'USE_ITEM', cardId: itemId }, 'resource-22-zero-candidate'));
+    expect(rejected.error?.code).toBe('INVALID_COMMAND'); expect(rejected.state).toEqual(before);
   });
 
   it('uses resource 28 by discarding an adventurer and drawing its combat value through Snapshot', () => {
@@ -1191,6 +1314,36 @@ describe('full provisional base rules contribution', () => {
         appliedRules: [{ moduleId: 'base:provisional-original-full-rules', ruleId }],
       },
     });
+  });
+
+  it('adds resource 09 combat only against bosses and keeps query, dispatch, CPU, and Snapshot aligned', () => {
+    const activeRuleset = ruleset();
+    const state = finishBondSetup(createGame({ gameId: 'resource-09-boss-only', seed: 37, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, activeRuleset), activeRuleset);
+    const player = state.players[0]!; const slot = player.party[0]!;
+    const equipmentId = Object.values(state.cards).find(({ definitionId }) => definitionId === 'base:resource/resource-09')!.id;
+    for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((cardId) => cardId !== equipmentId);
+    for (const candidate of state.players) for (const key of ['hand', 'drawPile', 'discardPile', 'playArea'] as const) candidate[key] = candidate[key].filter((cardId) => cardId !== equipmentId);
+    slot.equipmentIds = [equipmentId]; state.cards[equipmentId]!.ownerId = player.id; state.phase = 'combat'; player.turnCombatBonus = 100;
+    const boss = Object.values(state.enemyTargets).find(({ kind }) => kind === 'boss')!;
+    const monster = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!;
+    const input = { schemaVersion: 1 as const, playerId: player.id, equipmentCardId: equipmentId, adventurerId: slot.adventurerId };
+
+    expect(evaluateEquipmentCombatModifiers(state, activeRuleset, { ...input, targetId: monster.targetId })).toMatchObject({ status: 'ready', evaluation: { powerBonus: 0, appliedRules: [] } });
+    expect(evaluateEquipmentCombatModifiers(state, activeRuleset, { ...input, targetId: boss.targetId })).toMatchObject({ status: 'ready', evaluation: { powerBonus: 2, appliedRules: [{ ruleId: 'resource-09-boss-bonus' }] } });
+    const monsterParty = evaluatePartyCombat(state, activeRuleset, { schemaVersion: 1, playerId: player.id, targetId: monster.targetId });
+    const bossParty = evaluatePartyCombat(state, activeRuleset, { schemaVersion: 1, playerId: player.id, targetId: boss.targetId });
+    if (monsterParty.status !== 'ready' || bossParty.status !== 'ready') throw new Error('Expected ready party evaluations.');
+    expect(bossParty.evaluation.members[0]!.effectiveCombat).toBe(monsterParty.evaluation.members[0]!.effectiveCombat + 2);
+    const bossCommand = { type: 'ATTACK_TARGET' as const, targetId: boss.targetId };
+    expect(getLegalCommands(state, activeRuleset, player.id)).toContainEqual(bossCommand);
+    expect(getCpuActionFeatures(state, activeRuleset, player.id)).toEqual(expect.arrayContaining([expect.objectContaining({ command: bossCommand, bossProgress: 1 })]));
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(serializeSnapshot(state))), activeRuleset);
+    expect(evaluateEquipmentCombatModifiers(restored, activeRuleset, { ...input, targetId: boss.targetId })).toMatchObject({ status: 'ready', evaluation: { powerBonus: 2 } });
+    const completed = dispatch(restored, activeRuleset, envelope(restored, player.id, bossCommand, 'resource-09-boss'));
+    expect(completed.error).toBeUndefined(); expect(completed.state.players[0]!.history.defeatedBosses).toBe(1);
+    const before = structuredClone(state);
+    const forged = dispatch(state, activeRuleset, envelope(state, player.id, { type: 'ATTACK_TARGET', targetId: 'missing-target' }, 'resource-09-forged'));
+    expect(forged.error?.code).toBe('INVALID_COMMAND'); expect(forged.state).toEqual(before);
   });
 
   it('removes every equipment command for adventurer 02 and rejects direct dispatch without mutation', () => {

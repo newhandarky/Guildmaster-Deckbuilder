@@ -69,11 +69,50 @@ describe('custom adventurer rules', () => {
       'custom:adventurer/mage-04',
       'custom:adventurer/melee-09',
       'custom:adventurer/support-04',
+      'base:resource/resource-11',
+      'custom:adventurer/mage-07',
+      'custom:adventurer/tank-09',
     ]);
     const serializedRules = JSON.stringify(customAdventurerRulesModule);
     for (const { contentId } of customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked')) {
       expect(serializedRules).not.toContain(contentId);
     }
+  });
+
+  it('applies the three-member profession aura only to matching party members and survives Snapshot restore', () => {
+    const { state, ruleset } = customGame();
+    replaceParty(state, [
+      'custom:adventurer/mage-07',
+      'custom:starter/mage',
+      'custom:adventurer/mage-01',
+      'custom:starter/support',
+    ]);
+    const mageEvaluation = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1' });
+    expect(mageEvaluation.status).toBe('ready');
+    if (mageEvaluation.status !== 'ready') throw new Error(mageEvaluation.error);
+    expect(mageEvaluation.evaluation.members.map(({ modifierCombat }) => modifierCombat)).toEqual([2, 2, 2, 0]);
+
+    replaceParty(state, [
+      'custom:adventurer/tank-09',
+      'custom:starter/tank',
+      'custom:adventurer/tank-01',
+      'custom:starter/support',
+    ]);
+    const tankEvaluation = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1' });
+    expect(tankEvaluation.status).toBe('ready');
+    if (tankEvaluation.status !== 'ready') throw new Error(tankEvaluation.error);
+    expect(tankEvaluation.evaluation.members.map(({ modifierCombat }) => modifierCombat)).toEqual([4, 2, 2, 0]);
+    expect(tankEvaluation.evaluation.members.slice(0, 3).every(({ appliedRules }) =>
+      appliedRules.filter(({ ruleId }) => ruleId === 'custom-tank-09-three-tank-aura').length === 1
+    )).toBe(true);
+    expect(tankEvaluation.evaluation.members[3]!.appliedRules.some(({ ruleId }) => ruleId === 'custom-tank-09-three-tank-aura')).toBe(false);
+
+    const restored = restoreSnapshot(serializeSnapshot(state), ruleset);
+    expect(evaluatePartyCombat(restored, ruleset, { schemaVersion: 1, playerId: 'p1' })).toEqual(tankEvaluation);
+
+    replaceParty(state, ['custom:adventurer/tank-09', 'custom:starter/tank']);
+    const belowThreshold = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: 'p1' });
+    expect(belowThreshold.status === 'ready' ? belowThreshold.evaluation.members.map(({ modifierCombat }) => modifierCombat) : []).toEqual([0, 0]);
   });
 
   it('creates and restores a four-player custom ruleset with exact registry identity', () => {
@@ -101,6 +140,21 @@ describe('custom adventurer rules', () => {
     expect(multiplier).toBeDefined();
     const combat = evaluatePartyCombat(result.state, ruleset, { schemaVersion: 1, playerId: 'p1' });
     expect(combat.status === 'ready' ? combat.evaluation.members[0]?.effectiveCombat : undefined).toBe(Math.floor((multiplier!.numerator / multiplier!.denominator)));
+    expect(restoreSnapshot(serializeSnapshot(result.state), ruleset)).toEqual(result.state);
+  });
+
+  it('inherits the confirmed odd-roll plus-one effect for custom mage 02', () => {
+    const { state, ruleset } = customGame();
+    replaceParty(state, ['custom:adventurer/mage-02']);
+    state.phase = 'action1';
+    const result = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' }, 'custom-mage-02-combat-start'));
+    expect(result.error).toBeUndefined(); expect(result.state.phase).toBe('combat');
+    const roll = result.events.find((event) => event.type === 'DIE_ROLLED' && JSON.stringify(event.payload).includes('adventurer-03-combat-d6'));
+    const face = Number((roll?.payload as { evaluation?: { face?: number } } | undefined)?.evaluation?.face);
+    expect(result.state.players[0]!.turnCombatBonus).toBe(0);
+    expect(evaluatePartyCombat(result.state, ruleset, { schemaVersion: 1, playerId: 'p1' })).toMatchObject({
+      status: 'ready', evaluation: { members: [{ effectiveCombat: 3 + (face % 2 === 1 ? 1 : 0) }] },
+    });
     expect(restoreSnapshot(serializeSnapshot(result.state), ruleset)).toEqual(result.state);
   });
 

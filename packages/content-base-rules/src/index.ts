@@ -230,12 +230,13 @@ const baseBondConditionRules: readonly BondConditionRule[] = [
  */
 export const baseProvisionalOriginalFullRulesModule: RulesModule = {
   id: baseProvisionalOriginalFullRulesModuleId,
-  version: '2.8.0',
+  version: '2.10.0',
   config: {
     effectBatch: 'card-rules-a',
     enabledDefinitionIds: [
       'base:adventurer/adventurer-01',
       'base:adventurer/adventurer-02',
+      'base:adventurer/adventurer-03',
       'base:adventurer/adventurer-04',
       'base:adventurer/adventurer-05',
       'base:adventurer/adventurer-06',
@@ -267,12 +268,15 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
       'base:resource/resource-03',
       'base:resource/resource-06',
       'base:resource/resource-07',
+      'base:resource/resource-09',
+      'base:resource/resource-11',
       'base:resource/resource-12',
       'base:resource/resource-14',
       'base:resource/resource-16',
       'base:resource/resource-19',
       'base:resource/resource-20',
       'base:resource/resource-21',
+      'base:resource/resource-22',
       'base:resource/resource-23',
       'base:resource/resource-24',
       'base:resource/resource-25',
@@ -313,6 +317,31 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
   },
   zoneDefinitions: [{ zoneId: baseProvisionalOriginalFullZoneIds.rewardDraft, kind: 'moduleArea', visibility: 'public', rulesModuleId: baseProvisionalOriginalFullRulesModuleId }],
   lifecycleHooks: [
+    {
+      schemaVersion: 1,
+      hookId: 'adventurer-03-odd-roll-combat-at-combat-start',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      point: 'phase-start',
+      kind: 'trigger',
+      priority: 105,
+      activation: { kind: 'all', conditions: [
+        { kind: 'phase-is', phase: 'combat' },
+        { kind: 'definition-in-actor-party', definitionId: 'base:adventurer/adventurer-03' },
+      ] },
+      effect: {
+        schemaVersion: 1,
+        effectId: `${baseProvisionalOriginalFullRulesModuleId}/adventurer-03-odd-roll-combat-at-combat-start`,
+        body: {
+          kind: 'roll-die',
+          moduleId: baseProvisionalOriginalFullRulesModuleId,
+          diceId: 'adventurer-03-combat-d6',
+          outcomes: Array.from({ length: 6 }, (_, index) => ({
+            face: index + 1,
+            effect: { kind: 'add-turn-card-combat-bonus' as const, player: { kind: 'controller' as const }, definitionId: 'base:adventurer/adventurer-03', amount: (index + 1) % 2 === 1 ? 1 : 0 },
+          })),
+        },
+      },
+    },
     {
       schemaVersion: 1,
       hookId: 'adventurer-01-recover-after-combat',
@@ -800,6 +829,21 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     professionEquipmentBonus('resource-02-melee-bonus', 'base:resource/resource-02', 'profession:melee', 20),
     professionEquipmentBonus('resource-03-support-bonus', 'base:resource/resource-03', 'profession:support', 30),
     professionEquipmentBonus('resource-07-ranged-bonus', 'base:resource/resource-07', 'profession:ranged', 40),
+    {
+      schemaVersion: 1,
+      ruleId: 'resource-09-boss-bonus',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 45,
+      when: {
+        kind: 'all',
+        conditions: [
+          { kind: 'equipment-definition-in', definitionIds: ['base:resource/resource-09'] },
+          { kind: 'target-kind-in', kinds: ['boss'] },
+        ],
+      },
+      kind: 'combat-power-modifier',
+      amount: 2,
+    },
     professionEquipmentBonus('resource-25-tank-bonus', 'base:resource/resource-25', 'profession:tank', 50),
   ],
   equipmentDeparturePolicies: [
@@ -882,6 +926,16 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     partyCombatModifier('adventurer-20-party-size-penalty', 'adventurer-20', 40, 'source', { kind: 'per-other-party-member', value: -1 }),
     partyCombatModifier('adventurer-24-monster-self-bonus', 'adventurer-24', 50, 'source', { kind: 'fixed', value: 3 }, { kind: 'target-kind-in', kinds: ['monster'] }),
     partyCombatModifier('adventurer-27-adjacent-bonus', 'adventurer-27', 60, 'adjacent', { kind: 'fixed', value: 1 }),
+    {
+      schemaVersion: 1,
+      ruleId: 'resource-11-other-party-bonus',
+      moduleId: baseProvisionalOriginalFullRulesModuleId,
+      priority: 70,
+      sourceDefinitionIds: ['base:resource/resource-11'],
+      subject: 'other',
+      when: { kind: 'always', value: true },
+      amount: { kind: 'fixed', value: 1 },
+    },
   ],
   combatRules: [
     {
@@ -963,6 +1017,11 @@ export const baseProvisionalOriginalFullRulesModule: RulesModule = {
     schemaVersion: 1,
     moduleId: baseProvisionalOriginalFullRulesModuleId,
     diceId: 'monster-02-reward-d6',
+    sides: 6,
+  }, {
+    schemaVersion: 1,
+    moduleId: baseProvisionalOriginalFullRulesModuleId,
+    diceId: 'adventurer-03-combat-d6',
     sides: 6,
   }, {
     schemaVersion: 1,

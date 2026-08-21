@@ -10,6 +10,8 @@ export type PartyCombatCondition =
   | { kind: 'source-position-in'; positions: readonly number[] }
   | { kind: 'subject-position-in'; positions: readonly number[] }
   | { kind: 'party-size-at-least'; amount: number }
+  | { kind: 'party-tag-count-at-least'; tags: readonly string[]; amount: number }
+  | { kind: 'subject-tag-in'; tags: readonly string[] }
   | { kind: 'all'; conditions: readonly PartyCombatCondition[] }
   | { kind: 'any'; conditions: readonly PartyCombatCondition[] }
   | { kind: 'not'; condition: PartyCombatCondition };
@@ -20,7 +22,7 @@ export type PartyCombatModifierRule = {
   moduleId: string;
   priority: number;
   sourceDefinitionIds: readonly string[];
-  subject: 'source' | 'other' | 'first' | 'adjacent';
+  subject: 'source' | 'other' | 'first' | 'adjacent' | 'all';
   when: PartyCombatCondition;
   amount: { kind: 'fixed'; value: number } | { kind: 'per-other-party-member'; value: number };
 };
@@ -48,6 +50,8 @@ export const PartyCombatConditionSchema: z.ZodType<PartyCombatCondition> = z.laz
   z.object({ kind: z.literal('source-position-in'), positions: z.array(z.number().int().positive()).min(1) }).strict(),
   z.object({ kind: z.literal('subject-position-in'), positions: z.array(z.number().int().positive()).min(1) }).strict(),
   z.object({ kind: z.literal('party-size-at-least'), amount: z.number().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('party-tag-count-at-least'), tags: z.array(canonicalId).min(1), amount: z.number().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('subject-tag-in'), tags: z.array(canonicalId).min(1) }).strict(),
   z.object({ kind: z.literal('all'), conditions: z.array(PartyCombatConditionSchema).min(1) }).strict(),
   z.object({ kind: z.literal('any'), conditions: z.array(PartyCombatConditionSchema).min(1) }).strict(),
   z.object({ kind: z.literal('not'), condition: PartyCombatConditionSchema }).strict(),
@@ -56,7 +60,7 @@ export const PartyCombatConditionSchema: z.ZodType<PartyCombatCondition> = z.laz
 export const PartyCombatModifierRuleSchema: z.ZodType<PartyCombatModifierRule> = z.object({
   schemaVersion: z.literal(1), ruleId: canonicalId, moduleId: canonicalId, priority: z.number().finite(),
   sourceDefinitionIds: z.array(canonicalId).min(1),
-  subject: z.enum(['source', 'other', 'first', 'adjacent']),
+  subject: z.enum(['source', 'other', 'first', 'adjacent', 'all']),
   when: PartyCombatConditionSchema,
   amount: z.union([
     z.object({ kind: z.literal('fixed'), value: z.number().finite().int() }).strict(),

@@ -25,6 +25,10 @@ function matches(condition: EquipmentEligibilityCondition, state: GameState, rul
   switch (condition.kind) {
     case 'always': return condition.value;
     case 'phase-is': return state.phase === condition.phase;
+    case 'target-kind-in': {
+      const target = input.targetId ? state.enemyTargets[input.targetId] : undefined;
+      return target !== undefined && condition.kinds.some((kind) => kind === target.kind);
+    }
     case 'equipment-definition-in': return condition.definitionIds.includes(equipment.definitionId);
     case 'adventurer-definition-in': return condition.definitionIds.includes(adventurer.definitionId);
     case 'adventurer-tag-in': return condition.tags.some((tag) => adventurerDefinition.tags?.includes(tag));

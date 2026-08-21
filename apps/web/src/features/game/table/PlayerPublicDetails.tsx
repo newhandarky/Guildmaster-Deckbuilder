@@ -2,7 +2,7 @@ import type { CardDefinition, CardInstance, PlayerView } from '@guildmaster/game
 import type { PresentationResolver } from '@guildmaster/presentation-core';
 
 type OpponentSummary = PlayerView['opponents'][number];
-type BondDefinition = { id: string; name: string; honor: number };
+type BondDefinition = { id: string; name: string; honor: number; conditionSummary: string };
 
 type Props = {
   opponent: OpponentSummary;
@@ -36,7 +36,7 @@ export function PlayerPublicDetails({ opponent, cards, definitions, presentation
     })}</ol>
     <p>已完成羈絆：{completedBonds.length ? completedBonds.map(({ bondId }) => {
       const bond = bondDefinitions.find(({ id }) => id === bondId);
-      return `${bond?.name ?? bondId}（${bond?.honor ?? 0} 榮譽）`;
+      return `${bond?.name ?? bondId}（條件：${bond?.conditionSummary ?? '尚未提供條件摘要'}；${bond?.honor ?? 0} 榮譽）`;
     }).join('、') : '無'}</p>
     {opponent.counters.length ? <p>公開 counter：{opponent.counters.map(({ resourceId, amount }) => `${resourceId} ${amount}`).join('、')}</p> : null}
   </aside>;

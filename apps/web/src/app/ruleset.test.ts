@@ -181,7 +181,7 @@ describe('web content modes', () => {
     expect([
       ...state.zones['base:adventurer-deck']!.cardIds,
       ...state.zones['base:adventurer-row']!.cardIds,
-    ]).toHaveLength(86);
+    ]).toHaveLength(43);
     expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
   });
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 export type EquipmentEligibilityCondition =
   | { kind: 'always'; value: boolean }
   | { kind: 'phase-is'; phase: import('./state.js').Phase }
+  | { kind: 'target-kind-in'; kinds: readonly ('monster' | 'boss' | 'raidPart')[] }
   | { kind: 'equipment-definition-in'; definitionIds: readonly string[] }
   | { kind: 'adventurer-definition-in'; definitionIds: readonly string[] }
   | { kind: 'adventurer-tag-in'; tags: readonly string[] }
@@ -34,7 +35,7 @@ export type EquipmentCombatModifierRule = {
 };
 
 export type EquipmentEligibilityRuleRef = { moduleId: string; ruleId: string };
-export type EquipmentEligibilityInput = { schemaVersion: 1; playerId: string; equipmentCardId: string; adventurerId: string };
+export type EquipmentEligibilityInput = { schemaVersion: 1; playerId: string; equipmentCardId: string; adventurerId: string; targetId?: string };
 export type EquipmentEligibilityEvaluation = {
   schemaVersion: 1;
   eligible: boolean;
@@ -52,6 +53,7 @@ export type EquipmentCombatModifierEvaluation = {
 export const EquipmentEligibilityConditionSchema: z.ZodType<EquipmentEligibilityCondition> = z.lazy(() => z.union([
   z.object({ kind: z.literal('always'), value: z.boolean() }).strict(),
   z.object({ kind: z.literal('phase-is'), phase: z.enum(['action1', 'combat', 'action2', 'purchase', 'rest']) }).strict(),
+  z.object({ kind: z.literal('target-kind-in'), kinds: z.array(z.enum(['monster', 'boss', 'raidPart'])).min(1) }).strict(),
   z.object({ kind: z.literal('equipment-definition-in'), definitionIds: z.array(z.string().trim().min(1)).min(1) }).strict(),
   z.object({ kind: z.literal('adventurer-definition-in'), definitionIds: z.array(z.string().trim().min(1)).min(1) }).strict(),
   z.object({ kind: z.literal('adventurer-tag-in'), tags: z.array(z.string().trim().min(1)).min(1) }).strict(),
@@ -69,7 +71,7 @@ export const EquipmentCombatModifierRuleSchema = z.object({
   schemaVersion: z.literal(1), ruleId: z.string().trim().min(1), moduleId: z.string().trim().min(1), priority: z.number().finite().optional(),
   when: EquipmentEligibilityConditionSchema, kind: z.literal('combat-power-modifier'), amount: z.number().finite()
 }).strict();
-export const EquipmentEligibilityInputSchema = z.object({ schemaVersion: z.literal(1), playerId: z.string().trim().min(1), equipmentCardId: z.string().trim().min(1), adventurerId: z.string().trim().min(1) }).strict();
+export const EquipmentEligibilityInputSchema = z.object({ schemaVersion: z.literal(1), playerId: z.string().trim().min(1), equipmentCardId: z.string().trim().min(1), adventurerId: z.string().trim().min(1), targetId: z.string().trim().min(1).optional() }).strict();
 const ruleRef = z.object({ moduleId: z.string(), ruleId: z.string() }).strict();
 const registry = z.object({ rulesetVersion: z.string(), modules: z.array(z.object({ id: z.string(), version: z.string() }).strict()) }).strict();
 export const EquipmentEligibilityEvaluationSchema: z.ZodType<EquipmentEligibilityEvaluation> = z.object({ schemaVersion: z.literal(1), eligible: z.boolean(), rejectionReasonCodes: z.array(z.string()), appliedRules: z.array(ruleRef), registry }).strict();
