@@ -89,6 +89,23 @@ describe('lifecycle interaction model', () => {
     });
   });
 
+  it('labels combat departure subsets with the affected public adventurer', () => {
+    const decline = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'combat-departure:x', choiceId: 'combat-departure:optional-replacements', optionId: 'departure-0' };
+    const keep = { ...decline, optionId: 'departure-1' };
+    const model = buildLifecycleInteractionModel(view({
+      decisionPrompt: { schemaVersion: 1, decisionKind: 'choose-party-member', choiceId: decline.choiceId, minSelections: 1, maxSelections: 1, options: [{ id: decline.optionId, selectedCardIds: [] }, { id: keep.optionId, selectedCardIds: ['yunyun'], selectedDefinitionIds: ['custom:adventurer/tank-07'] }] },
+      cards: { yunyun: { id: 'yunyun', definitionId: 'custom:adventurer/tank-07' } },
+    }), [decline, keep], [], createLifecycleCopyResolver({ choices: [{ choiceId: decline.choiceId, title: '選擇離場替代效果' }] }), (_choiceId, cardId) => cardId === 'yunyun' ? 'ゆんゆん' : undefined);
+    expect(model).toMatchObject({ kind: 'choice', title: '選擇離場替代效果', actions: [{ label: '不套用離場替代' }, { label: '套用離場替代：ゆんゆん' }] });
+  });
+
+  it('shows readable Juna helper-rotation actions', () => {
+    const rotate = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'juna', choiceId: 'custom:adventurer/support-09-rotate-helper', optionId: 'rotate' };
+    const skip = { ...rotate, optionId: 'skip' };
+    const resolver = createLifecycleCopyResolver({ choices: [{ choiceId: rotate.choiceId, title: '是否更換公會小姐？', optionLabels: { rotate: '更換公會小姐', skip: '略過' } }] });
+    expect(buildLifecycleInteractionModel(view(), [rotate, skip], [], resolver)).toMatchObject({ kind: 'choice', title: '是否更換公會小姐？', actions: [{ label: '更換公會小姐' }, { label: '略過' }] });
+  });
+
   it('refuses to guess between multiple choice groups', () => {
     const model = buildLifecycleInteractionModel(view(), [
       choiceCommands[0]!,

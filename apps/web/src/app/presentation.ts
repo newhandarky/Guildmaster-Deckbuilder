@@ -57,5 +57,7 @@ export const lifecycleCopyResolver = createLifecycleCopyResolver({
     { choiceId: 'base:resource/resource-13-recover-item-card', title: '選擇要取回的道具卡', description: '將選擇的非同名道具卡從棄牌堆加入手牌。' },
     { choiceId: 'base:resource/resource-15-remove', title: '選擇要移除的卡牌', description: '從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲。' },
     { choiceId: 'base:resource/resource-17-discard', title: '選擇要棄置的手牌', description: '這張道具已抽牌；請選擇 1 張手牌棄置。' },
+    { choiceId: 'combat-departure:optional-replacements', title: '選擇離場替代效果', description: '選擇本次討伐要套用哪些可選離場替代；列出的冒險者會依其技能處理。' },
+    { choiceId: 'custom:adventurer/support-09-rotate-helper', title: '是否更換公會小姐？', description: '可以將目前公會小姐放到牌庫底並換上下一張。', optionLabels: { rotate: '更換公會小姐', skip: '略過' } },
   ],
 });

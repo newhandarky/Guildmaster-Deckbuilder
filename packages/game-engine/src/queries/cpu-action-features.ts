@@ -15,6 +15,9 @@ import { evaluateEquipmentCombatModifiers } from '../rules/equipment-combat-modi
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
 import { evaluateMonsterDefeatContinuity } from '../rules/supply-continuity-evaluator.js';
 import { dispatch } from '../engine/dispatch.js';
+import { evaluateCombatAssist } from '../rules/combat-assist-evaluator.js';
+import { evaluateCombatParticipantDeparture } from '../rules/combat-participant-departure-evaluator.js';
+import { evaluateCombatDepartureReplacements, legalCombatDepartureReplacementSelections } from '../rules/combat-departure-replacement-evaluator.js';
 
 function attachedContribution(state: GameState, ruleset: Ruleset, playerId: string, adventurerId: string, cardId: string): number {
   const base = attachmentCombat(state, ruleset, playerId, adventurerId, cardId);
@@ -95,16 +98,35 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         feature.immediatePurchasePower = definition.purchasePower ?? 0;
         feature.bossProgress = target.kind === 'boss' ? 1 : 0;
         feature.monsterDefeat = target.kind === 'monster' ? 1 : 0;
-        const combat = evaluateCombat(state, ruleset, actorId, command.targetId);
+        const assist = command.combatAssistCardId ? evaluateCombatAssist(state, ruleset, actorId, command.targetId, command.combatAssistCardId) : undefined;
+        if (command.combatAssistCardId && !assist) throw new Error(`CPU action features require a valid combat assist for ${command.targetId}.`);
+        const combat = assist ? { status: 'ready' as const, evaluation: assist.combat } : evaluateCombat(state, ruleset, actorId, command.targetId);
         if (combat.status !== 'ready') throw new Error(`CPU action features require valid combat evaluation: ${combat.error}`);
-        const prefix = evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
+        const prefix = assist?.partyPrefix ?? evaluateCombatPartyPrefix(state, ruleset, actorId, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
         if (!prefix) throw new Error(`CPU action features require a legal combat party prefix for ${command.targetId}.`);
         const player = state.players.find(({ id }) => id === actorId)!;
         const consumed = player.party.slice(0, prefix.slotCount);
+        const assistSlot = assist ? player.party.find(({ adventurerId }) => adventurerId === assist.sourceCardId) : undefined;
+        const participantDeparture = evaluateCombatParticipantDeparture(state, ruleset, { schemaVersion: 1, playerId: actorId, targetId: command.targetId, participantCardIds: consumed.map(({ adventurerId }) => adventurerId) });
+        if (participantDeparture.status !== 'ready') throw new Error(`CPU action features require valid participant departure: ${participantDeparture.error}`);
+        const replacements = evaluateCombatDepartureReplacements(state, ruleset, actorId, participantDeparture.evaluation);
+        if (replacements.status !== 'ready') throw new Error(`CPU action features require valid departure replacements: ${replacements.error}`);
+        const selectedReplacementIds = new Set(legalCombatDepartureReplacementSelections(state, actorId, replacements.candidates).at(-1) ?? []);
+        const replacementFor = (adventurerId: string) => replacements.candidates.find((candidate) => selectedReplacementIds.has(candidate.candidateId) && candidate.adventurerId === adventurerId);
+        const kept = new Set(consumed.filter(({ adventurerId }) => {
+          const replacement = replacementFor(adventurerId)?.replacement.kind;
+          return replacement === 'keep-self-in-party' || replacement === 'discard-attached-card';
+        }).map(({ adventurerId }) => adventurerId));
+        const departingParticipants = consumed.filter(({ adventurerId }) => !kept.has(adventurerId));
+        const departing = assistSlot ? [...departingParticipants, assistSlot] : departingParticipants;
         feature.partyCombatLoss = partyCombatTotal(state, ruleset, actorId, command.targetId, combat.evaluation.equipmentSuppressed)
-          - partyCombatAfterRemoving(state, ruleset, actorId, consumed.map(({ adventurerId }) => adventurerId), command.targetId, combat.evaluation.equipmentSuppressed);
-        feature.equipmentLoss = consumed.flatMap(attachedCardIds).length;
-        feature.equipmentRemoval = consumed.reduce((count, slot) => {
+          - partyCombatAfterRemoving(state, ruleset, actorId, departing.map(({ adventurerId }) => adventurerId), command.targetId, combat.evaluation.equipmentSuppressed);
+        const replacementAttachmentIds = consumed.flatMap(({ adventurerId }) => {
+          const replacement = replacementFor(adventurerId);
+          return replacement?.replacement.kind === 'discard-attached-card' && replacement.attachmentCardId ? [replacement.attachmentCardId] : [];
+        });
+        feature.equipmentLoss = departing.flatMap(attachedCardIds).length + replacementAttachmentIds.length;
+        feature.equipmentRemoval = departingParticipants.reduce((count, slot) => {
           if (combat.evaluation.equipmentSuppressed) return count;
           return count + attachedCardIds(slot).filter((equipmentCardId) => {
             const departure = evaluateEquipmentDeparture(state, ruleset, { schemaVersion: 1, playerId: actorId, adventurerId: slot.adventurerId, equipmentCardId, cause: 'combat-discard' });

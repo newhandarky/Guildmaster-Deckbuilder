@@ -96,6 +96,17 @@ const helper12Draft = (timing: 'enter' | 'leave'): EffectDefinition['body'] => (
   ],
 });
 
+/** Shared helper transition used by Boss progression and custom card effects. */
+export const createBaseHelperRotationEffect = (refreshPolicyId: string): EffectDefinition['body'] => ({
+  kind: 'sequence',
+  effects: [
+    { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('leave') },
+    { kind: 'refresh-supply-row', refreshPolicyId },
+    { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('enter') },
+    { kind: 'enforce-team-capacity', policyId: 'base:enforce-helper-capacity' },
+  ],
+});
+
 export const baseHelpersRulesModule: RulesModule = {
   id: 'base:helpers',
   version: '1.2.0',
@@ -299,15 +310,7 @@ export const baseHelpersRulesModule: RulesModule = {
     effect: {
       schemaVersion: 1,
       effectId: 'base:helpers/rotate-after-boss-defeat',
-      body: {
-        kind: 'sequence',
-        effects: [
-          { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('leave') },
-          { kind: 'refresh-supply-row', refreshPolicyId: 'base:rotate-helper' },
-          { kind: 'conditional', condition: { kind: 'definition-in-zone', zoneId: baseHelperZoneIds.active, definitionId: 'base:helper/helper-12' }, whenTrue: helper12Draft('enter') },
-          { kind: 'enforce-team-capacity', policyId: 'base:enforce-helper-capacity' },
-        ],
-      },
+      body: createBaseHelperRotationEffect('base:rotate-helper'),
     },
   }],
   getPartyLimit: (state, _player, limit) => {

@@ -3,7 +3,7 @@ import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisio
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { baseProvisionalOriginalFullRulesModule } from '@guildmaster/content-base-rules';
 import { customAdventurerCapabilityMatrix, customAdventurerContentPack, customAdventurerContentPackId } from '@guildmaster/content-custom-adventurers';
-import { customAdventurerRulesModule } from '@guildmaster/content-custom-adventurers-rules';
+import { customAdventurerHelperRulesModule, customAdventurerHelperRulesModuleId, customAdventurerRulesModule } from '@guildmaster/content-custom-adventurers-rules';
 import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
 import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
 import { webContentModeFromPackIds, type WebContentMode } from './content-mode.js';
@@ -129,6 +129,7 @@ const customAdventurersFullHelpersContentPack: ContentPack = {
     hash: 'custom-adventurers-full-helpers-v1',
     dependencies: [baseProvisionalOriginalFullContentPack.manifest.id, customAdventurerContentPackId],
   },
+  rulesModuleIds: [baseHelpersRulesModule.id, customAdventurerHelperRulesModuleId],
 };
 
 export const webContentModeOptions: Readonly<Record<WebContentMode, {
@@ -236,7 +237,7 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
     packs,
     [
       baseRulesModule,
-      ...(!scenario && setup.contentMode === 'custom-adventurers-full' ? [customAdventurerRulesModule, baseHelpersRulesModule] : []),
+      ...(!scenario && setup.contentMode === 'custom-adventurers-full' ? [customAdventurerRulesModule, baseHelpersRulesModule, customAdventurerHelperRulesModule] : []),
       ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule, baseHelpersRulesModule] : []),
       ...(scenarioModule ? [scenarioModule] : []),
       ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers && setup.contentMode !== 'provisional-original-full' && setup.contentMode !== 'custom-adventurers-full' ? [baseHelpersRulesModule] : []),

@@ -20,13 +20,8 @@ describe('custom adventurer content', () => {
     expect(baseProvisionalOriginalFullContentPack.definitions
       .filter(({ id, type }) => type === 'adventurer' && id.startsWith('base:adventurer/'))
       .reduce((total, definition) => total + definition.copies, 0)).toBe(60);
-    expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked').map(({ contentId }) => contentId)).toEqual([
-      'custom:adventurer/mage-06',
-      'custom:adventurer/tank-06',
-      'custom:adventurer/tank-07',
-      'custom:adventurer/support-09',
-    ]);
-    expect(customAdventurerCapabilityMatrix.filter(({ enabled }) => enabled)).toHaveLength(39);
+    expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked').map(({ contentId }) => contentId)).toEqual([]);
+    expect(customAdventurerCapabilityMatrix.filter(({ enabled }) => enabled)).toHaveLength(43);
     expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'none').map(({ contentId }) => contentId)).toEqual([
       'custom:adventurer/tank-10',
       'custom:adventurer/support-10',

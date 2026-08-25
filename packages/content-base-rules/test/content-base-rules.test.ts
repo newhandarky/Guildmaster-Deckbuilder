@@ -1,5 +1,5 @@
 import { baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base/runtime';
-import { applyEnemyEntryAttachment, attachedCardIds, baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateAttachment, evaluateBondCondition, evaluateCombat, evaluateCombatPartyPrefix, evaluateEquipmentCombatModifiers, evaluateEquipmentDeparture, evaluateEquipmentEligibility, evaluatePartyCombat, evaluatePurchaseCost, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getPurchasePower, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
+import { applyEnemyEntryAttachment, attachTargets, attachedCardIds, baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateAttachment, evaluateBondCondition, evaluateCombat, evaluateCombatPartyPrefix, evaluateEquipmentCombatModifiers, evaluateEquipmentDeparture, evaluateEquipmentEligibility, evaluatePartyCombat, evaluatePurchaseCost, getActionPreviewSet, getCpuActionFeatures, getLegalCommands, getPurchasePower, getScoreboard, projectPlayerView, restoreSnapshot, serializeSnapshot, validateSupplyContinuityState } from '@guildmaster/game-engine';
 import { describe, expect, it } from 'vitest';
 import { baseProvisionalOriginalFullRulesModule, baseProvisionalOriginalFullZoneIds } from '../src/index.js';
 
@@ -1609,5 +1609,52 @@ describe('full provisional base rules contribution', () => {
     if (definitionId.endsWith('04')) expect(completed.state.players[0]!.hand.length).toBe(beforeHand + 4);
     if (disposition === 'remove-from-game') expect(completed.state.removedCards).toContain(attachmentId);
     else expect(completed.state.players[0]!.discardPile).toContain(attachmentId);
+  });
+
+  it('does not consume a protected monster cycle anchor for a boss entry attachment', () => {
+    const activeRuleset = ruleset();
+    const state = finishBondSetup(createGame({ gameId: 'enemy-attachment-cycle-anchor', seed: 83, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, activeRuleset), activeRuleset);
+    const targetId = replaceTarget(state, 'boss', 'base:boss/boss-04');
+    const target = state.enemyTargets[targetId]!;
+    for (const cardId of target.attachments.splice(0)) state.zones['base:monster-deck']!.cardIds.unshift(cardId);
+
+    const monsterIds = Object.values(state.cards).filter(({ definitionId }) => activeRuleset.registry.definitions[definitionId]?.type === 'monster').map(({ id }) => id);
+    const anchorIds = monsterIds.filter((cardId) => activeRuleset.registry.definitions[state.cards[cardId]!.definitionId]!.tags?.includes('base:supply-cycle-anchor'));
+    const ordinaryId = monsterIds.find((cardId) => !anchorIds.includes(cardId))!;
+    state.zones['base:monster-row']!.cardIds = [anchorIds[0]!, anchorIds[1]!, ordinaryId];
+    state.zones['base:monster-deck']!.cardIds = [anchorIds[2]!];
+    state.removedCards.push(...monsterIds.filter((cardId) => !state.zones['base:monster-row']!.cardIds.includes(cardId) && !state.zones['base:monster-deck']!.cardIds.includes(cardId)));
+    for (const monsterTarget of Object.values(state.enemyTargets).filter(({ kind }) => kind === 'monster')) monsterTarget.status = 'defeated';
+    attachTargets(state, activeRuleset);
+
+    expect(validateSupplyContinuityState(state, activeRuleset)).toEqual([]);
+    applyEnemyEntryAttachment(state, activeRuleset, target);
+    expect(target.attachments).toEqual([]);
+    expect(state.zones['base:monster-deck']!.cardIds).toEqual([anchorIds[2]]);
+    expect(validateSupplyContinuityState(state, activeRuleset)).toEqual([]);
+  });
+
+  it('does not search below a protected top card for an enemy entry attachment', () => {
+    const activeRuleset = ruleset();
+    const state = finishBondSetup(createGame({ gameId: 'enemy-attachment-preserves-deck-order', seed: 83, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }], startingPlayerId: 'p1' }, activeRuleset), activeRuleset);
+    const targetId = replaceTarget(state, 'boss', 'base:boss/boss-04');
+    const target = state.enemyTargets[targetId]!;
+    for (const cardId of target.attachments.splice(0)) state.zones['base:monster-deck']!.cardIds.unshift(cardId);
+
+    const monsterIds = Object.values(state.cards).filter(({ definitionId }) => activeRuleset.registry.definitions[definitionId]?.type === 'monster').map(({ id }) => id);
+    const anchorIds = monsterIds.filter((cardId) => activeRuleset.registry.definitions[state.cards[cardId]!.definitionId]!.tags?.includes('base:supply-cycle-anchor'));
+    const ordinaryIds = monsterIds.filter((cardId) => !anchorIds.includes(cardId));
+    state.zones['base:monster-row']!.cardIds = [anchorIds[0]!, anchorIds[1]!, ordinaryIds[0]!];
+    state.zones['base:monster-deck']!.cardIds = [ordinaryIds[1]!, anchorIds[2]!];
+    state.removedCards.push(...monsterIds.filter((cardId) => !state.zones['base:monster-row']!.cardIds.includes(cardId) && !state.zones['base:monster-deck']!.cardIds.includes(cardId)));
+    for (const monsterTarget of Object.values(state.enemyTargets).filter(({ kind }) => kind === 'monster')) monsterTarget.status = 'defeated';
+    attachTargets(state, activeRuleset);
+    const beforeDeck = [...state.zones['base:monster-deck']!.cardIds];
+
+    expect(validateSupplyContinuityState(state, activeRuleset)).toEqual([]);
+    applyEnemyEntryAttachment(state, activeRuleset, target);
+    expect(target.attachments).toEqual([]);
+    expect(state.zones['base:monster-deck']!.cardIds).toEqual(beforeDeck);
+    expect(validateSupplyContinuityState(state, activeRuleset)).toEqual([]);
   });
 });

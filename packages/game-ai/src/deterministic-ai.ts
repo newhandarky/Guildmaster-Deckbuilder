@@ -5,7 +5,7 @@ export type CpuReasonCode =
   | 'EQUIP_FOR_COMBAT_GAIN' | 'USE_ITEM_FOR_IMMEDIATE_VALUE' | 'BUY_HIGHEST_UTILITY'
   | 'REFRESH_LOW_VALUE_MARKET' | 'DISCARD_LOWEST_UTILITY' | 'END_NO_POSITIVE_ACTION'
   | 'RESOLVE_HIGHEST_UTILITY_CHOICE' | 'RESPOND_REQUIRED_CONSENT' | 'COMPLETE_ELIGIBLE_BONDS'
-  | 'BLOCKED_UNSUPPORTED_DECISION' | 'ADVANCE_BOSS_COMBAT';
+  | 'BLOCKED_UNSUPPORTED_DECISION' | 'ADVANCE_BOSS_COMBAT' | 'ATTACK_WITH_COMBAT_ASSIST';
 
 export type CpuScoringWeights = {
   honor: number; bondHonor: number; bossProgress: number; monsterDefeat: number;
@@ -47,7 +47,7 @@ export function cpuContextFingerprint(context: CpuDecisionContext): string {
 function reason(command: GameCommand): CpuReasonCode {
   if (command.type === 'SELECT_BONDS') return 'KEEP_HIGHEST_BOND_VALUE';
   if (command.type === 'COMPLETE_BONDS') return 'COMPLETE_ELIGIBLE_BONDS';
-  if (command.type === 'ATTACK_TARGET') return 'ATTACK_BEST_NET_VALUE';
+  if (command.type === 'ATTACK_TARGET') return command.combatAssistCardId ? 'ATTACK_WITH_COMBAT_ASSIST' : 'ATTACK_BEST_NET_VALUE';
   if (command.type === 'PLAY_ADVENTURER') return 'PLAY_FOR_PARTY_POWER';
   if (command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD') return 'EQUIP_FOR_COMBAT_GAIN';
   if (command.type === 'USE_ITEM') return 'USE_ITEM_FOR_IMMEDIATE_VALUE';
@@ -83,9 +83,9 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
   const bossCombatReady = context.actionFeatures.some((feature) => feature.targetCombatProgress.some(({ targetId, attackReadyBefore }) => attackReadyBefore && context.view.enemyTargets[targetId]?.kind === 'boss'));
   const needsBossPower = availableBoss && !legalBossAttack && !bossCombatReady;
   const reservePartyForBoss = needsBossPower && (context.view.self?.history?.defeatedMonsters ?? 0) >= 5;
-  const strategicCommands = reservePartyForBoss && !legalBossAttack
+  const strategicCommands = (reservePartyForBoss && !legalBossAttack
     ? context.legalCommands.filter((command) => command.type !== 'ATTACK_TARGET')
-    : context.legalCommands;
+    : context.legalCommands).filter((command) => !(command.type === 'ATTACK_TARGET' && command.combatAssistCardId && context.legalCommands.some((candidate) => candidate.type === 'ATTACK_TARGET' && candidate.targetId === command.targetId && !candidate.combatAssistCardId)));
   const priority = new Map(context.profile.commandPriority.map((type, index) => [type, index]));
   const ranked = strategicCommands.map((command) => {
     if (command.type === 'SELECT_BONDS') {
@@ -95,6 +95,10 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
     if (command.type === 'RESPOND_COUNTER_CONSENT') return { command, score: command.response === 'accept' ? 1_000_000 : 999_999, terms: [] as CpuScoreTerm[] };
     if (command.type === 'RESOLVE_EFFECT_CHOICE') {
       const prompt = context.view.decisionPrompt;
+      if (prompt?.choiceId === 'combat-departure:optional-replacements') {
+        const selectedCountRank = Number(command.optionId.slice(command.optionId.lastIndexOf('-') + 1));
+        return { command, score: 1_000_000 + (Number.isFinite(selectedCountRank) ? selectedCountRank : 0), terms: [] as CpuScoreTerm[] };
+      }
       const option = prompt?.options.find(({ id }) => id === command.optionId);
       const targetCardId = option?.cardId ?? context.view.enemyTargets[option?.id ?? '']?.cardInstanceId;
       const utility = definitionUtility(targetCardId ? context.definitions[context.view.cards[targetCardId]?.definitionId ?? option?.definitionId ?? ''] : undefined);

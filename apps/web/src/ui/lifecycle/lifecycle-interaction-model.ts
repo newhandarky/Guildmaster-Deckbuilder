@@ -102,6 +102,7 @@ function terminalResult(view: PlayerView, events: readonly DomainEvent[]): Lifec
 }
 
 function choiceModel(
+  view: PlayerView,
   commands: readonly ChoiceCommand[],
   resolver: LifecycleCopyResolver,
   optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
@@ -134,7 +135,12 @@ function choiceModel(
     actions: options.map((command, index) => ({
       id: `choice:${command.executionId}:${command.choiceId}:${command.optionId}`,
       kind: 'choice',
-      label: optionLabel?.(command.choiceId, command.optionId, index) ?? copy.optionLabel(command.optionId, index),
+      label: command.choiceId === 'combat-departure:optional-replacements'
+        ? (() => {
+            const cardIds = view.decisionPrompt?.options.find(({ id }) => id === command.optionId)?.selectedCardIds ?? [];
+            return cardIds.length ? `套用離場替代：${cardIds.map((cardId) => optionLabel?.(command.choiceId, cardId, index) ?? cardId).join('、')}` : '不套用離場替代';
+          })()
+        : optionLabel?.(command.choiceId, command.optionId, index) ?? copy.optionLabel(command.optionId, index),
       command,
       emphasis: index === 0 ? 'primary' : 'secondary',
       requiresConfirmation: false,
@@ -275,7 +281,7 @@ export function buildLifecycleInteractionModel(
   }
   if (choiceCommands.length > 0 && orderCommands.length > 0) return { kind: 'waiting', key: 'decision:diagnostic', reason: 'diagnostic', title: '目前互動狀態不一致', description: '一般選擇與牌庫排序不可同時操作；介面已停止送出指令。' };
   return orderModel(view, orderCommands, resolver, optionLabel)
-    ?? choiceModel(choiceCommands, resolver, optionLabel)
+    ?? choiceModel(view, choiceCommands, resolver, optionLabel)
     ?? terminalResult(view, events)
     ?? { kind: 'none', key: 'none' };
 }

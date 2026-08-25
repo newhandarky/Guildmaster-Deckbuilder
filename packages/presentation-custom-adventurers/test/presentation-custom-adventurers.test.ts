@@ -61,12 +61,8 @@ describe('custom adventurer presentation', () => {
     expect(missing.portraitAsset.src).toBeUndefined();
   });
 
-  it('marks every ambiguous custom effect as numeric-only instead of implying that it is active', () => {
-    for (const definitionId of customAmbiguousEffectDefinitionIds) {
-      const entry = customAdventurerPresentationPack.entries.find((candidate) => candidate.definitionId === definitionId)!;
-      expect(entry.shortDisplayText).toContain('技能尚未啟用');
-      expect(entry.detailDisplayText).toContain('本模式僅套用卡牌數值');
-    }
+  it('has no remaining ambiguous custom effects after the four confirmed skills were enabled', () => {
+    expect(customAmbiguousEffectDefinitionIds).toEqual([]);
   });
 
   it('presents the confirmed mage and tank profession-threshold auras', () => {

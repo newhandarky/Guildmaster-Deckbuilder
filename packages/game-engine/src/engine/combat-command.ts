@@ -4,8 +4,9 @@ import { getDefinition, getPlayer } from '../model/factories.js';
 import { baseZoneIds, getZone } from '../model/zones.js';
 import { getCombatPrefix } from '../queries/legal-commands.js';
 import { evaluateAttackResolution } from '../rules/attack-resolution-evaluator.js';
-import { evaluateCombatDepartureReplacements } from '../rules/combat-departure-replacement-evaluator.js';
+import { evaluateCombatDepartureReplacements, legalCombatDepartureReplacementSelections } from '../rules/combat-departure-replacement-evaluator.js';
 import { evaluateCombat } from '../rules/combat-evaluator.js';
+import { evaluateCombatAssist } from '../rules/combat-assist-evaluator.js';
 import { evaluateCombatParticipantDeparture } from '../rules/combat-participant-departure-evaluator.js';
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { pushDiscard } from '../rules/discard-redirect-evaluator.js';
@@ -25,7 +26,6 @@ import { attachTargets } from './target-supply.js';
 const removeFrom = <T>(items: T[], item: T): boolean => { const index = items.indexOf(item); if (index < 0) return false; items.splice(index, 1); return true; };
 const facts = (state: GameState, playerId: string) => { if (!state.turnFacts || state.turnFacts.playerId !== playerId) state.turnFacts = createTurnFactLedger(playerId); return state.turnFacts; };
 const event = (state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void => { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); };
-const optionalSubsets = (ids: readonly string[]): string[][] => Array.from({ length: 2 ** ids.length }, (_, mask) => ids.filter((_, index) => (mask & (1 << index)) !== 0));
 const fixedCombatOutcome = (events: readonly DomainEvent[]): 'defeat-target' | 'remove-target' | undefined => { const payload = events.find((entry) => entry.type === 'COMBAT_EVALUATED')?.payload; return payload?.kind === 'combat-evaluation' ? payload.evaluation.outcome.kind : undefined; };
 const fixedAttackResolution = (events: readonly DomainEvent[]): import('@guildmaster/game-protocol').AttackResolutionEvaluation | undefined => { const payload = events.find((entry) => entry.type === 'ATTACK_RESOLUTION_EVALUATED')?.payload; return payload?.kind === 'attack-resolution' ? payload.evaluation : undefined; };
 
@@ -77,13 +77,15 @@ export function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerS
   if (!target || target.status !== 'available') return { code: 'INVALID_COMMAND', message: '該敵方目標不可討伐。' };
   const encounter = target.parentEncounterId ? state.enemyEncounters.find(({ encounterId }) => encounterId === target.parentEncounterId) : undefined;
   if (encounter?.status === 'finished') return { code: 'INVALID_COMMAND', message: '該敵方 encounter 已完成。' };
+  const assist = command.combatAssistCardId ? evaluateCombatAssist(state, ruleset, player.id, command.targetId, command.combatAssistCardId) : undefined;
+  if (command.combatAssistCardId && !assist) return { code: 'INVALID_COMMAND', message: '該戰鬥支援目前無法用於此目標。' };
   const attackResolution = target.health ? evaluateAttackResolution(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, registry: { rulesetVersion: state.rulesetVersion, modules: ruleset.modules.map(({ id, version }) => ({ id, version })) } }) : undefined;
   if (attackResolution && attackResolution.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${attackResolution.reason}: ${attackResolution.error}` };
-  const combat = attackResolution?.status === 'ready' ? { status: 'ready' as const, evaluation: attackResolution.evaluation.combat } : evaluateCombat(state, ruleset, player.id, command.targetId);
+  const combat = assist ? { status: 'ready' as const, evaluation: assist.combat } : attackResolution?.status === 'ready' ? { status: 'ready' as const, evaluation: attackResolution.evaluation.combat } : evaluateCombat(state, ruleset, player.id, command.targetId);
   if (combat.status !== 'ready') return { code: 'INVALID_COMMAND', message: combat.error };
   if (!combat.evaluation.eligible) return { code: 'INVALID_COMMAND', message: `該敵方目標受到討伐限制：${combat.evaluation.restrictionReasonCodes.join(', ')}。` };
   if (!target.health && target.kind === 'monster') { const continuity = evaluateMonsterDefeatContinuity(state, ruleset, target.targetId, combat.evaluation.outcome.kind); if (continuity.status !== 'ready') return { code: 'INVALID_COMMAND', message: `${continuity.reason}: ${continuity.error}` }; }
-  const prefix = attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed);
+  const prefix = assist?.partyPrefix ?? (attackResolution?.status === 'ready' ? attackResolution.evaluation.partyPrefix : getCombatPrefix(state, ruleset, player.id, combat.evaluation.requiredCombat, command.targetId, combat.evaluation.maximumPartySlots, combat.evaluation.equipmentSuppressed));
   if (!prefix) return { code: 'INVALID_COMMAND', message: '隊伍戰力不足以討伐該目標。' };
   const participantPreview = player.party.slice(0, prefix.slotCount);
   const participantDeparture = evaluateCombatParticipantDeparture(state, ruleset, { schemaVersion: 1, playerId: player.id, targetId: command.targetId, participantCardIds: participantPreview.map(({ adventurerId }) => adventurerId) });
@@ -97,26 +99,48 @@ export function attackTarget(state: GameState, ruleset: Ruleset, player: PlayerS
   if (replacements.status !== 'ready') return { code: 'INVALID_COMMAND', message: replacements.error };
   if (selectedReplacementIds === undefined && replacements.candidates.length) {
     if (replacements.candidates.length > 8) return { code: 'INVALID_COMMAND', message: 'Combat departure replacement choice exceeds the supported option budget.' };
-    const optionCandidateIds = Object.fromEntries(optionalSubsets(replacements.candidates.map(({ candidateId }) => candidateId)).map((ids, index) => [`departure-${index}`, ids])); const executionId = `combat-departure:${commandId}`; const choiceId = 'combat-departure:optional-replacements';
+    const optionCandidateIds = Object.fromEntries(legalCombatDepartureReplacementSelections(state, player.id, replacements.candidates).map((ids, index) => [`departure-${index}`, ids])); const executionId = `combat-departure:${commandId}`; const choiceId = 'combat-departure:optional-replacements';
     state.effectState.pendingChoice = { schemaVersion: 1, executionId, choiceId, decisionKind: 'choose-party-member', actorId: player.id, options: Object.keys(optionCandidateIds).map((id) => ({ id, effect: { kind: 'modify-value', target: { kind: 'turn-combat-bonus', player: { kind: 'controller' } }, amount: 0 } })), remaining: [], context: { controllerId: player.id } };
     state.effectState.pendingCommand = { schemaVersion: 1, kind: 'combat-departure-choice', envelope: structuredClone(envelope), events: structuredClone(events), rollbackState: structuredClone(rollbackState), candidates: structuredClone(replacements.candidates), optionCandidateIds: structuredClone(optionCandidateIds), registry: structuredClone(replacements.registry) }; return undefined;
   }
   const selectedIds = new Set(selectedReplacementIds ?? []);
   if ([...selectedIds].some((id) => !replacements.candidates.some(({ candidateId }) => candidateId === id))) return { code: 'INVALID_COMMAND', message: 'Combat departure replacement selection is no longer valid.' };
+  if (!legalCombatDepartureReplacementSelections(state, player.id, replacements.candidates).some((ids) => ids.length === selectedIds.size && ids.every((id) => selectedIds.has(id)))) return { code: 'INVALID_COMMAND', message: 'Combat departure replacement selection exceeds its shared usage limit.' };
   const selectedCandidates = replacements.candidates.filter(({ candidateId }) => selectedIds.has(candidateId)); const participants = player.party.splice(0, prefix.slotCount); const turnFacts = facts(state, player.id);
-  turnFacts.lastCombatParticipantCount = participants.length; turnFacts.lastCombatDiscardedEquipment = participants.flatMap(attachedCardIds).filter((cardId) => getDefinition(ruleset.registry, state, cardId).type === 'equipment').length;
-  turnFacts.lastCombatDiscardedNonStarterProfessions = [...new Set(participants.flatMap(({ adventurerId }) => { const definition = getDefinition(ruleset.registry, state, adventurerId); return definition.type === 'starter' ? [] : (definition.tags ?? []).filter((tag) => tag.startsWith('profession:')); }))];
+  turnFacts.lastCombatParticipantCount = participants.length;
   const preservedSlots: typeof participants = []; const preservedAdventurerIds = new Set<string>(); const normalParticipantIds: string[] = [];
   for (const slot of participants) {
     const replacement = selectedCandidates.find(({ adventurerId }) => adventurerId === slot.adventurerId);
     if (!replacement) { normalParticipantIds.push(slot.adventurerId); continue; }
+    if (replacement.usage) {
+      const uses = turnFacts.effectUses ?? (turnFacts.effectUses = {});
+      const current = uses[replacement.usage.usageId] ?? 0;
+      if (current >= replacement.usage.maxUses) return { code: 'INVALID_COMMAND', message: `Combat departure replacement use limit reached: ${replacement.usage.usageId}.` };
+      uses[replacement.usage.usageId] = current + 1;
+    }
     if (replacement.replacement.kind === 'self-to-player-draw-top') { player.drawPile.push(slot.adventurerId); event(state, events, 'COMBAT_DEPARTURE_REPLACED', `${getDefinition(ruleset.registry, state, slot.adventurerId).name} 改置於玩家牌庫頂（${replacement.reasonCode}）。`, commandId); continue; }
+    if (replacement.replacement.kind === 'keep-self-in-party') {
+      preservedAdventurerIds.add(slot.adventurerId); preservedSlots.push(slot);
+      event(state, events, 'COMBAT_DEPARTURE_REPLACED', `${getDefinition(ruleset.registry, state, slot.adventurerId).name} 保留在隊伍中（${replacement.reasonCode}）。`, commandId);
+      continue;
+    }
     const attachmentCardId = replacement.attachmentCardId;
     if (!attachmentCardId || !attachedCardIds(slot).includes(attachmentCardId)) return { code: 'INVALID_COMMAND', message: 'Combat departure substitute attachment disappeared.' };
     preservedAdventurerIds.add(slot.adventurerId); setAttachedCardIds(slot, attachedCardIds(slot).filter((cardId) => cardId !== attachmentCardId)); preservedSlots.push(slot); pushDiscard(state, ruleset, player.id, attachmentCardId);
     event(state, events, 'COMBAT_DEPARTURE_REPLACED', `${getDefinition(ruleset.registry, state, attachmentCardId).name} 代替參戰冒險者棄置（${replacement.reasonCode}）。`, commandId);
   }
+  const normallyDepartingSlots = participants.filter(({ adventurerId }) => normalParticipantIds.includes(adventurerId));
+  turnFacts.lastCombatDiscardedEquipment = normallyDepartingSlots.flatMap(attachedCardIds).filter((cardId) => getDefinition(ruleset.registry, state, cardId).type === 'equipment').length;
+  turnFacts.lastCombatDiscardedNonStarterProfessions = [...new Set(normallyDepartingSlots.flatMap(({ adventurerId }) => { const definition = getDefinition(ruleset.registry, state, adventurerId); return definition.type === 'starter' ? [] : (definition.tags ?? []).filter((tag) => tag.startsWith('profession:')); }))];
   player.party.unshift(...preservedSlots); applyCombatParticipantDeparture(state, player, normalParticipantIds, participantDeparture.evaluation, events, commandId);
+  if (assist) {
+    const sourceIndex = player.party.findIndex(({ adventurerId }) => adventurerId === assist.sourceCardId);
+    if (sourceIndex < 0) return { code: 'INVALID_COMMAND', message: '戰鬥支援者在結算前已離開隊伍。' };
+    const [source] = player.party.splice(sourceIndex, 1);
+    for (const cardId of attachedCardIds(source!)) pushDiscard(state, ruleset, player.id, cardId);
+    state.removedCards.push(assist.sourceCardId);
+    event(state, events, 'COMBAT_ASSIST_APPLIED', `${getDefinition(ruleset.registry, state, assist.sourceCardId).name} 將討伐需求減半後移出遊戲（${assist.policy.reasonCode}）。`, commandId);
+  }
   for (const slot of participants) {
     if (preservedAdventurerIds.has(slot.adventurerId)) continue;
     for (const attachmentId of attachedCardIds(slot)) {

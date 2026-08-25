@@ -17,6 +17,7 @@ export * from './queries/player-view.js';
 export * from './queries/scoring.js';
 export * from './rules/base-rules.js';
 export * from './rules/combat-evaluator.js';
+export * from './rules/combat-assist-evaluator.js';
 export * from './rules/attack-resolution-evaluator.js';
 export * from './rules/combat-reward-evaluator.js';
 export * from './rules/encounter-resolution-evaluator.js';

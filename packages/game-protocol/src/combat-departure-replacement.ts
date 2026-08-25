@@ -2,7 +2,14 @@ import { z } from 'zod';
 
 export type CombatDepartureReplacement =
   | { readonly kind: 'self-to-player-draw-top' }
+  | { readonly kind: 'keep-self-in-party' }
   | { readonly kind: 'discard-attached-card'; readonly attachmentDefinitionTypes: readonly string[] };
+
+export type CombatDepartureReplacementUsage = {
+  readonly scope: 'controller-turn';
+  readonly usageId: string;
+  readonly maxUses: number;
+};
 
 /** Source-card policy for an optional replacement of a normal combat discard. */
 export type CombatDepartureReplacementPolicy = {
@@ -12,6 +19,7 @@ export type CombatDepartureReplacementPolicy = {
   readonly priority: number;
   readonly sourceDefinitionIds: readonly string[];
   readonly replacement: CombatDepartureReplacement;
+  readonly usage?: CombatDepartureReplacementUsage | undefined;
   readonly reasonCode: string;
 };
 
@@ -19,6 +27,7 @@ export type CombatDepartureReplacementCandidate = {
   readonly candidateId: string;
   readonly adventurerId: string;
   readonly replacement: CombatDepartureReplacement;
+  readonly usage?: CombatDepartureReplacementUsage | undefined;
   readonly attachmentCardId?: string;
   readonly policy: { readonly moduleId: string; readonly policyId: string };
   readonly reasonCode: string;
@@ -30,8 +39,10 @@ export const CombatDepartureReplacementPolicySchema: z.ZodType<CombatDepartureRe
   sourceDefinitionIds: z.array(id).min(1).refine((values) => new Set(values).size === values.length),
   replacement: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('self-to-player-draw-top') }).strict(),
+    z.object({ kind: z.literal('keep-self-in-party') }).strict(),
     z.object({ kind: z.literal('discard-attached-card'), attachmentDefinitionTypes: z.array(id).min(1).refine((values) => new Set(values).size === values.length) }).strict(),
   ]),
+  usage: z.object({ scope: z.literal('controller-turn'), usageId: id, maxUses: z.number().finite().int().positive() }).strict().optional(),
   reasonCode: id,
 }).strict();
 

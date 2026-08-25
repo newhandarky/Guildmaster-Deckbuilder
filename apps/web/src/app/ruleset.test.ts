@@ -146,6 +146,7 @@ describe('web content modes', () => {
       'base:rules',
       'base:helpers',
       'custom:adventurers-full-rules',
+      'custom:adventurers-helper-effects',
     ]);
     expect(webContentModeFromPackIds(packIds)).toBe('custom-adventurers-full');
     expect(webGameSetupFromSnapshot(packIds, moduleIds)).toEqual({
