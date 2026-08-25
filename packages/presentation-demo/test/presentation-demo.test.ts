@@ -192,7 +192,19 @@ describe('demo presentation package', () => {
     expect(registry.diagnostics).toEqual([...registry.diagnostics].sort());
   });
 
-  it('assigns stable unique remote portrait keys to every Boss and helper', () => {
+  it('assigns stable unique remote portrait keys to every adventurer, resource, monster, Boss, and helper', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:adventurer/')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
+      Array.from({ length: 30 }, (_, index) => `base:portrait/adventurer-${String(index + 1).padStart(2, '0')}`),
+    );
+    expect([
+      ...provisionalFoundationPresentationPack.entries,
+      ...provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:resource/')),
+    ].map(({ portraitAssetKey }) => portraitAssetKey).sort()).toEqual(
+      Array.from({ length: 28 }, (_, index) => `base:portrait/resource-${String(index + 1).padStart(2, '0')}`).sort(),
+    );
+    expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:monster/')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
+      Array.from({ length: 14 }, (_, index) => `base:portrait/monster-${String(index + 1).padStart(2, '0')}`),
+    );
     expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:boss/')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
       Array.from({ length: 11 }, (_, index) => `base:portrait/boss-${String(index + 1).padStart(2, '0')}`),
     );
