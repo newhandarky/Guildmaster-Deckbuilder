@@ -16,6 +16,7 @@ import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { evaluateAttachment } from '../rules/attachment-evaluator.js';
 import { combatAssistCanTarget, evaluateCombatAssist } from '../rules/combat-assist-evaluator.js';
+import { evaluateCardEffectActivation } from '../rules/card-effect-activation-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -275,6 +276,9 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     const preview = previewCommandBefore(state, ruleset, actorId, 'ATTACK_TARGET');
     for (const target of Object.values(state.enemyTargets)) {
       if (target.status !== 'available') continue;
+      for (const { adventurerId } of player.party) {
+        if (evaluateCardEffectActivation(state, ruleset, actorId, adventurerId, target.targetId)) commands.push({ type: 'ACTIVATE_CARD_EFFECT', cardId: adventurerId, targetId: target.targetId });
+      }
       if (!target.health && target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, target.targetId).status !== 'ready') continue;
       if (attackIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
       for (const { adventurerId } of player.party) if (combatAssistIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId, adventurerId, state)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId, combatAssistCardId: adventurerId });

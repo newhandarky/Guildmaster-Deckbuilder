@@ -13,6 +13,20 @@ export { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
 export type SupplyKind = string;
 export type EndCondition = { id: string; priority?: number; evaluate: (state: GameState) => boolean };
 export type ScoreContribution = { playerId: string; ruleId: string; amount: number; label: string };
+export type CardEffectActivationPolicy = {
+  schemaVersion: 1;
+  moduleId: string;
+  policyId: string;
+  priority: number;
+  sourceDefinitionIds: readonly string[];
+  targetKinds: readonly ('monster' | 'boss')[];
+  phase: 'combat';
+  combatModifier: { kind: 'divide'; divisor: number; rounding: 'ceil' | 'floor' };
+  sourceDisposition: 'remove-from-game';
+  attachedCardsDisposition: 'discard';
+  duration: 'until-target-leaves';
+  reasonCode: string;
+};
 export type RulesModule = {
   id: string; version: string; config?: Record<string, unknown>;
   composition?: OptionalRulesModuleComposition;
@@ -36,6 +50,7 @@ export type RulesModule = {
   combatDepartureReplacementPolicies?: readonly CombatDepartureReplacementPolicy[];
   combatReserveContributionPolicies?: readonly CombatReserveContributionPolicy[];
   combatAssistPolicies?: readonly CombatAssistPolicy[];
+  cardEffectActivationPolicies?: readonly CardEffectActivationPolicy[];
   partyCombatModifierRules?: readonly PartyCombatModifierRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
   teamCapacityEnforcementPolicies?: readonly TeamCapacityEnforcementPolicy[];
@@ -194,6 +209,8 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
   const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const equipmentDepartureRefs = new Set<string>(); const attachmentRefs = new Set<string>(); const enemyAttachmentRefs = new Set<string>(); const registeredEquipmentDeparturePolicies: EquipmentDeparturePolicy[] = []; const discardRedirectRefs = new Set<string>(); const participantDepartureRefs = new Set<string>(); const registeredParticipantDeparturePolicies: CombatParticipantDeparturePolicy[] = []; const partyCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const capacityRefs = new Set<string>(); const capacityPriorities = new Set<number>(); const setupRefs = new Set<string>(); const setupPriorities = new Set<number>(); const setupSelectors = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const purchaseCostRefs = new Set<string>(); const purchaseCostPriorities = new Set<number>(); const restHandRefs = new Set<string>(); const restHandPriorities = new Set<number>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
   const combatAssistRefs = new Set<string>();
   const registeredCombatAssistPolicies: CombatAssistPolicy[] = [];
+  const cardEffectActivationRefs = new Set<string>();
+  const registeredCardEffectActivationPolicies: CardEffectActivationPolicy[] = [];
   for (const module of composedModules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
@@ -240,6 +257,22 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
       for (const definitionId of policy.sourceDefinitionIds) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Combat assist policy ${policy.policyId} references unknown source ${definitionId}.`); else if (definition.type !== 'adventurer') errors.push(`Combat assist policy ${policy.policyId} source must be an adventurer.`); }
       combatAssistRefs.add(ref);
       registeredCombatAssistPolicies.push(policy);
+      if (errors.length) throw new Error(errors.join(' '));
+    }
+    for (const policy of module.cardEffectActivationPolicies ?? []) {
+      const errors: string[] = [];
+      const ref = `${module.id}\u0000${policy.policyId}`;
+      if (policy.schemaVersion !== 1 || policy.moduleId !== module.id || !policy.policyId.trim() || !Number.isFinite(policy.priority)) errors.push(`Invalid card effect activation policy: ${module.id}/${policy.policyId}.`);
+      if (!policy.sourceDefinitionIds.length || new Set(policy.sourceDefinitionIds).size !== policy.sourceDefinitionIds.length || !policy.targetKinds.length || new Set(policy.targetKinds).size !== policy.targetKinds.length || policy.targetKinds.some((kind) => kind !== 'monster' && kind !== 'boss') || policy.phase !== 'combat' || policy.combatModifier.kind !== 'divide' || !Number.isInteger(policy.combatModifier.divisor) || policy.combatModifier.divisor <= 1 || (policy.combatModifier.rounding !== 'ceil' && policy.combatModifier.rounding !== 'floor') || policy.sourceDisposition !== 'remove-from-game' || policy.attachedCardsDisposition !== 'discard' || policy.duration !== 'until-target-leaves' || !policy.reasonCode.trim()) errors.push(`Malformed card effect activation policy: ${module.id}/${policy.policyId}.`);
+      if (cardEffectActivationRefs.has(ref)) errors.push(`Duplicate card effect activation policy: ${module.id}/${policy.policyId}.`);
+      if (registeredCardEffectActivationPolicies.some((candidate) => candidate.sourceDefinitionIds.some((definitionId) => policy.sourceDefinitionIds.includes(definitionId)) && candidate.targetKinds.some((kind) => policy.targetKinds.includes(kind)))) errors.push(`Card effect activation policy ${module.id}/${policy.policyId} ambiguously overlaps another source and target kind.`);
+      for (const definitionId of policy.sourceDefinitionIds) {
+        const definition = registry.definitions[definitionId];
+        if (!definition) errors.push(`Card effect activation policy ${policy.policyId} references unknown source ${definitionId}.`);
+        else if (definition.type !== 'adventurer') errors.push(`Card effect activation policy ${policy.policyId} source must be an adventurer.`);
+      }
+      cardEffectActivationRefs.add(ref);
+      registeredCardEffectActivationPolicies.push(policy);
       if (errors.length) throw new Error(errors.join(' '));
     }
     for (const rule of module.partyCombatModifierRules ?? []) { const errors = validatePartyCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (partyCombatRefs.has(ref)) errors.push(`Duplicate party combat modifier rule: ${module.id}/${rule.ruleId}.`); for (const definitionId of rule.sourceDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Party combat modifier rule ${rule.ruleId} references unknown source definition ${definitionId}.`); else if (definition.type !== 'adventurer' && definition.type !== 'starter' && definition.type !== 'equipment') errors.push(`Party combat modifier rule ${rule.ruleId} source ${definitionId} must be an adventurer, starter, or equipment.`); } partyCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }

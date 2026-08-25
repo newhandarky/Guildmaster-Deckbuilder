@@ -86,20 +86,21 @@ describe('public table simultaneous layout', () => {
       expect(markup).toContain(`data-zone-id="${zoneId}"`);
     }
     expect(markup.match(/data-legal-action="true"/g)).toHaveLength(4);
-    expect(markup).toContain('動作：一般討伐');
+    expect(markup).toContain('動作：討伐');
     expect(markup).toContain('動作：招募');
     expect(markup).toContain('動作：購買');
   });
 
-  it('keeps normal and combat-assist attacks as distinct player-selectable actions', () => {
+  it('keeps card-effect activation independent from attacking the selected target', () => {
     const definitions: Record<string, CardDefinition> = {
       'test:monster': { id: 'test:monster', name: 'Monster', type: 'monster', copies: 1, combat: 3, source: 'test' },
       'test:mage': { id: 'test:mage', name: 'Mage', type: 'adventurer', copies: 1, combat: 0, source: 'test' },
     };
     const cards: Record<string, CardInstance> = { monster: { id: 'monster', definitionId: 'test:monster' }, mage: { id: 'mage', definitionId: 'test:mage' } };
     const normal = { type: 'ATTACK_TARGET' as const, targetId: 'target-monster' };
+    const activation = { type: 'ACTIVATE_CARD_EFFECT' as const, cardId: 'mage', targetId: 'target-monster' };
     const assist = { ...normal, combatAssistCardId: 'mage' };
-    const attackPreview = (command: typeof normal | typeof assist, requiredCombat: number): ActionPreviewSet['items'][number] => ({
+    const attackPreview = (command: typeof normal, requiredCombat: number): ActionPreviewSet['items'][number] => ({
       kind: 'attack', status: 'ready', command, targetId: 'target-monster', requiredCombat,
       committedCombat: requiredCombat, surplusCombat: 0, partySlotCount: 1,
       participantCardIds: ['mage'], outcome: { kind: 'defeat-target' },
@@ -112,11 +113,12 @@ describe('public table simultaneous layout', () => {
         'base:item-row': { zoneId: 'base:item-row', kind: 'faceUpRow', visibility: 'public', cardIds: [] },
       },
       targets: { monster: { targetId: 'target-monster', cardInstanceId: 'monster', kind: 'monster', status: 'available', attachments: [], moduleState: {} } },
-      definitions, cards, presentation: createPresentationResolver([]), legalCommands: [normal, assist],
-      actionPreviews: { schemaVersion: 2, gameId: 'game', revision: 1, actorId: 'p1', items: [attackPreview(normal, 6), attackPreview(assist, 3)] },
+      definitions, cards, presentation: createPresentationResolver([]), legalCommands: [activation, normal, assist],
+      actionPreviews: { schemaVersion: 2, gameId: 'game', revision: 1, actorId: 'p1', items: [attackPreview(normal, 6)] },
       previewScope: { gameId: 'game', revision: 1, actorId: 'p1' }, onInspect: () => undefined,
     }));
-    expect(markup).toContain('動作：一般討伐、技能討伐（Mage）');
+    expect(markup).toContain('動作：發動Mage效果、討伐、發動Mage效果並討伐');
+    expect(markup).not.toContain('技能討伐');
     expect(markup).toContain('data-legal-action="true"');
     expect(markup).not.toContain('data-testid="action-preview"');
     expect(markup).not.toContain('需求戰力');

@@ -49,22 +49,32 @@ describe('deterministic CPU strategy', () => {
     expect(decisions[0]).toMatchObject({ status: 'ready', command: buy, reasonCode: 'BUY_HIGHEST_UTILITY' });
   });
 
-  it('uses combat assist only when it is the best legal attack and reports its reason code', () => {
-    const assist = { type: 'ATTACK_TARGET' as const, targetId: 'monster', combatAssistCardId: 'mage' };
+  it('activates an independent card effect when it makes combat progress and reports its reason code', () => {
+    const activation = { type: 'ACTIVATE_CARD_EFFECT' as const, cardId: 'mage', targetId: 'monster' };
     const end = { type: 'END_PHASE' as const, phase: 'combat' as const };
     const combatView = { ...view(), phase: 'combat', enemyTargets: { monster: { targetId: 'monster', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' } } } as unknown as PlayerView;
-    const input = { ...context([assist, end], [feature(assist, { monsterDefeat: 1 })]), view: combatView };
+    const input = { ...context([activation, end], [feature(activation, { immediateCombatPower: 3 })]), view: combatView };
     const result = decideCpuAction(input);
-    expect(result).toMatchObject({ status: 'ready', command: assist, reasonCode: 'ATTACK_WITH_COMBAT_ASSIST' });
+    expect(result).toMatchObject({ status: 'ready', command: activation, reasonCode: 'ACTIVATE_CARD_EFFECT_FOR_COMBAT_PROGRESS' });
     expect(decideCpuAction(structuredClone(input))).toEqual(result);
   });
 
-  it('never spends a combat assist when the same target has a normal legal attack', () => {
+  it('does not spend an independent card effect when the target can already be defeated normally', () => {
     const normal = { type: 'ATTACK_TARGET' as const, targetId: 'monster' };
-    const assist = { ...normal, combatAssistCardId: 'mage' };
+    const activation = { type: 'ACTIVATE_CARD_EFFECT' as const, cardId: 'mage', targetId: 'monster' };
     const combatView = { ...view(), phase: 'combat', enemyTargets: { monster: { targetId: 'monster', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' } } } as unknown as PlayerView;
-    const result = decideCpuAction({ ...context([assist, normal], [feature(assist, { monsterDefeat: 1, partyCombatLoss: 0 }), feature(normal, { monsterDefeat: 1, partyCombatLoss: 3 })]), view: combatView });
+    const result = decideCpuAction({ ...context([activation, normal], [feature(activation, { immediateCombatPower: 2 }), feature(normal, { monsterDefeat: 1 })]), view: combatView });
     expect(result).toMatchObject({ status: 'ready', command: normal, reasonCode: 'ATTACK_BEST_NET_VALUE' });
+  });
+
+  it('preserves generic combat-assist decisions and never spends one when the same normal attack is legal', () => {
+    const normal = { type: 'ATTACK_TARGET' as const, targetId: 'monster' };
+    const assist = { ...normal, combatAssistCardId: 'support' };
+    const combatView = { ...view(), phase: 'combat', enemyTargets: { monster: { targetId: 'monster', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' } } } as unknown as PlayerView;
+    const assistedOnly = decideCpuAction({ ...context([assist], [feature(assist, { monsterDefeat: 1 })]), view: combatView });
+    expect(assistedOnly).toMatchObject({ status: 'ready', command: assist, reasonCode: 'ATTACK_WITH_COMBAT_ASSIST' });
+    const normalAvailable = decideCpuAction({ ...context([assist, normal], [feature(assist, { monsterDefeat: 1 }), feature(normal, { monsterDefeat: 1 })]), view: combatView });
+    expect(normalAvailable).toMatchObject({ status: 'ready', command: normal, reasonCode: 'ATTACK_BEST_NET_VALUE' });
   });
 
   it('keeps the five-bond combination with the greatest provisional honor', () => {

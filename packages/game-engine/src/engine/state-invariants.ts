@@ -125,7 +125,9 @@ export function validateGameStateInvariants(state: GameState): string[] {
 
   const modifierIds = new Set<string>();
   for (const modifier of state.temporaryTargetModifiers ?? []) {
-    if (!modifier.modifierId.trim() || modifierIds.has(modifier.modifierId) || !modifier.moduleId.trim() || !state.cards[modifier.targetCardId] || !Number.isFinite(modifier.amount) || !Number.isInteger(modifier.amount) || !state.players.some(({ id }) => id === modifier.expiresAtTurnEndPlayerId)) errors.push(`Temporary target modifier ${modifier.modifierId || '<empty>'} is invalid.`);
+    const turnExpiryValid = modifier.expiresAtTurnEndPlayerId !== undefined && state.players.some(({ id }) => id === modifier.expiresAtTurnEndPlayerId);
+    const targetExpiryValid = modifier.expiresWhenTargetLeaves === true && Object.values(state.enemyTargets).some(({ cardInstanceId, status }) => cardInstanceId === modifier.targetCardId && status === 'available');
+    if (!modifier.modifierId.trim() || modifierIds.has(modifier.modifierId) || !modifier.moduleId.trim() || !state.cards[modifier.targetCardId] || !Number.isFinite(modifier.amount) || !Number.isInteger(modifier.amount) || turnExpiryValid === targetExpiryValid) errors.push(`Temporary target modifier ${modifier.modifierId || '<empty>'} is invalid.`);
     modifierIds.add(modifier.modifierId);
   }
 

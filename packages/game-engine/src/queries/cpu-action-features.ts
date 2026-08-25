@@ -212,6 +212,14 @@ export function getCpuActionFeatures(state: GameState, ruleset: Ruleset, actorId
         applyTargetCombatAfter(feature, preview, ruleset, actorId);
       }
     }
+    if (command.type === 'ACTIVATE_CARD_EFFECT') {
+      const sourceSlot = state.players.find(({ id }) => id === actorId)?.party.find(({ adventurerId }) => adventurerId === command.cardId);
+      if (!sourceSlot) throw new Error(`CPU action features require an active source card ${command.cardId}.`);
+      feature.partyCombatLoss = partyCombatTotal(state, ruleset, actorId) - partyCombatAfterRemoving(state, ruleset, actorId, [command.cardId]);
+      feature.equipmentLoss = attachedCardIds(sourceSlot).length;
+      applyDispatchedTargetCombatAfter(feature, state, ruleset, actorId, command);
+      feature.immediateCombatPower = feature.targetCombatProgress.reduce((largest, target) => Math.max(largest, target.shortfallBefore - target.shortfallAfter), 0);
+    }
     if (command.type === 'BUY_CARD') {
       const definition = getDefinition(ruleset.registry, state, command.cardId);
       const purchaseCost = evaluatePurchaseCost(state, ruleset, { schemaVersion: 1, playerId: actorId, cardId: command.cardId });

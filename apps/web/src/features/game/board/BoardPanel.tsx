@@ -57,17 +57,27 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
         const attackCommands = action === 'attack'
           ? legalCommands.filter((candidate): candidate is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => candidate.type === 'ATTACK_TARGET' && candidate.targetId === target?.targetId)
           : [];
+        const activationCommands = action === 'attack'
+          ? legalCommands.filter((candidate): candidate is Extract<GameCommand, { type: 'ACTIVATE_CARD_EFFECT' }> => candidate.type === 'ACTIVATE_CARD_EFFECT' && candidate.targetId === target?.targetId)
+          : [];
         const purchaseCommand = action === 'buy'
           ? legalCommands.find((candidate): candidate is Extract<GameCommand, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD' && candidate.cardId === id)
           : undefined;
         const cardAction = action === 'attack'
-          ? cardActionMenu(`ATTACK_TARGET:${target?.targetId}`, attackCommands.map((command) => commandAction(
-              `ATTACK_TARGET:${command.targetId}:${command.combatAssistCardId ?? 'normal'}`,
-              command.combatAssistCardId
-                ? `技能討伐（${displayNameFor(cards, definitions, presentation, command.combatAssistCardId)}）`
-                : '一般討伐',
-              command,
-            )))
+          ? cardActionMenu(`target-actions:${target?.targetId}`, [
+              ...activationCommands.map((command) => commandAction(
+                `ACTIVATE_CARD_EFFECT:${command.cardId}:${command.targetId}`,
+                `發動${displayNameFor(cards, definitions, presentation, command.cardId)}效果`,
+                command,
+              )),
+              ...attackCommands.map((command) => commandAction(
+                `ATTACK_TARGET:${command.targetId}:${command.combatAssistCardId ?? 'normal'}`,
+                command.combatAssistCardId
+                  ? `發動${displayNameFor(cards, definitions, presentation, command.combatAssistCardId)}效果並討伐`
+                  : '討伐',
+                command,
+              )),
+            ])
           : purchaseCommand
             ? commandAction(`BUY_CARD:${id}`, definition?.type === 'adventurer' ? '招募' : '購買', purchaseCommand)
             : undefined;

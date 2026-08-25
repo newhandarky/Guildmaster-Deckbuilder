@@ -97,7 +97,7 @@ const data: RulesData = rewriteRulesData({
  */
 export const customAdventurerRulesModule: RulesModule = {
   id: customAdventurerRulesModuleId,
-  version: '0.9.0',
+  version: '0.10.0',
   ...data,
   lifecycleHooks: [...(data.lifecycleHooks ?? []), {
     schemaVersion: 1,
@@ -135,17 +135,20 @@ export const customAdventurerRulesModule: RulesModule = {
     sourceDefinitionIds: ['custom:adventurer/ranged-03'], contribution: 'effective-combat', destination: 'first-participant', onlyWhileSourceNotParticipant: true,
     reasonCode: 'CUSTOM_RANGED_03_RESERVE_COMBAT',
   }],
-  combatAssistPolicies: [...(data.combatAssistPolicies ?? []), {
+  combatAssistPolicies: [...(data.combatAssistPolicies ?? [])],
+  cardEffectActivationPolicies: [{
     schemaVersion: 1,
     moduleId: customAdventurerRulesModuleId,
-    policyId: 'custom-mage-06-halve-enemy-combat',
+    policyId: 'custom-mage-06-halve-target-combat',
     priority: 400,
     sourceDefinitionIds: ['custom:adventurer/mage-06'],
     targetKinds: ['monster', 'boss'],
-    requiredCombat: { kind: 'divide', divisor: 2, rounding: 'ceil' },
+    phase: 'combat',
+    combatModifier: { kind: 'divide', divisor: 2, rounding: 'ceil' },
     sourceDisposition: 'remove-from-game',
     attachedCardsDisposition: 'discard',
-    reasonCode: 'CUSTOM_MAGE_06_HALVES_ENEMY_COMBAT_AND_IS_REMOVED',
+    duration: 'until-target-leaves',
+    reasonCode: 'CUSTOM_MAGE_06_HALVES_TARGET_COMBAT_UNTIL_TARGET_LEAVES',
   }],
   combatDepartureReplacementPolicies: [...(data.combatDepartureReplacementPolicies ?? []), {
     schemaVersion: 1,
@@ -209,13 +212,13 @@ export const customAdventurerHelperRulesModuleId = 'custom:adventurers-helper-ef
 /** Helper-dependent custom effects stay separate so the core custom rules remain composable without helper zones. */
 export const customAdventurerHelperRulesModule: RulesModule = {
   id: customAdventurerHelperRulesModuleId,
-  version: '1.0.0',
+  version: '1.1.0',
   composition: {
     schemaVersion: 1,
     kind: 'optional',
     priority: 30,
     dependencies: [
-      { moduleId: customAdventurerRulesModuleId, version: '0.9.0' },
+      { moduleId: customAdventurerRulesModuleId, version: '0.10.0' },
       { moduleId: baseHelpersRulesModule.id, version: baseHelpersRulesModule.version },
     ],
   },

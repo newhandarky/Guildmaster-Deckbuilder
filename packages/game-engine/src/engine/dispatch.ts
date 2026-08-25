@@ -23,6 +23,7 @@ import { pushDiscard } from '../rules/discard-redirect-evaluator.js';
 import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
 import { evaluateAttachment } from '../rules/attachment-evaluator.js';
 import { attackTarget, finishAttackAfterRewards } from './combat-command.js';
+import { evaluateCardEffectActivation } from '../rules/card-effect-activation-evaluator.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId?: string, payload?: DomainEvent['payload']): void { events.push({ eventId: `event-${state.revision + 1}-${events.length + 1}`, revision: state.revision + 1, type, message, ...(commandId ? { causedByCommandId: commandId } : {}), ...(payload ? { payload } : {}) }); }
 function fail(state: GameState, code: EngineError['code'], message: string): EngineResult { return { state, events: [], error: { code, message } }; }
@@ -125,6 +126,28 @@ function applyItem(state: GameState, ruleset: Ruleset, player: PlayerState, enve
   return undefined;
 }
 
+function activateCardEffect(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'ACTIVATE_CARD_EFFECT' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
+  const activation = evaluateCardEffectActivation(state, ruleset, player.id, command.cardId, command.targetId);
+  if (!activation) return { code: 'INVALID_COMMAND', message: '此卡目前無法對指定目標發動效果。' };
+  const sourceIndex = player.party.findIndex(({ adventurerId }) => adventurerId === activation.sourceCardId);
+  if (sourceIndex < 0) return { code: 'INVALID_COMMAND', message: '發動效果的冒險者不在隊伍中。' };
+  const [source] = player.party.splice(sourceIndex, 1);
+  for (const cardId of attachedCardIds(source!)) pushDiscard(state, ruleset, player.id, cardId);
+  state.removedCards.push(activation.sourceCardId);
+  const modifiers = state.temporaryTargetModifiers ?? (state.temporaryTargetModifiers = []);
+  modifiers.push({
+    modifierId: `${activation.policy.moduleId}/${activation.policy.policyId}:${commandId}`,
+    moduleId: activation.policy.moduleId,
+    targetCardId: activation.targetCardId,
+    amount: activation.modifierAmount,
+    expiresWhenTargetLeaves: true,
+  });
+  const targetName = getDefinition(ruleset.registry, state, activation.targetCardId).name;
+  const sourceName = getDefinition(ruleset.registry, state, activation.sourceCardId).name;
+  event(state, events, 'CARD_EFFECT_ACTIVATED', `${sourceName} 的效果使 ${targetName} 的戰力由 ${activation.requiredCombatBefore} 減半為 ${activation.requiredCombatAfter}，然後將 ${sourceName} 移出遊戲。`, commandId);
+  return undefined;
+}
+
 function buyCard(state: GameState, ruleset: Ruleset, player: PlayerState, command: Extract<GameCommand, { type: 'BUY_CARD' }>, events: DomainEvent[], commandId: string): EngineError | undefined {
   const phaseError = requirePhase(state, ['purchase']);
   if (phaseError) return phaseError;
@@ -157,6 +180,7 @@ function reduceCommand(state: GameState, ruleset: Ruleset, envelope: CommandEnve
     case 'EQUIP_ITEM': return equipItem(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'ATTACH_CARD': return attachCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'USE_ITEM': return applyItem(state, ruleset, player, envelope, resolutionEnvelopes, events, rollbackState, factStart);
+    case 'ACTIVATE_CARD_EFFECT': return activateCardEffect(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'ATTACK_TARGET': return attackTarget(state, ruleset, player, envelope as CommandEnvelope & { command: Extract<GameCommand, { type: 'ATTACK_TARGET' }> }, events, rollbackState);
     case 'BUY_CARD': return buyCard(state, ruleset, player, envelope.command, events, envelope.commandId);
     case 'REFRESH_MARKET': { const message = applyMarketRefresh(state, ruleset, player, envelope.command, events, envelope.commandId); if (!message) facts(state, player.id).marketRefreshed = true; return message ? { code: 'INVALID_COMMAND', message } : undefined; }
