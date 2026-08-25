@@ -12,6 +12,7 @@ export * from './enemy-attachment.js';
 export * from './combat-participant-departure.js';
 export * from './combat-departure-replacement.js';
 export * from './combat-reserve-contribution.js';
+export * from './combat-assist.js';
 export * from './party-combat.js';
 export * from './team-overflow.js';
 export * from './team-capacity-enforcement.js';

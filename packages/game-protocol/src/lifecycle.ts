@@ -14,6 +14,7 @@ export type LifecycleActivation =
   | { kind: 'definition-at-actor-party-position'; definitionId: string; position: number }
   | { kind: 'definition-equipped-by-actor'; definitionId: string }
   | { kind: 'definition-in-zone'; zoneId: string; definitionId: string }
+  | { kind: 'zone-card-count-at-least'; zoneId: string; amount: number }
   | { kind: 'turn-fact-at-least'; fact: keyof Omit<import('./state.js').TurnFactLedger, 'schemaVersion' | 'playerId'>; amount: number }
   | { kind: 'all'; conditions: readonly LifecycleActivation[] }
   | { kind: 'any'; conditions: readonly LifecycleActivation[] }
@@ -44,6 +45,7 @@ const LifecycleActivationSchema: z.ZodType<LifecycleActivation> = z.lazy(() => z
   z.object({ kind: z.literal('definition-at-actor-party-position'), definitionId: canonicalNonEmpty, position: z.number().finite().int().positive() }).strict(),
   z.object({ kind: z.literal('definition-equipped-by-actor'), definitionId: canonicalNonEmpty }).strict(),
   z.object({ kind: z.literal('definition-in-zone'), zoneId: canonicalNonEmpty, definitionId: canonicalNonEmpty }).strict(),
+  z.object({ kind: z.literal('zone-card-count-at-least'), zoneId: canonicalNonEmpty, amount: z.number().finite().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('turn-fact-at-least'), fact: turnFact, amount: z.number().finite().nonnegative() }).strict(),
   z.object({ kind: z.literal('all'), conditions: z.array(LifecycleActivationSchema).min(1) }).strict(),
   z.object({ kind: z.literal('any'), conditions: z.array(LifecycleActivationSchema).min(1) }).strict(),

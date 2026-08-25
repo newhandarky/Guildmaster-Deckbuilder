@@ -49,6 +49,24 @@ describe('deterministic CPU strategy', () => {
     expect(decisions[0]).toMatchObject({ status: 'ready', command: buy, reasonCode: 'BUY_HIGHEST_UTILITY' });
   });
 
+  it('uses combat assist only when it is the best legal attack and reports its reason code', () => {
+    const assist = { type: 'ATTACK_TARGET' as const, targetId: 'monster', combatAssistCardId: 'mage' };
+    const end = { type: 'END_PHASE' as const, phase: 'combat' as const };
+    const combatView = { ...view(), phase: 'combat', enemyTargets: { monster: { targetId: 'monster', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' } } } as unknown as PlayerView;
+    const input = { ...context([assist, end], [feature(assist, { monsterDefeat: 1 })]), view: combatView };
+    const result = decideCpuAction(input);
+    expect(result).toMatchObject({ status: 'ready', command: assist, reasonCode: 'ATTACK_WITH_COMBAT_ASSIST' });
+    expect(decideCpuAction(structuredClone(input))).toEqual(result);
+  });
+
+  it('never spends a combat assist when the same target has a normal legal attack', () => {
+    const normal = { type: 'ATTACK_TARGET' as const, targetId: 'monster' };
+    const assist = { ...normal, combatAssistCardId: 'mage' };
+    const combatView = { ...view(), phase: 'combat', enemyTargets: { monster: { targetId: 'monster', cardInstanceId: 'monster-card', kind: 'monster', status: 'available' } } } as unknown as PlayerView;
+    const result = decideCpuAction({ ...context([assist, normal], [feature(assist, { monsterDefeat: 1, partyCombatLoss: 0 }), feature(normal, { monsterDefeat: 1, partyCombatLoss: 3 })]), view: combatView });
+    expect(result).toMatchObject({ status: 'ready', command: normal, reasonCode: 'ATTACK_BEST_NET_VALUE' });
+  });
+
   it('keeps the five-bond combination with the greatest provisional honor', () => {
     const low = { type: 'SELECT_BONDS' as const, offerId: 'offer', bondIds: ['b1', 'b2', 'b3', 'b4', 'b5'] };
     const high = { type: 'SELECT_BONDS' as const, offerId: 'offer', bondIds: ['b3', 'b4', 'b5', 'b6', 'b7'] };
@@ -216,6 +234,15 @@ describe('deterministic CPU strategy', () => {
     const typedView = { ...view(), decisionPrompt: { schemaVersion: 1 as const, decisionKind: 'discard-card' as const, choiceId: 'discard-card', minSelections: 1, maxSelections: 1, options: [{ id: 'low', cardId: 'low', definitionId: 'd-low' }, { id: 'high', cardId: 'high', definitionId: 'd-high' }] }, cards: { low: { id: 'low', definitionId: 'd-low' }, high: { id: 'high', definitionId: 'd-high' } } } as PlayerView;
     const result = decideCpuAction({ ...context([high, low]), view: typedView, definitions: { 'd-low': { id: 'd-low', name: 'Low', type: 'starter', copies: 1, source: 'test' }, 'd-high': { id: 'd-high', name: 'High', type: 'adventurer', copies: 1, combat: 5, honor: 3, source: 'test' } } });
     expect(result).toMatchObject({ status: 'ready', command: low, reasonCode: 'RESOLVE_HIGHEST_UTILITY_CHOICE' });
+  });
+
+  it('deterministically accepts every available combat departure replacement', () => {
+    const decline = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'combat-departure:x', choiceId: 'combat-departure:optional-replacements', optionId: 'departure-0' };
+    const accept = { ...decline, optionId: 'departure-1' };
+    const typedView = { ...view(), decisionPrompt: { schemaVersion: 1 as const, decisionKind: 'choose-party-member' as const, choiceId: decline.choiceId, minSelections: 1, maxSelections: 1, options: [{ id: decline.optionId }, { id: accept.optionId }] } } as PlayerView;
+    const input = { ...context([decline, accept]), view: typedView };
+    expect(decideCpuAction(input)).toMatchObject({ status: 'ready', command: accept, reasonCode: 'RESOLVE_HIGHEST_UTILITY_CHOICE' });
+    expect(decideCpuAction(structuredClone(input))).toEqual(decideCpuAction(input));
   });
 
   it('resolves a typed public-market reward by choosing the highest-utility visible card', () => {

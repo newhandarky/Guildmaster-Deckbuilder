@@ -2,6 +2,7 @@ import { isFiniteJsonValue, validateAttachmentPolicy, validateAttackResolutionPo
 import type { ZoneDefinition } from '../model/zones.js';
 import { validateCombatDepartureReplacementPolicy, type CombatDepartureReplacementPolicy } from '@guildmaster/game-protocol';
 import { validateCombatReserveContributionPolicy, type CombatReserveContributionPolicy } from '@guildmaster/game-protocol';
+import { validateCombatAssistPolicy, type CombatAssistPolicy } from '@guildmaster/game-protocol';
 import { evaluateContinuousEffects } from './continuous-evaluator.js';
 import { composeRulesModules } from './rules-module-composition.js';
 import { validateRulesetStateCompatibility } from './ruleset-compatibility.js';
@@ -34,6 +35,7 @@ export type RulesModule = {
   combatParticipantDeparturePolicies?: readonly CombatParticipantDeparturePolicy[];
   combatDepartureReplacementPolicies?: readonly CombatDepartureReplacementPolicy[];
   combatReserveContributionPolicies?: readonly CombatReserveContributionPolicy[];
+  combatAssistPolicies?: readonly CombatAssistPolicy[];
   partyCombatModifierRules?: readonly PartyCombatModifierRule[];
   teamOverflowPolicies?: readonly TeamOverflowPolicy[];
   teamCapacityEnforcementPolicies?: readonly TeamCapacityEnforcementPolicy[];
@@ -113,6 +115,7 @@ function lifecycleActivationRefs(activation: LifecycleActivation | undefined): {
   if (activation.kind === 'not') return lifecycleActivationRefs(activation.condition);
   if (activation.kind === 'definition-in-actor-party' || activation.kind === 'definition-at-actor-party-position' || activation.kind === 'definition-equipped-by-actor') return { definitionIds: [activation.definitionId], zoneIds: [] };
   if (activation.kind === 'definition-in-zone') return { definitionIds: [activation.definitionId], zoneIds: [activation.zoneId] };
+  if (activation.kind === 'zone-card-count-at-least') return { definitionIds: [], zoneIds: [activation.zoneId] };
   return { definitionIds: [], zoneIds: [] };
 }
 
@@ -189,6 +192,8 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
   const composedModules = composeRulesModules(modules);
   const registry = createContentRegistry(packs, options);
   const moduleIds = new Set<string>(); const zoneRefs = new Set<string>(); const hookRefs = new Set<string>(); const combatRefs = new Set<string>(); const attackRefs = new Set<string>(); const rewardRefs = new Set<string>(); const encounterRefs = new Set<string>(); const equipmentRefs = new Set<string>(); const equipmentCombatRefs = new Set<string>(); const equipmentDepartureRefs = new Set<string>(); const attachmentRefs = new Set<string>(); const enemyAttachmentRefs = new Set<string>(); const registeredEquipmentDeparturePolicies: EquipmentDeparturePolicy[] = []; const discardRedirectRefs = new Set<string>(); const participantDepartureRefs = new Set<string>(); const registeredParticipantDeparturePolicies: CombatParticipantDeparturePolicy[] = []; const partyCombatRefs = new Set<string>(); const overflowRefs = new Set<string>(); const capacityRefs = new Set<string>(); const capacityPriorities = new Set<number>(); const setupRefs = new Set<string>(); const setupPriorities = new Set<number>(); const setupSelectors = new Set<string>(); const supplyRefs = new Set<string>(); const supplyPairs = new Set<string>(); const refreshRefs = new Set<string>(); const continuityRefs = new Set<string>(); const continuousRefs = new Set<string>(); const purchaseCostRefs = new Set<string>(); const purchaseCostPriorities = new Set<number>(); const restHandRefs = new Set<string>(); const restHandPriorities = new Set<number>(); const bondRefs = new Set<string>(); const diceRefs = new Set<string>(); const consentRefs = new Set<string>();
+  const combatAssistRefs = new Set<string>();
+  const registeredCombatAssistPolicies: CombatAssistPolicy[] = [];
   for (const module of composedModules) {
     if (moduleIds.has(module.id)) throw new Error(`Duplicate Rules Module: ${module.id}`);
     moduleIds.add(module.id);
@@ -225,6 +230,16 @@ export function createRuleset(packs: readonly ContentPack[], modules: readonly R
     for (const policy of module.combatReserveContributionPolicies ?? []) {
       const errors = validateCombatReserveContributionPolicy(policy, module.id);
       for (const definitionId of policy.sourceDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Combat reserve contribution policy ${policy.policyId} references unknown source ${definitionId}.`); else if (definition.type !== 'adventurer') errors.push(`Combat reserve contribution policy ${policy.policyId} source must be an adventurer.`); }
+      if (errors.length) throw new Error(errors.join(' '));
+    }
+    for (const policy of module.combatAssistPolicies ?? []) {
+      const errors = validateCombatAssistPolicy(policy, module.id);
+      const ref = `${module.id}\u0000${policy.policyId}`;
+      if (combatAssistRefs.has(ref)) errors.push(`Duplicate combat assist policy: ${module.id}/${policy.policyId}.`);
+      if (registeredCombatAssistPolicies.some((candidate) => candidate.sourceDefinitionIds.some((definitionId) => policy.sourceDefinitionIds.includes(definitionId)) && candidate.targetKinds.some((kind) => policy.targetKinds.includes(kind)))) errors.push(`Combat assist policy ${module.id}/${policy.policyId} ambiguously overlaps another source and target kind.`);
+      for (const definitionId of policy.sourceDefinitionIds) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Combat assist policy ${policy.policyId} references unknown source ${definitionId}.`); else if (definition.type !== 'adventurer') errors.push(`Combat assist policy ${policy.policyId} source must be an adventurer.`); }
+      combatAssistRefs.add(ref);
+      registeredCombatAssistPolicies.push(policy);
       if (errors.length) throw new Error(errors.join(' '));
     }
     for (const rule of module.partyCombatModifierRules ?? []) { const errors = validatePartyCombatModifierRule(rule, module.id); const ref = `${module.id}\u0000${rule.ruleId}`; if (partyCombatRefs.has(ref)) errors.push(`Duplicate party combat modifier rule: ${module.id}/${rule.ruleId}.`); for (const definitionId of rule.sourceDefinitionIds ?? []) { const definition = registry.definitions[definitionId]; if (!definition) errors.push(`Party combat modifier rule ${rule.ruleId} references unknown source definition ${definitionId}.`); else if (definition.type !== 'adventurer' && definition.type !== 'starter' && definition.type !== 'equipment') errors.push(`Party combat modifier rule ${rule.ruleId} source ${definitionId} must be an adventurer, starter, or equipment.`); } partyCombatRefs.add(ref); if (errors.length) throw new Error(errors.join(' ')); }

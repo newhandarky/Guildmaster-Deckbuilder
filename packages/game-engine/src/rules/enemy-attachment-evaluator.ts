@@ -2,6 +2,7 @@ import type { EnemyAttachmentPolicy, EnemyTargetState, GameState, PlayerState } 
 import { getDefinition } from '../model/factories.js';
 import { getZone } from '../model/zones.js';
 import type { Ruleset } from './ruleset.js';
+import { supplyContinuityPolicyForConfiguration } from './supply-continuity-evaluator.js';
 
 function matchingPolicies(state: GameState, ruleset: Ruleset, target: EnemyTargetState): EnemyAttachmentPolicy[] {
   const definitionId = state.cards[target.cardInstanceId]?.definitionId;
@@ -13,7 +14,16 @@ export function applyEnemyEntryAttachment(state: GameState, ruleset: Ruleset, ta
   const policies = matchingPolicies(state, ruleset, target);
   if (policies.some((policy, index) => index > 0 && policy.priority === policies[index - 1]!.priority)) throw new Error('Matching enemy attachment policies require distinct priorities.');
   const selected = policies.at(-1); if (!selected) return;
-  const cardId = getZone(state, selected.sourceZoneId).cardIds.pop(); if (!cardId) return;
+  const source = getZone(state, selected.sourceZoneId).cardIds;
+  const protectedCycleTags = new Set<string>();
+  for (const configuration of ruleset.modules.flatMap((module) => module.supplyRowConfigurations ?? []).filter(({ sourceDeckZoneId }) => sourceDeckZoneId === selected.sourceZoneId)) {
+    const continuity = supplyContinuityPolicyForConfiguration(ruleset, configuration.configurationId);
+    if (continuity?.status === 'failed') throw new Error(continuity.error);
+    if (continuity?.status === 'ready' && continuity.policy.mode === 'require-full-cycle') protectedCycleTags.add(continuity.policy.cycleAnchorTag);
+  }
+  const cardId = source.at(-1); if (!cardId) return;
+  if ([...protectedCycleTags].some((tag) => getDefinition(ruleset.registry, state, cardId).tags?.includes(tag))) return;
+  source.pop();
   delete state.cards[cardId]!.ownerId; target.attachments.push(cardId);
 }
 

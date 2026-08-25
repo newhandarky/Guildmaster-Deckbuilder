@@ -31,6 +31,11 @@ const equipmentTriggerPack = (body: EffectDefinition['body'] = {
 });
 
 describe('Rules Module lifecycle dispatcher', () => {
+  it('rejects a zone-card-count activation that references an unknown zone', () => {
+    const invalid = { ...hook('test:invalid-zone-count', 'invalid-zone-count', 'turn-start', 1, modify(1)), activation: { kind: 'zone-card-count-at-least' as const, zoneId: 'test:missing-zone', amount: 1 } };
+    expect(() => createRuleset([testPack], [baseRulesModule, module('test:invalid-zone-count', [invalid])])).toThrow('references unknown activation zone test:missing-zone');
+  });
+
   it('dispatches hooks from multiple modules in explicit priority order', () => {
     const ruleset = createRuleset([testPack], [baseRulesModule, module('test:one', [hook('test:one', 'later', 'turn-start', 2, modify(2))]), module('test:two', [hook('test:two', 'first', 'turn-start', 1, modify(1))])]); const state = gameFor(ruleset);
     const result = dispatchLifecycle(state, ruleset, { schemaVersion: 1, point: 'turn-start' }, { controllerId: 'p1' });

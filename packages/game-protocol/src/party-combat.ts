@@ -24,7 +24,14 @@ export type PartyCombatModifierRule = {
   sourceDefinitionIds: readonly string[];
   subject: 'source' | 'other' | 'first' | 'adjacent' | 'all';
   when: PartyCombatCondition;
-  amount: { kind: 'fixed'; value: number } | { kind: 'per-other-party-member'; value: number };
+  amount:
+    | { kind: 'fixed'; value: number }
+    | { kind: 'per-other-party-member'; value: number }
+    | {
+        kind: 'public-enemy-combat-tier';
+        targetKinds: readonly ('monster' | 'boss' | 'raidPart')[];
+        tiers: readonly { minimum: number; maximum?: number | undefined; amount: number }[];
+      };
 };
 
 export type PartyCombatEvaluationInput = { schemaVersion: 1; playerId: string; targetId?: string; equipmentSuppressed?: boolean };
@@ -65,6 +72,20 @@ export const PartyCombatModifierRuleSchema: z.ZodType<PartyCombatModifierRule> =
   amount: z.union([
     z.object({ kind: z.literal('fixed'), value: z.number().finite().int() }).strict(),
     z.object({ kind: z.literal('per-other-party-member'), value: z.number().finite().int() }).strict(),
+    z.object({
+      kind: z.literal('public-enemy-combat-tier'),
+      targetKinds: z.array(z.enum(['monster', 'boss', 'raidPart'])).min(1)
+        .refine((values) => new Set(values).size === values.length, 'Target kinds must be unique.'),
+      tiers: z.array(z.object({
+        minimum: z.number().finite().int().nonnegative(),
+        maximum: z.number().finite().int().nonnegative().optional(),
+        amount: z.number().finite().int(),
+      }).strict()).min(1).refine((tiers) => tiers.every((tier, index) => {
+        if (tier.maximum !== undefined && tier.maximum < tier.minimum) return false;
+        const previous = tiers[index - 1];
+        return !previous || (previous.maximum !== undefined && tier.minimum > previous.maximum);
+      }), 'Combat tiers must be ordered and non-overlapping.'),
+    }).strict(),
   ]),
 }).strict();
 

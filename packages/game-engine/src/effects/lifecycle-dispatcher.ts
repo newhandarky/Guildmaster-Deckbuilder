@@ -42,6 +42,7 @@ const activationMatches = (activation: LifecycleActivation, hook: LifecycleHook,
   if (activation.kind === 'definition-at-actor-party-position') return Boolean(actor && state.cards[actor.party[activation.position - 1]?.adventurerId ?? '']?.definitionId === activation.definitionId);
   if (activation.kind === 'definition-equipped-by-actor') return Boolean(actor?.party.some((slot) => attachedCardIds(slot).some((cardId) => state.cards[cardId]?.definitionId === activation.definitionId)));
   if (activation.kind === 'definition-in-zone') return Boolean(state.zones[activation.zoneId]?.cardIds.some((cardId) => state.cards[cardId]?.definitionId === activation.definitionId));
+  if (activation.kind === 'zone-card-count-at-least') return (state.zones[activation.zoneId]?.cardIds.length ?? 0) >= activation.amount;
   if (activation.kind === 'turn-fact-at-least') {
     if (!payload.actorId || state.turnFacts?.playerId !== payload.actorId) return false;
     const value = state.turnFacts[activation.fact];

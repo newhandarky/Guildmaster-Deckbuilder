@@ -15,6 +15,7 @@ import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choi
 import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { evaluateAttachment } from '../rules/attachment-evaluator.js';
+import { combatAssistCanTarget, evaluateCombatAssist } from '../rules/combat-assist-evaluator.js';
 
 const maxCommandPreviewDepth = 32;
 const maxCommandPreviewBranches = 256;
@@ -153,6 +154,17 @@ function attackIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset:
   });
 }
 
+function combatAssistIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, targetId: string, sourceCardId: string, fallbackState: GameState): boolean {
+  if (preview.indeterminate) return combatAssistCanTarget(fallbackState, ruleset, actorId, targetId, sourceCardId);
+  return preview.states.some((state) => evaluateCombatAssist(state, ruleset, actorId, targetId, sourceCardId) !== undefined);
+}
+
+function attackCommandIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, command: Extract<GameCommand, { type: 'ATTACK_TARGET' }>, fallbackState: GameState): boolean {
+  return command.combatAssistCardId
+    ? combatAssistIsLegalInAnyPreview(preview, ruleset, actorId, command.targetId, command.combatAssistCardId, fallbackState)
+    : attackIsLegalInAnyPreview(preview, ruleset, actorId, command.targetId);
+}
+
 function purchaseIsLegalInAnyPreview(preview: CommandBeforePreviewResult, ruleset: Ruleset, actorId: string, cardId: string): boolean {
   if (preview.indeterminate) return true;
   return preview.states.some((state) => {
@@ -223,7 +235,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
     if (pending.source && validatePendingDynamicCardChoice(state, ruleset)) return [];
     const pendingCommand = state.effectState.pendingCommand?.envelope.command;
     const options = pendingCommand?.type === 'ATTACK_TARGET' && state.effectState.pendingCommand?.kind !== 'combat-reward' && state.effectState.pendingCommand?.kind !== 'combat-departure-choice'
-      ? pending.options.filter((option) => attackIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand.targetId))
+      ? pending.options.filter((option) => attackCommandIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand, state))
       : pendingCommand?.type === 'BUY_CARD'
         ? pending.options.filter((option) => purchaseIsLegalInAnyPreview(resumeCommandChoicePreview(state, ruleset, actorId, option.id), ruleset, actorId, pendingCommand.cardId))
       : pending.options;
@@ -265,6 +277,7 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
       if (target.status !== 'available') continue;
       if (!target.health && target.kind === 'monster' && evaluateMonsterDefeatContinuity(state, ruleset, target.targetId).status !== 'ready') continue;
       if (attackIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId });
+      for (const { adventurerId } of player.party) if (combatAssistIsLegalInAnyPreview(preview, ruleset, actorId, target.targetId, adventurerId, state)) commands.push({ type: 'ATTACK_TARGET', targetId: target.targetId, combatAssistCardId: adventurerId });
     }
   }
   if (state.phase === 'purchase') {
@@ -288,6 +301,11 @@ function readyAttackPreview(state: GameState, ruleset: Ruleset, actorId: string,
   const target = state.enemyTargets[command.targetId];
   if (!target || target.status !== 'available') return undefined;
   if (attackPreviewObservesHiddenInformation(state, ruleset, actorId, command.targetId)) return undefined;
+  if (command.combatAssistCardId) {
+    const assist = evaluateCombatAssist(state, ruleset, actorId, command.targetId, command.combatAssistCardId);
+    if (!assist) return undefined;
+    return { kind: 'attack', status: 'ready', command: structuredClone(command), targetId: command.targetId, requiredCombat: assist.combat.requiredCombat, committedCombat: assist.partyPrefix.power, surplusCombat: assist.partyPrefix.power - assist.combat.requiredCombat, partySlotCount: assist.partyPrefix.slotCount, participantCardIds: [...assist.partyPrefix.participantCardIds], outcome: { kind: assist.combat.outcome.kind } };
+  }
   if (target.health) {
     const result = evaluateAttackResolution(state, ruleset, {
       schemaVersion: 1,

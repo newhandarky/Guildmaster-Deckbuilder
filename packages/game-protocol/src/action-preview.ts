@@ -63,7 +63,7 @@ export type ActionPreviewSet = {
 
 const nonEmpty = z.string().trim().min(1);
 const nonNegative = z.number().finite().nonnegative();
-const attackCommandSchema: z.ZodType<AttackCommand> = z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmpty }).strict();
+const attackCommandSchema: z.ZodType<AttackCommand> = z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmpty, combatAssistCardId: nonEmpty.optional() }).strict();
 const purchaseCommandSchema: z.ZodType<PurchaseCommand> = z.object({ type: z.literal('BUY_CARD'), cardId: nonEmpty }).strict();
 const directOutcomeSchema = z.object({ kind: z.enum(['defeat-target', 'remove-target']) }).strict();
 const damageOutcomeSchema = z.object({

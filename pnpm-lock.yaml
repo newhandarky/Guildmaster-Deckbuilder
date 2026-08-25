@@ -166,6 +166,9 @@ importers:
 
   packages/content-custom-adventurers-rules:
     dependencies:
+      '@guildmaster/content-base-helpers':
+        specifier: workspace:*
+        version: link:../content-base-helpers
       '@guildmaster/content-base-rules':
         specifier: workspace:*
         version: link:../content-base-rules
@@ -182,9 +185,6 @@ importers:
       '@guildmaster/content-base':
         specifier: workspace:*
         version: link:../content-base
-      '@guildmaster/content-base-helpers':
-        specifier: workspace:*
-        version: link:../content-base-helpers
       vitest:
         specifier: ^2.1.9
         version: 2.1.9(lightningcss@1.32.0)(supports-color@7.2.0)
@@ -1391,6 +1391,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'

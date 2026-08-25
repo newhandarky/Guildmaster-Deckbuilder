@@ -1,7 +1,7 @@
 import type { ActionPreviewSet, CardDefinition, CardInstance, GameCommand, PublicEnemyTargetState, ZoneState } from '@guildmaster/game-protocol';
 import type { PresentationResolver } from '@guildmaster/presentation-core';
 import { Card } from '../../../ui/components/Card.js';
-import { buildCardVisualModel, commandAction, type CardVisualViewModel } from '../../../ui/cards/card-visual-model.js';
+import { buildCardVisualModel, cardActionMenu, commandAction, type CardVisualViewModel } from '../../../ui/cards/card-visual-model.js';
 import { actionPreviewItemsForScope, type ActionPreviewScope } from './action-preview-scope.js';
 import { combatTargetStatusMessage } from './combat-target-status.js';
 import { emptySupplyMessage } from './supply-empty-state.js';
@@ -20,6 +20,12 @@ type Props = {
 
 function definitionFor(cards: Props['cards'], definitions: Props['definitions'], cardId: string): CardDefinition | undefined {
   return definitions[cards[cardId]?.definitionId ?? ''];
+}
+
+function displayNameFor(cards: Props['cards'], definitions: Props['definitions'], presentation: PresentationResolver, cardId: string): string {
+  const definition = definitionFor(cards, definitions, cardId);
+  const resolved = presentation.resolve(definition?.id ?? cards[cardId]?.definitionId ?? '');
+  return resolved.source === 'pack' ? resolved.displayName : definition?.name ?? resolved.displayName;
 }
 
 export function BoardPanel({ zones, targets, definitions, cards, presentation, legalCommands, actionPreviews, previewScope, onInspect }: Props) {
@@ -48,16 +54,28 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
       <div className="card-row public-card-grid" aria-label={`${title}卡片`}>{ids.map((id) => {
         const target = availableTargets.get(id);
         const definition = definitionFor(cards, definitions, id);
-        const command = action === 'attack'
-          ? legalCommands.find((candidate): candidate is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => candidate.type === 'ATTACK_TARGET' && candidate.targetId === target?.targetId)
-          : legalCommands.find((candidate): candidate is Extract<GameCommand, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD' && candidate.cardId === id);
-        const cardAction = command
-          ? commandAction(`${command.type}:${action === 'attack' ? target?.targetId : id}`, action === 'attack' ? '討伐' : definition?.type === 'adventurer' ? '招募' : '購買', command)
+        const attackCommands = action === 'attack'
+          ? legalCommands.filter((candidate): candidate is Extract<GameCommand, { type: 'ATTACK_TARGET' }> => candidate.type === 'ATTACK_TARGET' && candidate.targetId === target?.targetId)
+          : [];
+        const purchaseCommand = action === 'buy'
+          ? legalCommands.find((candidate): candidate is Extract<GameCommand, { type: 'BUY_CARD' }> => candidate.type === 'BUY_CARD' && candidate.cardId === id)
           : undefined;
-        const actionPreview = command?.type === 'ATTACK_TARGET'
-          ? currentActionPreviews.find((preview) => preview.kind === 'attack' && preview.targetId === command.targetId)
-          : command?.type === 'BUY_CARD'
-            ? currentActionPreviews.find((preview) => preview.kind === 'purchase' && preview.cardId === command.cardId)
+        const cardAction = action === 'attack'
+          ? cardActionMenu(`ATTACK_TARGET:${target?.targetId}`, attackCommands.map((command) => commandAction(
+              `ATTACK_TARGET:${command.targetId}:${command.combatAssistCardId ?? 'normal'}`,
+              command.combatAssistCardId
+                ? `技能討伐（${displayNameFor(cards, definitions, presentation, command.combatAssistCardId)}）`
+                : '一般討伐',
+              command,
+            )))
+          : purchaseCommand
+            ? commandAction(`BUY_CARD:${id}`, definition?.type === 'adventurer' ? '招募' : '購買', purchaseCommand)
+            : undefined;
+        const primaryCommand = attackCommands.length === 1 ? attackCommands[0] : purchaseCommand;
+        const actionPreview = primaryCommand?.type === 'ATTACK_TARGET'
+          ? currentActionPreviews.find((preview) => preview.kind === 'attack' && preview.command.targetId === primaryCommand.targetId && preview.command.combatAssistCardId === primaryCommand.combatAssistCardId)
+          : primaryCommand?.type === 'BUY_CARD'
+            ? currentActionPreviews.find((preview) => preview.kind === 'purchase' && preview.command.cardId === primaryCommand.cardId)
             : undefined;
         const card = buildCardVisualModel({
           instance: cards[id],

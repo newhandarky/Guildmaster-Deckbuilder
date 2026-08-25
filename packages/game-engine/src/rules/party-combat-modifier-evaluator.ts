@@ -3,6 +3,7 @@ import { getDefinition } from '../model/factories.js';
 import { attachedCardIds } from '../model/attachments.js';
 import { attachmentCombat } from './attachment-evaluator.js';
 import { evaluateEquipmentCombatModifiers } from './equipment-combat-modifier-evaluator.js';
+import { evaluateCombat } from './combat-evaluator.js';
 import { validateRulesetStateCompatibility, type Ruleset } from './ruleset.js';
 
 export type PartyCombatEvaluationResult =
@@ -43,6 +44,24 @@ function targets(rule: PartyCombatModifierRule, sourceIndex: number, subjectInde
   }
 }
 
+function modifierAmount(rule: PartyCombatModifierRule, state: GameState, ruleset: Ruleset, input: PartyCombatEvaluationInput): number | undefined {
+  if (rule.amount.kind === 'fixed') return rule.amount.value;
+  if (rule.amount.kind === 'per-other-party-member') {
+    return rule.amount.value * Math.max(0, state.players.find(({ id }) => id === input.playerId)!.party.length - 1);
+  }
+  let total = 0;
+  for (const target of Object.values(state.enemyTargets)
+    .filter(({ kind, status }) => status === 'available' && rule.amount.kind === 'public-enemy-combat-tier' && rule.amount.targetKinds.includes(kind as 'monster' | 'boss' | 'raidPart'))
+    .sort((left, right) => left.targetId.localeCompare(right.targetId))) {
+    const combat = evaluateCombat(state, ruleset, input.playerId, target.targetId);
+    if (combat.status !== 'ready') return undefined;
+    total += combat.evaluation.requiredCombat;
+    if (!Number.isFinite(total)) return undefined;
+  }
+  const tier = rule.amount.tiers.find(({ minimum, maximum }) => total >= minimum && (maximum === undefined || total <= maximum));
+  return tier?.amount ?? 0;
+}
+
 /** Computes clamped, per-member party combat from JSON-only Rules Module policies. */
 export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: PartyCombatEvaluationInput): PartyCombatEvaluationResult {
   if (!PartyCombatEvaluationInputSchema.safeParse(input).success) return { status: 'failed', reason: 'INVALID_INPUT', error: 'Party combat input is malformed.' };
@@ -72,11 +91,12 @@ export function evaluatePartyCombat(state: GameState, ruleset: Ruleset, input: P
     }
     const appliedRules: PartyCombatEvaluation['members'][number]['appliedRules'][number][] = [];
     for (const rule of ordered) {
+      const amount = modifierAmount(rule, state, ruleset, input);
+      if (amount === undefined) return { status: 'failed', reason: 'INVALID_COMBAT_VALUE', error: `Party combat modifier ${rule.moduleId}/${rule.ruleId} could not evaluate public enemy combat.` };
       player.party.forEach((sourceSlot, sourceIndex) => {
         if (!targets(rule, sourceIndex, subjectIndex) || !matches(rule.when, state, ruleset, input, sourceIndex, subjectIndex, player.party.length)) return;
         const sourceCardIds = [sourceSlot.adventurerId, ...(input.equipmentSuppressed ? [] : attachedCardIds(sourceSlot))]
           .filter((cardId) => rule.sourceDefinitionIds.includes(state.cards[cardId]!.definitionId));
-        const amount = rule.amount.kind === 'fixed' ? rule.amount.value : rule.amount.value * Math.max(0, player.party.length - 1);
         for (const sourceCardId of sourceCardIds) appliedRules.push({ moduleId: rule.moduleId, ruleId: rule.ruleId, sourceCardId, amount });
       });
     }

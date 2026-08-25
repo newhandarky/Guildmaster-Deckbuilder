@@ -11,13 +11,13 @@
   },
   "dependencies": {
     "@guildmaster/content-base-rules": "workspace:*",
+    "@guildmaster/content-base-helpers": "workspace:*",
     "@guildmaster/content-custom-adventurers": "workspace:*",
     "@guildmaster/game-engine": "workspace:*",
     "@guildmaster/game-protocol": "workspace:*"
   },
   "devDependencies": {
     "@guildmaster/content-base": "workspace:*",
-    "@guildmaster/content-base-helpers": "workspace:*",
     "vitest": "^2.1.9"
   }
 }
