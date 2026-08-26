@@ -47,6 +47,16 @@ describe('generic multi-target encounter runtime', () => {
     expect(state.enemyTargets.core!.attachments).toEqual([]);
   });
 
+  it('cleans target-leave combat modifiers when a generic encounter target becomes terminal', () => {
+    const state = game(); const card = ordinaryMonsterCard(state);
+    expect(run(state, { kind: 'sequence', effects: [createEncounter, target('core', card, 'core')] }).status).toBe('completed');
+    state.temporaryTargetModifiers = [{ modifierId: 'until-core-leaves', moduleId: 'test:encounter', targetCardId: card, amount: -1, expiresWhenTargetLeaves: true }];
+    const result = run(state, { kind: 'defeat-enemy-target', targetId: 'core', policy: ref });
+    expect(result.status).toBe('completed');
+    expect(state.enemyTargets.core!.status).toBe('defeated');
+    expect(state.temporaryTargetModifiers).toEqual([]);
+  });
+
   it('applies reverse ordering to multiple attachments and sends owned attachments to player discard', () => {
     const entry = policy({ kind: 'all-targets-defeated' }, { attachmentDisposition: { kind: 'player-discard', position: 'top', ordering: 'reverse' } });
     const state = game(entry); const body = ordinaryMonsterCard(state); const [first, second] = state.players[0]!.hand.slice(0, 2);

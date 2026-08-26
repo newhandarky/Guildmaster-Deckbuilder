@@ -26,4 +26,5 @@ jobs:
           node-version: 22
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @guildmaster/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e:offline

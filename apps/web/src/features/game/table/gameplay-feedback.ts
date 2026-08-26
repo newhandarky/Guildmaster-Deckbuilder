@@ -39,6 +39,7 @@ export function buildLegalActionSummary(commands: readonly GameCommand[]): strin
   const summaries = [
     [commands.filter((command) => command.type === 'PLAY_ADVENTURER').length, '張冒險者可加入隊伍'],
     [commands.filter((command) => command.type === 'USE_ITEM').length, '張道具可使用'],
+    [commands.filter((command) => command.type === 'ACTIVATE_CARD_EFFECT').length, '個角色效果目標可選擇'],
     [uniqueCommandCount(commands.flatMap((command) => command.type === 'EQUIP_ITEM' || command.type === 'ATTACH_CARD' ? [command.cardId] : [])), '張卡牌可選擇附著對象'],
     [commands.filter((command) => command.type === 'ATTACK_TARGET').length, '個目標可討伐'],
     [commands.filter((command) => command.type === 'BUY_CARD').length, '張卡牌可購買'],

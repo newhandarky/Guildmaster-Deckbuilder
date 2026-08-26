@@ -63,6 +63,7 @@ export function finishAttackAfterRewards(state: GameState, ruleset: Ruleset, env
   if (attackResolution) { const expectedStatus = attackResolution.damage.input.lethalOutcome ?? 'defeated'; if (!attackResolution.damage.lethal || target.status !== expectedStatus || target.health?.current !== 0) return { code: 'INVALID_COMMAND', message: 'Committed health-target attack resolution is incomplete or inconsistent.' }; terminalStatus = expectedStatus; }
   else { const error = finalizeAttackTarget(state, ruleset, player, targetId, outcome, events, envelope.commandId); if (error) return error; terminalStatus = outcome === 'remove-target' ? 'removed' : 'defeated'; }
   if (terminalStatus === 'defeated') disposeEnemyAttachments(state, ruleset, target, player); else for (const cardId of target.attachments.splice(0)) { delete state.cards[cardId]!.ownerId; state.removedCards.push(cardId); }
+  if (state.temporaryTargetModifiers) state.temporaryTargetModifiers = state.temporaryTargetModifiers.filter(({ targetCardId }) => targetCardId !== target.cardInstanceId);
   const refillError = refillAttackTargetSupply(state, ruleset, target.kind, events); if (refillError) return refillError;
   if (terminalStatus === 'removed') return undefined;
   const definition = getDefinition(ruleset.registry, state, target.cardInstanceId);

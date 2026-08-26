@@ -104,6 +104,7 @@ function applyMutationPlan(state: GameState, ruleset: Ruleset, plan: EncounterDe
   }
   target.status = plan.targetStatus;
   target.attachments = [];
+  if (state.temporaryTargetModifiers) state.temporaryTargetModifiers = state.temporaryTargetModifiers.filter(({ targetCardId }) => targetCardId !== target.cardInstanceId);
   return undefined;
 }
 

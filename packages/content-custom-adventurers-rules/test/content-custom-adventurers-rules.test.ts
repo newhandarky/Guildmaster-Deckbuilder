@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base/runtime';
 import { baseHelperZoneIds, baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import { customAdventurerCapabilityMatrix, customAdventurerContentPack, customAdventurerRulesModuleId } from '@guildmaster/content-custom-adventurers';
-import { baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateCombat, evaluateCombatAssist, evaluateCombatDepartureReplacements, evaluateCombatParticipantDeparture, evaluateCombatPartyPrefix, evaluatePartyCombat, getCpuActionFeatures, getLegalCommands, projectPlayerView, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
+import { baseRulesModule, createGame, createRuleset, dispatch, envelope, evaluateCombat, evaluateCombatDepartureReplacements, evaluateCombatParticipantDeparture, evaluateCombatPartyPrefix, evaluatePartyCombat, finishAttackAfterRewards, getCpuActionFeatures, getLegalCommands, projectPlayerView, restoreSnapshot, serializeSnapshot } from '@guildmaster/game-engine';
 import { customAdventurerHelperRulesModule, customAdventurerHelperRulesModuleId, customAdventurerRulesModule } from '../src/index.js';
 
 const activeRuleset = () => createRuleset(
@@ -103,78 +103,82 @@ describe('custom adventurer rules', () => {
     }
   });
 
-  it('rejects overlapping combat-assist policies instead of silently disabling the command', () => {
-    const policy = customAdventurerRulesModule.combatAssistPolicies?.find(({ sourceDefinitionIds }) => sourceDefinitionIds.includes('custom:adventurer/mage-06'));
-    if (!policy) throw new Error('Expected custom mage 06 combat-assist policy.');
-    const ambiguous = { ...customAdventurerRulesModule, combatAssistPolicies: [...(customAdventurerRulesModule.combatAssistPolicies ?? []), { ...policy, policyId: 'custom-mage-06-overlap' }] };
-    expect(() => createRuleset([baseProvisionalOriginalFullContentPack, customAdventurerContentPack], [baseRulesModule, ambiguous], { allowProvisionalPlaytest: true })).toThrow('ambiguously overlaps');
-  });
-
-  it('lets custom mage 06 halve an enemy requirement while staying out of combat, then removes itself', () => {
+  it('lets custom mage 06 independently halve only target combat until that target is defeated', () => {
     const { state, ruleset } = customGame();
-    const [starterId, yunyunId, meguminId] = replaceParty(state, ['custom:starter/melee', 'custom:adventurer/tank-07', 'custom:adventurer/mage-06']) as [string, string, string];
+    const [meguminId] = replaceParty(state, ['custom:adventurer/mage-06']);
     const target = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'monster' && status === 'available')!;
-    const base = evaluateCombat(state, ruleset, 'p1', target.targetId);
-    if (base.status !== 'ready') throw new Error(base.error);
-    state.temporaryTargetModifiers = [{ modifierId: 'megumin-odd-requirement', moduleId: customAdventurerRulesModuleId, targetCardId: target.cardInstanceId, amount: 5 - base.evaluation.requiredCombat, expiresAtTurnEndPlayerId: 'p1' }];
-    state.phase = 'combat'; state.players[0]!.turnCombatBonus = 0;
-
-    expect(evaluateCombatAssist(state, ruleset, 'p1', target.targetId, meguminId)).toMatchObject({ combat: { requiredCombat: 3 }, partyPrefix: { slotCount: 2, participantCardIds: [starterId, yunyunId] } });
-    const legal = getLegalCommands(state, ruleset, 'p1');
-    expect(legal).not.toContainEqual({ type: 'ATTACK_TARGET', targetId: target.targetId });
-    const command = legal.find((candidate) => candidate.type === 'ATTACK_TARGET' && candidate.targetId === target.targetId && candidate.combatAssistCardId === meguminId);
-    if (!command) throw new Error('Expected Megumin combat-assist attack.');
-    const suspended = dispatch(state, ruleset, envelope(state, 'p1', command, 'custom-mage-06-assist'));
-    expect(suspended.error).toBeUndefined();
-    const restored = restoreSnapshot(serializeSnapshot(suspended.state), ruleset);
-    const declineKeep = getLegalCommands(restored, ruleset, 'p1').find((candidate) => candidate.type === 'RESOLVE_EFFECT_CHOICE' && candidate.optionId === 'departure-0');
-    if (!declineKeep) throw new Error('Expected Snapshot-safe combat departure choice.');
-    const result = dispatch(restored, ruleset, envelope(restored, 'p1', declineKeep, 'custom-mage-06-departure'));
-    expect(result.error).toBeUndefined();
-    expect(result.state.removedCards).toContain(meguminId);
-    expect(result.state.players[0]!.party.some(({ adventurerId }) => adventurerId === meguminId)).toBe(false);
-    expect(result.events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'COMBAT_ASSIST_APPLIED' })]));
+    const definition = ruleset.registry.definitions[state.cards[target.cardInstanceId]!.definitionId]!;
+    const original = { combat: definition.combat, purchasePower: definition.purchasePower, honor: definition.honor };
+    state.phase = 'combat';
+    const before = evaluateCombat(state, ruleset, 'p1', target.targetId); if (before.status !== 'ready') throw new Error(before.error);
+    const command = { type: 'ACTIVATE_CARD_EFFECT' as const, cardId: meguminId!, targetId: target.targetId };
+    expect(getLegalCommands(state, ruleset, 'p1')).toContainEqual(command);
+    expect(getLegalCommands(state, ruleset, 'p1')).not.toContainEqual(expect.objectContaining({ type: 'ATTACK_TARGET', combatAssistCardId: meguminId }));
+    const activated = dispatch(state, ruleset, envelope(state, 'p1', command, 'custom-mage-06-activate'));
+    expect(activated.error).toBeUndefined();
+    expect(activated.events).toEqual(expect.arrayContaining([expect.objectContaining({
+      type: 'CARD_EFFECT_ACTIVATED',
+      message: expect.stringMatching(/然後將 .+ 移出遊戲/),
+    })]));
+    const result = restoreSnapshot(serializeSnapshot(activated.state), ruleset);
+    const after = evaluateCombat(result, ruleset, 'p1', target.targetId); if (after.status !== 'ready') throw new Error(after.error);
+    expect(after.evaluation.requiredCombat).toBe(Math.ceil(before.evaluation.requiredCombat / 2));
+    expect({ combat: definition.combat, purchasePower: definition.purchasePower, honor: definition.honor }).toEqual(original);
+    expect(result.removedCards).toContain(meguminId);
+    expect(result.players[0]!.party.some(({ adventurerId }) => adventurerId === meguminId)).toBe(false);
+    expect(result.temporaryTargetModifiers).toEqual([expect.objectContaining({ targetCardId: target.cardInstanceId, expiresWhenTargetLeaves: true })]);
+    expect(getLegalCommands(result, ruleset, 'p1')).toContainEqual({ type: 'END_PHASE', phase: 'combat' });
+    const attackEnvelope = envelope(result, 'p1', { type: 'ATTACK_TARGET', targetId: target.targetId }, 'custom-mage-06-target-defeated');
+    const committedEvents = [{
+      eventId: 'test-combat-evaluated', revision: result.revision + 1, type: 'COMBAT_EVALUATED', message: 'test', causedByCommandId: attackEnvelope.commandId,
+      payload: { schemaVersion: 1 as const, kind: 'combat-evaluation' as const, evaluation: after.evaluation },
+    }];
+    expect(finishAttackAfterRewards(result, ruleset, attackEnvelope, committedEvents)).toBeUndefined();
+    expect(result.temporaryTargetModifiers).toEqual([]);
   });
 
-  it('keeps assisted attack legality aligned through command-before choice and random previews', () => {
-    const prepare = (kind: 'choice' | 'random') => {
-      const module = {
-        ...customAdventurerRulesModule,
-        version: kind === 'choice' ? '0.9.1-test' : '0.9.2-test',
-        lifecycleHooks: [...(customAdventurerRulesModule.lifecycleHooks ?? []), {
-          schemaVersion: 1 as const, hookId: `test-mage-06-${kind}-before-attack`, moduleId: customAdventurerRulesModuleId,
-          point: 'command-before' as const, kind: 'trigger' as const, priority: 999,
-          effect: { schemaVersion: 1 as const, effectId: `test-mage-06-${kind}-before-attack`, body: kind === 'choice'
-            ? { kind: 'choice' as const, choiceId: 'test-mage-06-prepare', actor: { kind: 'controller' as const }, options: [
-                { id: 'stay', effect: { kind: 'modify-value' as const, target: { kind: 'turn-combat-bonus' as const, player: { kind: 'controller' as const } }, amount: 0 } },
-                { id: 'boost', effect: { kind: 'modify-value' as const, target: { kind: 'turn-combat-bonus' as const, player: { kind: 'controller' as const } }, amount: 1 } },
-              ] }
-            : { kind: 'random' as const, randomId: 'test-mage-06-random-prepare', outcomes: [{ id: 'boost', effect: { kind: 'modify-value' as const, target: { kind: 'turn-combat-bonus' as const, player: { kind: 'controller' as const } }, amount: 1 } }] } },
-        }],
-      };
-      const ruleset = createRuleset([baseProvisionalOriginalFullContentPack, customAdventurerContentPack], [baseRulesModule, module], { allowProvisionalPlaytest: true });
-      const state = finishBondSetup(createGame({ gameId: `mage-06-${kind}-preview`, seed: 73, startingPlayerId: 'p1', players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset), ruleset);
-      const [, meguminId] = replaceParty(state, ['custom:starter/melee', 'custom:adventurer/mage-06']) as [string, string];
-      const target = Object.values(state.enemyTargets).find(({ kind: targetKind, status }) => targetKind === 'monster' && status === 'available')!;
-      const combat = evaluateCombat(state, ruleset, 'p1', target.targetId); if (combat.status !== 'ready') throw new Error(combat.error);
-      state.temporaryTargetModifiers = [{ modifierId: `mage-06-${kind}-five`, moduleId: customAdventurerRulesModuleId, targetCardId: target.cardInstanceId, amount: 5 - combat.evaluation.requiredCombat, expiresAtTurnEndPlayerId: 'p1' }];
-      state.phase = 'combat'; state.players[0]!.turnCombatBonus = 0;
-      return { state, ruleset, target, command: { type: 'ATTACK_TARGET' as const, targetId: target.targetId, combatAssistCardId: meguminId } };
+  it('preserves Legal Commands and dispatch parity for a non-Megumin generic combat-assist policy', () => {
+    const module = {
+      ...customAdventurerRulesModule,
+      version: '0.10.1-generic-assist-test',
+      combatAssistPolicies: [...(customAdventurerRulesModule.combatAssistPolicies ?? []), {
+        schemaVersion: 1 as const,
+        moduleId: customAdventurerRulesModuleId,
+        policyId: 'test-tank-07-generic-combat-assist',
+        priority: 999,
+        sourceDefinitionIds: ['custom:adventurer/tank-07'],
+        targetKinds: ['boss'] as const,
+        requiredCombat: { kind: 'divide' as const, divisor: 2, rounding: 'ceil' as const },
+        sourceDisposition: 'remove-from-game' as const,
+        attachedCardsDisposition: 'discard' as const,
+        reasonCode: 'TEST_GENERIC_COMBAT_ASSIST',
+      }],
     };
+    const ruleset = createRuleset([baseProvisionalOriginalFullContentPack, customAdventurerContentPack], [baseRulesModule, module], { allowProvisionalPlaytest: true });
+    const state = finishBondSetup(createGame({
+      gameId: 'generic-combat-assist-test', seed: 73, startingPlayerId: 'p1',
+      players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }],
+    }, ruleset), ruleset);
+    const [participantId, assistId] = replaceParty(state, ['custom:adventurer/melee-01', 'custom:adventurer/tank-07']) as [string, string];
+    const target = Object.values(state.enemyTargets).find(({ kind, status }) => kind === 'boss' && status === 'available')!;
+    state.phase = 'combat'; state.players[0]!.history.defeatedMonsters = 5;
+    const base = evaluateCombat(state, ruleset, 'p1', target.targetId); if (base.status !== 'ready') throw new Error(base.error);
+    state.temporaryTargetModifiers = [{ modifierId: 'generic-assist-require-four', moduleId: customAdventurerRulesModuleId, targetCardId: target.cardInstanceId, amount: 4 - base.evaluation.requiredCombat, expiresAtTurnEndPlayerId: 'p1' }];
+    const command = { type: 'ATTACK_TARGET' as const, targetId: target.targetId, combatAssistCardId: assistId };
+    expect(getLegalCommands(state, ruleset, 'p1')).toContainEqual(command);
+    expect(getLegalCommands(state, ruleset, 'p1')).not.toContainEqual({ type: 'ATTACK_TARGET', targetId: target.targetId });
+    const result = dispatch(state, ruleset, envelope(state, 'p1', command, 'generic-combat-assist'));
+    expect(result.error).toBeUndefined();
+    expect(result.events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'COMBAT_ASSIST_APPLIED' })]));
+    expect(result.state.removedCards).toContain(assistId);
+    expect(result.state.players[0]!.party.some(({ adventurerId }) => adventurerId === participantId)).toBe(false);
+  });
 
-    const choice = prepare('choice');
-    expect(getLegalCommands(choice.state, choice.ruleset, 'p1')).toContainEqual(choice.command);
-    const suspended = dispatch(choice.state, choice.ruleset, envelope(choice.state, 'p1', choice.command, 'mage-06-choice-root'));
-    expect(suspended.error).toBeUndefined();
-    const restored = restoreSnapshot(serializeSnapshot(suspended.state), choice.ruleset);
-    expect(getLegalCommands(restored, choice.ruleset, 'p1')).toEqual([expect.objectContaining({ type: 'RESOLVE_EFFECT_CHOICE', optionId: 'boost' })]);
-    const completed = dispatch(restored, choice.ruleset, envelope(restored, 'p1', getLegalCommands(restored, choice.ruleset, 'p1')[0]!, 'mage-06-choice-boost'));
-    expect(completed.error).toBeUndefined(); expect(completed.state.removedCards).toContain(choice.command.combatAssistCardId);
-
-    const random = prepare('random');
-    expect(getLegalCommands(random.state, random.ruleset, 'p1')).toContainEqual(random.command);
-    const randomized = dispatch(random.state, random.ruleset, envelope(random.state, 'p1', random.command, 'mage-06-random-root'));
-    expect(randomized.error).toBeUndefined(); expect(randomized.state.removedCards).toContain(random.command.combatAssistCardId);
+  it('rejects overlapping independent activation policies at ruleset composition', () => {
+    const policy = customAdventurerRulesModule.cardEffectActivationPolicies?.[0];
+    if (!policy) throw new Error('Expected Megumin card-effect activation policy.');
+    const ambiguous = { ...customAdventurerRulesModule, cardEffectActivationPolicies: [policy, { ...policy, policyId: 'overlapping-activation' }] };
+    expect(() => createRuleset([baseProvisionalOriginalFullContentPack, customAdventurerContentPack], [baseRulesModule, ambiguous], { allowProvisionalPlaytest: true })).toThrow('ambiguously overlaps');
   });
 
   it('gives custom tank 06 its exact public monster-combat tier after all target modifiers', () => {

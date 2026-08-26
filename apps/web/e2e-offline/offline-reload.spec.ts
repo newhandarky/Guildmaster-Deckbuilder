@@ -8,6 +8,7 @@ test('reloads and resumes the local session with the network disabled', async ({
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('body')).toContainText('繼續晨星遠征');

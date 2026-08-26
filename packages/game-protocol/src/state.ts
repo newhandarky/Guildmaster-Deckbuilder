@@ -47,7 +47,14 @@ export type TurnFactLedger = {
   partyCombatMultipliers?: { definitionId: string; numerator: number; denominator: number; rounding: 'floor' }[];
   marketRefreshed: boolean; combatResolved: boolean; combatSkipped: boolean;
 };
-export type TemporaryTargetModifier = { modifierId: string; moduleId: string; targetCardId: string; amount: number; expiresAtTurnEndPlayerId: string };
+export type TemporaryTargetModifier = {
+  modifierId: string;
+  moduleId: string;
+  targetCardId: string;
+  amount: number;
+  expiresAtTurnEndPlayerId?: string;
+  expiresWhenTargetLeaves?: true;
+};
 export type PlayerDecisionKind = 'choose-effect-option' | 'discard-card' | 'remove-card' | 'recover-card' | 'choose-market-card' | 'choose-enemy-target' | 'choose-party-member' | 'draft-card' | 'transfer-card' | 'choose-order';
 export type PlayerDecisionPrompt = { schemaVersion: 1; decisionKind: PlayerDecisionKind; choiceId: string; minSelections: number; maxSelections: number; options: readonly { id: string; cardId?: string; definitionId?: string; selectedCardIds?: readonly string[]; selectedDefinitionIds?: readonly string[] }[]; order?: { kind: 'player-deck-top' | 'party'; cardIds: readonly string[]; mayRemove: boolean } };
 export type PublicOpponentPartyMember = { adventurerId: string; equipmentIds?: string[]; equipmentId?: string; effectiveCombat: number };

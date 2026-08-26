@@ -47,7 +47,7 @@ export const demoPresentationPack: PresentationPack = {
 export const provisionalFoundationPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-foundation-neutral',
-    version: '9.0.0',
+    version: '9.1.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
@@ -55,88 +55,88 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
     {
       definitionId: 'base:resource/resource-01',
       displayName: '候選物資 01',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-01',
+      portraitAltText: '候選物資 01 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張冒險者。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張冒險者加入手牌；此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-02',
       displayName: '候選物資 02',
-      portraitAssetKey: 'placeholder:provisional-equipment',
-      portraitAltText: '候選裝備的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-02',
+      portraitAltText: '候選物資 02 的卡牌插畫',
       shortDisplayText: '印刷戰力 1；完整四人模式由近戰配戴時額外 +1。',
       detailDisplayText: '火焰拳套的印刷戰力為 1。完整四人 Provisional 模式中，由近戰冒險者配戴時額外增加戰力 1，合計提供 2；foundation 切片只保留通用配戴流程。',
     },
     {
       definitionId: 'base:resource/resource-04',
       displayName: '候選物資 04',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-04',
+      portraitAltText: '候選物資 04 的卡牌插畫',
       shortDisplayText: '使用：棄 1 張魔王，然後抽 3 張牌。',
       detailDisplayText: '行動階段使用後，從手牌選擇並棄置 1 張魔王，再抽 3 張牌；此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-05',
       displayName: '候選物資 05',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-05',
+      portraitAltText: '候選物資 05 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張裝備。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張裝備加入手牌；此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-08',
       displayName: '候選物資 08',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-08',
+      portraitAltText: '候選物資 08 的卡牌插畫',
       shortDisplayText: '使用：抽 2 張牌。',
       detailDisplayText: '行動階段使用後抽 2 張牌；此為 provisional 候選效果，尚不代表正式卡表。',
     },
     {
       definitionId: 'base:resource/resource-10',
       displayName: '候選物資 10',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-10',
+      portraitAltText: '候選物資 10 的卡牌插畫',
       shortDisplayText: '使用：棄 1 張手牌，然後抽 2 張牌。',
       detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌；此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-13',
       displayName: '候選物資 13',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-13',
+      portraitAltText: '候選物資 13 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張非同名道具卡。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張道具卡加入手牌；賢者之石不能被選擇。此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-15',
       displayName: '候選物資 15',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-15',
+      portraitAltText: '候選物資 15 的卡牌插畫',
       shortDisplayText: '使用：從手牌、隊伍或棄牌堆移除 1 張牌。',
       detailDisplayText: '行動階段使用後，從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；若移除配戴裝備的隊員，其裝備置入棄牌堆。此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-17',
       displayName: '候選物資 17',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-17',
+      portraitAltText: '候選物資 17 的卡牌插畫',
       shortDisplayText: '使用：抽 3 張牌，然後棄 1 張手牌。',
       detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌；此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-18',
       displayName: '候選物資 18',
-      portraitAssetKey: 'placeholder:provisional-equipment',
-      portraitAltText: '候選裝備的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-18',
+      portraitAltText: '候選物資 18 的卡牌插畫',
       shortDisplayText: '配戴者仍在隊伍時，每次擊敗目標後抽 1 張牌。',
       detailDisplayText: '本次行動玩家擊敗目標後，若此裝備仍掛在自己的隊伍中，該裝備實例會觸發並抽 1 張牌；多個實例各自觸發。此為 provisional 候選效果。',
     },
     {
       definitionId: 'base:resource/resource-27',
       displayName: '候選物資 27',
-      portraitAssetKey: 'placeholder:provisional-item',
-      portraitAltText: '候選道具的中性圖像 placeholder',
+      portraitAssetKey: 'base:portrait/resource-27',
+      portraitAltText: '候選物資 27 的卡牌插畫',
       shortDisplayText: '使用：依目前隊伍中的職業種類數抽牌。',
       detailDisplayText: '行動階段使用後，計算目前隊伍中不同的冒險者職業種類，並抽取等量卡牌；同職業只計算一次。此為 provisional 候選效果。',
     },
@@ -323,23 +323,29 @@ const provisionalBondConditionSummaries = [
   '隊伍中有 3 種以上不同職業的非起始冒險者。',
 ] as const;
 export const provisionalOriginalFullPresentationPack: PresentationPack = {
-  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.4.0', theme: 'neutral-text', locale: 'zh-TW' },
+  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.8.0', theme: 'neutral-text', locale: 'zh-TW' },
   entries: [
     ...Array.from({ length: 5 }, (_, index) => {
       const id = String(index + 1).padStart(2, '0');
       return {
         ...fullNeutralEntry(`base:starter/adventurer-${id}`, `候選起始冒險者 ${id}`, 'starter'),
+        portraitAssetKey: `base:portrait/starter-adventurer-${id}`,
+        portraitAltText: `候選起始冒險者 ${id} 的卡牌插畫`,
         shortDisplayText: '起始冒險者；沒有個別文字效果。',
         detailDisplayText: '這張起始冒險者依印刷戰力與職業參與隊伍規則，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
       };
     }),
     {
       ...fullNeutralEntry('base:starter/summoning-stone', '候選起始資源 A', 'starter'),
+      portraitAssetKey: 'base:portrait/starter-summoning-stone',
+      portraitAltText: '候選起始資源 A 的卡牌插畫',
       shortDisplayText: '起始資源；提供購買力 1，沒有個別文字效果。',
       detailDisplayText: '這張起始資源依印刷數值提供購買力 1，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
     },
     {
       ...fullNeutralEntry('base:starter/spirit-crystal', '候選起始裝備 B', 'equipment'),
+      portraitAssetKey: 'base:portrait/starter-spirit-crystal',
+      portraitAltText: '候選起始裝備 B 的卡牌插畫',
       shortDisplayText: '起始裝備；印刷戰力 1。',
       detailDisplayText: '這張牌是起始手牌中的裝備，可在行動階段配戴給隊伍中的冒險者，提供印刷戰力 1。此欄位依 card-07 圖例校正為 Provisional 候選資料。',
     },
@@ -347,6 +353,8 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
       const id = String(index + 1).padStart(2, '0');
       return {
         ...fullNeutralEntry(`base:adventurer/adventurer-${id}`, `候選冒險者 ${id}`, 'adventurer'),
+        portraitAssetKey: `base:portrait/adventurer-${id}`,
+        portraitAltText: `候選冒險者 ${id} 的卡牌插畫`,
         ...(id === '02' ? {
           shortDisplayText: '此冒險者不能配戴裝備。',
           detailDisplayText: '此冒險者在隊伍中時，任何裝備都不會成為其合法配戴指令；Legal Commands、CPU 與權威 dispatch 共用相同限制。此為 Provisional 候選效果。',
@@ -366,6 +374,8 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
       const professionEquipment = enabledProfessionEquipmentCopy[id];
       return {
         ...fullNeutralEntry(`base:resource/resource-${id}`, `候選物資 ${id}`, [2,3,7,9,11,12,14,16,18,19,20,21,24,25].includes(Number(id)) ? 'equipment' : 'item'),
+        portraitAssetKey: `base:portrait/resource-${id}`,
+        portraitAltText: `候選物資 ${id} 的卡牌插畫`,
         ...(id === '12' ? {
           shortDisplayText: '配戴者因戰鬥進入棄牌堆時，此裝備改為移出遊戲。',
           detailDisplayText: '配戴者實際作為討伐參戰者進入棄牌堆時，冒險者照常棄置，但真龍斧連枷會強制永久移出本局；隊伍超額、休息或卡牌效果造成的離場不觸發。此為已啟用的 Provisional 候選效果。',
@@ -382,6 +392,8 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
       const id = String(index + 1).padStart(2, '0');
       return {
         ...fullNeutralEntry(`base:monster/monster-${id}`, `候選魔物 ${id}`, 'monster'),
+        portraitAssetKey: `base:portrait/monster-${id}`,
+        portraitAltText: `候選魔物 ${id} 的卡牌插畫`,
         ...(enabledMonsterRewardCopy[id] ?? (enabledAdditionalMonsterCopy[id] ? {
           shortDisplayText: enabledAdditionalMonsterCopy[id],
           detailDisplayText: `${enabledAdditionalMonsterCopy[id]} 選擇、略過、零候選與多人 ownership transfer 均由權威效果流程處理。此為已啟用的 Provisional 候選效果。`,

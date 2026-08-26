@@ -201,7 +201,7 @@ export type CustomAdventurerCapabilityEntry = {
 };
 
 const additionalMechanics: Readonly<Record<string, { readonly family: string; readonly decisions: readonly string[]; readonly testId: string }>> = {
-  'custom:adventurer/mage-06': { family: 'combat/optional-nonparticipant-assist', decisions: [], testId: 'custom-mage-06-halves-combat-and-is-removed' },
+  'custom:adventurer/mage-06': { family: 'card-effect/target-combat-halving-until-defeated', decisions: [], testId: 'custom-mage-06-halves-target-combat-until-defeated' },
   'custom:adventurer/melee-07': { family: 'dice/turn-card-combat-multiplier', decisions: [], testId: 'custom-melee-07-combat-multiplier' },
   'custom:adventurer/support-06': { family: 'party/choose-order', decisions: ['choose-order'], testId: 'custom-support-06-party-order' },
   'custom:adventurer/ranged-03': { family: 'combat/reserve-contribution', decisions: [], testId: 'custom-ranged-03-reserve-combat' },

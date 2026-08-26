@@ -6,6 +6,7 @@ export type GameCommand =
   | { type: 'EQUIP_ITEM'; cardId: string; adventurerId: string }
   | { type: 'ATTACH_CARD'; cardId: string; adventurerId: string; replaceCardId?: string | undefined }
   | { type: 'USE_ITEM'; cardId: string }
+  | { type: 'ACTIVATE_CARD_EFFECT'; cardId: string; targetId: string }
   | { type: 'ATTACK_TARGET'; targetId: string; combatAssistCardId?: string | undefined }
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'SELECT_BONDS'; offerId: string; bondIds: readonly string[] }
@@ -26,6 +27,7 @@ export const GameCommandSchema: z.ZodType<GameCommand> = z.discriminatedUnion('t
   z.object({ type: z.literal('EQUIP_ITEM'), cardId: nonEmptyId, adventurerId: nonEmptyId }).strict(),
   z.object({ type: z.literal('ATTACH_CARD'), cardId: nonEmptyId, adventurerId: nonEmptyId, replaceCardId: nonEmptyId.optional() }).strict(),
   z.object({ type: z.literal('USE_ITEM'), cardId: nonEmptyId }).strict(),
+  z.object({ type: z.literal('ACTIVATE_CARD_EFFECT'), cardId: nonEmptyId, targetId: nonEmptyId }).strict(),
   z.object({ type: z.literal('ATTACK_TARGET'), targetId: nonEmptyId, combatAssistCardId: nonEmptyId.optional() }).strict(),
   z.object({ type: z.literal('BUY_CARD'), cardId: nonEmptyId }).strict(),
   z.object({ type: z.literal('SELECT_BONDS'), offerId: nonEmptyId, bondIds: z.array(nonEmptyId).length(5) }).strict(),
