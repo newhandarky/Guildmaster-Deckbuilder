@@ -323,23 +323,29 @@ const provisionalBondConditionSummaries = [
   '隊伍中有 3 種以上不同職業的非起始冒險者。',
 ] as const;
 export const provisionalOriginalFullPresentationPack: PresentationPack = {
-  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.7.0', theme: 'neutral-text', locale: 'zh-TW' },
+  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.8.0', theme: 'neutral-text', locale: 'zh-TW' },
   entries: [
     ...Array.from({ length: 5 }, (_, index) => {
       const id = String(index + 1).padStart(2, '0');
       return {
         ...fullNeutralEntry(`base:starter/adventurer-${id}`, `候選起始冒險者 ${id}`, 'starter'),
+        portraitAssetKey: `base:portrait/starter-adventurer-${id}`,
+        portraitAltText: `候選起始冒險者 ${id} 的卡牌插畫`,
         shortDisplayText: '起始冒險者；沒有個別文字效果。',
         detailDisplayText: '這張起始冒險者依印刷戰力與職業參與隊伍規則，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
       };
     }),
     {
       ...fullNeutralEntry('base:starter/summoning-stone', '候選起始資源 A', 'starter'),
+      portraitAssetKey: 'base:portrait/starter-summoning-stone',
+      portraitAltText: '候選起始資源 A 的卡牌插畫',
       shortDisplayText: '起始資源；提供購買力 1，沒有個別文字效果。',
       detailDisplayText: '這張起始資源依印刷數值提供購買力 1，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
     },
     {
       ...fullNeutralEntry('base:starter/spirit-crystal', '候選起始裝備 B', 'equipment'),
+      portraitAssetKey: 'base:portrait/starter-spirit-crystal',
+      portraitAltText: '候選起始裝備 B 的卡牌插畫',
       shortDisplayText: '起始裝備；印刷戰力 1。',
       detailDisplayText: '這張牌是起始手牌中的裝備，可在行動階段配戴給隊伍中的冒險者，提供印刷戰力 1。此欄位依 card-07 圖例校正為 Provisional 候選資料。',
     },

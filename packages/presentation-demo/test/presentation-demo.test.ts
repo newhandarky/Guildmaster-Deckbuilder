@@ -192,7 +192,14 @@ describe('demo presentation package', () => {
     expect(registry.diagnostics).toEqual([...registry.diagnostics].sort());
   });
 
-  it('assigns stable unique remote portrait keys to every adventurer, resource, monster, Boss, and helper', () => {
+  it('assigns stable unique remote portrait keys to every starter, adventurer, resource, monster, Boss, and helper', () => {
+    expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:starter/adventurer-')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
+      Array.from({ length: 5 }, (_, index) => `base:portrait/starter-adventurer-${String(index + 1).padStart(2, '0')}`),
+    );
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:starter/summoning-stone')?.portraitAssetKey)
+      .toBe('base:portrait/starter-summoning-stone');
+    expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:starter/spirit-crystal')?.portraitAssetKey)
+      .toBe('base:portrait/starter-spirit-crystal');
     expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:adventurer/')).map(({ portraitAssetKey }) => portraitAssetKey)).toEqual(
       Array.from({ length: 30 }, (_, index) => `base:portrait/adventurer-${String(index + 1).padStart(2, '0')}`),
     );

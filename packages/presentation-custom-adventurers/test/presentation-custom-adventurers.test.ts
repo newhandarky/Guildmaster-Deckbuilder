@@ -29,13 +29,16 @@ describe('custom adventurer presentation', () => {
     }
   });
 
-  it('allowlists all base Boss, helper, monster, resource, and adventurer remote images on the same HTTPS host', () => {
+  it('allowlists all base starter, Boss, helper, monster, resource, and adventurer remote images on the same HTTPS host', () => {
     expect(baseRemoteAssetKeys).toEqual([
       ...Array.from({ length: 12 }, (_, index) => `base:portrait/helper-${String(index + 1).padStart(2, '0')}`),
       ...Array.from({ length: 11 }, (_, index) => `base:portrait/boss-${String(index + 1).padStart(2, '0')}`),
       ...Array.from({ length: 14 }, (_, index) => `base:portrait/monster-${String(index + 1).padStart(2, '0')}`),
       ...Array.from({ length: 28 }, (_, index) => `base:portrait/resource-${String(index + 1).padStart(2, '0')}`),
       ...Array.from({ length: 30 }, (_, index) => `base:portrait/adventurer-${String(index + 1).padStart(2, '0')}`),
+      ...Array.from({ length: 5 }, (_, index) => `base:portrait/starter-adventurer-${String(index + 1).padStart(2, '0')}`),
+      'base:portrait/starter-summoning-stone',
+      'base:portrait/starter-spirit-crystal',
     ]);
     for (const key of baseRemoteAssetKeys) {
       const asset = resolveCustomRemoteAsset(key);
