@@ -224,7 +224,7 @@ const baseBondConditionRules: readonly BondConditionRule[] = [
 ];
 
 /**
- * Data-driven rules for the small, visually unambiguous first effect batch.
+ * Data-driven rules for the complete provisional base card-effect set.
  * Card IDs live here instead of in game-engine so the generic engine remains
  * unaware of provisional content identities.
  */

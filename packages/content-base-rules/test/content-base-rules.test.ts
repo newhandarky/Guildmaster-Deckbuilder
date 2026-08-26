@@ -98,7 +98,7 @@ function arrangePublicRow(
 }
 
 describe('full provisional base rules contribution', () => {
-  it('registers only the first visually unambiguous card-rules batch', () => {
+  it('registers the complete provisional base card-rules set and all 30 bond conditions', () => {
     expect(baseProvisionalOriginalFullRulesModule.config?.enabledDefinitionIds).toEqual(expect.arrayContaining([
       ...['07', '14', '19', '21', '22', '25', '29'].map((id) => `base:adventurer/adventurer-${id}`),
       ...['23', '26'].map((id) => `base:resource/resource-${id}`),

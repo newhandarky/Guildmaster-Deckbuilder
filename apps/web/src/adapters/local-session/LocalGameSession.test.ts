@@ -453,10 +453,14 @@ describe('LocalGameSession transactional boundary', () => {
   }, 900_000);
 
   it.skipIf(import.meta.env.RUN_HEADLESS_REGRESSION !== '1' && import.meta.env.RUN_HEADLESS_SOAK !== '1')('finishes its assigned headless regression seeds within 250 rounds', () => {
-    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const requestedMode = import.meta.env.HEADLESS_CONTENT_MODE ?? 'provisional-original-full';
+    if (requestedMode !== 'provisional-original-full' && requestedMode !== 'custom-adventurers-full') {
+      throw new Error(`Unsupported HEADLESS_CONTENT_MODE: ${requestedMode}.`);
+    }
+    const ruleset = createWebRuleset(undefined, requestedMode);
     const registryFingerprint = JSON.stringify(replayRegistryFingerprint(ruleset));
     const players = [
-      { id: 'p1', name: 'P1', kind: 'human' as const },
+      { id: 'p1', name: 'P1', kind: 'ai' as const },
       { id: 'p2', name: 'P2', kind: 'ai' as const },
       { id: 'p3', name: 'P3', kind: 'ai' as const },
       { id: 'p4', name: 'P4', kind: 'ai' as const },
@@ -467,8 +471,8 @@ describe('LocalGameSession transactional boundary', () => {
     const maximumShardSize = import.meta.env.RUN_HEADLESS_SOAK === '1' ? 100 : 20;
     if (!Number.isSafeInteger(seedStart) || !Number.isSafeInteger(seedCount) || seedCount < 1 || seedCount > maximumShardSize) throw new Error(`Headless seed shard must contain 1–${maximumShardSize} safe integer seeds.`);
     for (const seed of Array.from({ length: seedCount }, (_, index) => seedStart + index)) {
-      console.info(`[headless] seed ${seed} started`);
-      let state = createGame({ gameId: `headless-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
+      console.info(`[headless:${requestedMode}] seed ${seed} started`);
+      let state = createGame({ gameId: `headless-${requestedMode}-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
       const runner = new CpuTurnRunner(baseBalancedCpuProfile);
       const trace: unknown[] = [];
       const progress: unknown[] = [];
@@ -525,7 +529,7 @@ describe('LocalGameSession transactional boundary', () => {
       }
       if (state.status !== 'finished') fail(`Seed ${seed} exhausted the 20,000-step headless guard at revision ${state.revision}.`);
       expect(state.status, `seed ${seed}`).toBe('finished');
-      console.info(`[headless] seed ${seed} completed at round ${state.round}`);
+      console.info(`[headless:${requestedMode}] seed ${seed} completed at round ${state.round}`);
     }
   }, 2_400_000);
 
