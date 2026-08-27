@@ -98,7 +98,11 @@ function arrangePublicRow(
 }
 
 describe('full provisional base rules contribution', () => {
-  it('registers only the first visually unambiguous card-rules batch', () => {
+  it('uses a new rules module identity for bond timing and non-starter turn-fact semantics', () => {
+    expect(baseProvisionalOriginalFullRulesModule.version).toBe('2.11.0');
+  });
+
+  it('registers the complete provisional base card-rules set and all 30 bond conditions', () => {
     expect(baseProvisionalOriginalFullRulesModule.config?.enabledDefinitionIds).toEqual(expect.arrayContaining([
       ...['07', '14', '19', '21', '22', '25', '29'].map((id) => `base:adventurer/adventurer-${id}`),
       ...['23', '26'].map((id) => `base:resource/resource-${id}`),
@@ -244,6 +248,7 @@ describe('full provisional base rules contribution', () => {
       Object.assign(state.turnFacts!, {
         adventurersRecruited: 10,
         adventurersAddedToParty: 10,
+        nonStarterAdventurersAddedToParty: 10,
         itemsBought: 10,
         equipmentBought: 10,
         purchasePowerSpent: 10,
@@ -263,6 +268,41 @@ describe('full provisional base rules contribution', () => {
       expect(evaluateBondCondition(restored, activeRuleset, 'p1', bondId)).toEqual(evaluateBondCondition(state, activeRuleset, 'p1', bondId));
     },
   );
+
+  it('counts only non-starter party entries for bond 08 across dispatch and Snapshot', () => {
+    const prepare = () => {
+      const { state, activeRuleset } = gameWithParty([]);
+      const player = state.players[0]!;
+      player.bonds = [{ bondId: 'base:bond/bond-08', completed: false }];
+      state.phase = 'action1';
+      const starterId = player.discardPile.find((cardId) => activeRuleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === 'starter')!;
+      player.discardPile.splice(player.discardPile.indexOf(starterId), 1);
+      const nonStarterIds = Object.values(state.zones).flatMap(({ cardIds }) => cardIds).filter((cardId) => activeRuleset.registry.definitions[state.cards[cardId]!.definitionId]!.type === 'adventurer').slice(0, 3);
+      for (const cardId of [starterId, ...nonStarterIds]) {
+        for (const zone of Object.values(state.zones)) zone.cardIds = zone.cardIds.filter((candidate) => candidate !== cardId);
+        state.cards[cardId]!.ownerId = player.id;
+        player.hand.push(cardId);
+      }
+      return { state, activeRuleset, starterId, nonStarterIds };
+    };
+    const play = (initial: ReturnType<typeof prepare>['state'], activeRuleset: ReturnType<typeof ruleset>, cardIds: readonly string[]) => cardIds.reduce((current, cardId, index) => {
+      const result = dispatch(current, activeRuleset, envelope(current, 'p1', { type: 'PLAY_ADVENTURER', cardId }, `bond-08-play-${index}`));
+      if (result.error) throw new Error(result.error.message);
+      return result.state;
+    }, initial);
+
+    const mixed = prepare();
+    const mixedState = play(mixed.state, mixed.activeRuleset, [mixed.starterId, ...mixed.nonStarterIds.slice(0, 2)]);
+    expect(mixedState.turnFacts).toMatchObject({ adventurersAddedToParty: 3, nonStarterAdventurersAddedToParty: 2 });
+    expect(evaluateBondCondition(mixedState, mixed.activeRuleset, 'p1', 'base:bond/bond-08')).toMatchObject({ status: 'ready', evaluation: { satisfied: false } });
+
+    const nonStarter = prepare();
+    const eligibleState = play(nonStarter.state, nonStarter.activeRuleset, nonStarter.nonStarterIds);
+    expect(eligibleState.turnFacts).toMatchObject({ adventurersAddedToParty: 3, nonStarterAdventurersAddedToParty: 3 });
+    expect(evaluateBondCondition(eligibleState, nonStarter.activeRuleset, 'p1', 'base:bond/bond-08')).toMatchObject({ status: 'ready', evaluation: { satisfied: true } });
+    const restored = restoreSnapshot(serializeSnapshot(eligibleState), nonStarter.activeRuleset);
+    expect(evaluateBondCondition(restored, nonStarter.activeRuleset, 'p1', 'base:bond/bond-08')).toEqual(evaluateBondCondition(eligibleState, nonStarter.activeRuleset, 'p1', 'base:bond/bond-08'));
+  });
 
   it('removes resource 12 only when its wearer is discarded by combat across legal, CPU, dispatch, rollback and Snapshot', () => {
     const { state, activeRuleset, targetId } = gameWithTarget('base:monster/monster-01');

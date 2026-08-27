@@ -11,9 +11,9 @@ import {
 } from '../src/index.js';
 
 describe('custom adventurer presentation', () => {
-  it('contains all forty-eight display entries and forty-one allowlisted remote images', () => {
+  it('contains all forty-five display entries and forty-one allowlisted remote images', () => {
     expect(validatePresentationPack(customAdventurerPresentationPack)).toEqual({ valid: true, errors: [] });
-    expect(customAdventurerPresentationPack.entries).toHaveLength(48);
+    expect(customAdventurerPresentationPack.entries).toHaveLength(45);
     expect(customRemoteAssetKeys).toHaveLength(41);
     expect(customRemoteAssetPolicy).toEqual({
       sourceDocument: 'docs/card-data/自定義冒險者格式化資料.md',
@@ -54,10 +54,7 @@ describe('custom adventurer presentation', () => {
       'custom:adventurer/melee-08',
       'custom:adventurer/melee-09',
       'custom:adventurer/mage-08',
-      'custom:adventurer/tank-10',
-      'custom:adventurer/support-10',
       'custom:adventurer/ranged-04',
-      'custom:adventurer/ranged-06',
     ]);
     expect(resolveCustomRemoteAsset('placeholder:custom-adventurer')).toBeUndefined();
     expect(resolveCustomRemoteAsset('custom:portrait/not-registered')).toBeUndefined();

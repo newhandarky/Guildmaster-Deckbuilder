@@ -16,17 +16,15 @@ describe('custom adventurer content', () => {
       dependencies: ['base:provisional-original-full'],
     });
     expect(customCardRows.filter(([id]) => id.startsWith('custom:starter/'))).toHaveLength(5);
-    expect(customCardRows.filter(([id, , copies]) => id.startsWith('custom:adventurer/') && copies === 1)).toHaveLength(43);
+    const customAdventurers = customCardRows.filter(([id]) => id.startsWith('custom:adventurer/'));
+    expect(customAdventurers).toHaveLength(40);
+    expect(customAdventurers.every(([, , copies]) => copies === 1)).toBe(true);
     expect(baseProvisionalOriginalFullContentPack.definitions
       .filter(({ id, type }) => type === 'adventurer' && id.startsWith('base:adventurer/'))
       .reduce((total, definition) => total + definition.copies, 0)).toBe(60);
     expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'blocked').map(({ contentId }) => contentId)).toEqual([]);
-    expect(customAdventurerCapabilityMatrix.filter(({ enabled }) => enabled)).toHaveLength(43);
-    expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'none').map(({ contentId }) => contentId)).toEqual([
-      'custom:adventurer/tank-10',
-      'custom:adventurer/support-10',
-      'custom:adventurer/ranged-06',
-    ]);
+    expect(customAdventurerCapabilityMatrix.filter(({ enabled }) => enabled)).toHaveLength(40);
+    expect(customAdventurerCapabilityMatrix.filter(({ effectStatus }) => effectStatus === 'none')).toEqual([]);
     expect(customAdventurerCapabilityMatrix.every(({ mechanicFamily, cpuResolver, ruleEvidence, testIds }) => mechanicFamily.length > 0 && cpuResolver.length > 0 && ruleEvidence.length > 0 && testIds.length > 0)).toBe(true);
     expect(customAdventurerCapabilityMatrix.every(({ ruleEvidence }) => ruleEvidence.includes('docs/card-data/自定義冒險者格式化資料.md'))).toBe(true);
     expect(Object.keys(customAdventurerMechanicBindings)).toHaveLength(30);
@@ -51,7 +49,12 @@ describe('custom adventurer content', () => {
       { allowProvisionalPlaytest: true },
     );
     expect(Object.keys(registry.definitions).filter((id) => id.startsWith('base:adventurer/'))).toHaveLength(0);
-    expect(Object.keys(registry.definitions).filter((id) => id.startsWith('custom:adventurer/'))).toHaveLength(43);
+    expect(Object.keys(registry.definitions).filter((id) => id.startsWith('custom:adventurer/'))).toHaveLength(40);
+    expect(Object.keys(registry.definitions)).not.toEqual(expect.arrayContaining([
+      'custom:adventurer/tank-10',
+      'custom:adventurer/support-10',
+      'custom:adventurer/ranged-06',
+    ]));
     expect('partyDefinitionIds' in registry.starter ? registry.starter.partyDefinitionIds : []).toEqual([
       'custom:starter/support',
       'custom:starter/melee',
@@ -61,7 +64,7 @@ describe('custom adventurer content', () => {
     ]);
   });
 
-  it('builds the expected forty-three-card custom-mode public adventurer supply', () => {
+  it('builds the expected forty-card custom-mode public adventurer supply', () => {
     const ruleset = createRuleset(
       [baseProvisionalOriginalFullContentPack, customAdventurerContentPack],
       [baseRulesModule],
@@ -73,7 +76,8 @@ describe('custom adventurer content', () => {
       players: Array.from({ length: 4 }, (_, index) => ({ id: `p${index + 1}`, name: `P${index + 1}`, kind: index === 0 ? 'human' as const : 'ai' as const })),
     }, ruleset);
     const publicAdventurers = [...state.zones['base:adventurer-deck']!.cardIds, ...state.zones['base:adventurer-row']!.cardIds];
-    expect(publicAdventurers).toHaveLength(43);
+    expect(publicAdventurers).toHaveLength(40);
+    expect(publicAdventurers.every((cardId) => state.cards[cardId]!.definitionId.startsWith('custom:adventurer/'))).toBe(true);
     expect(state.players.every(({ party }) => party.every(({ adventurerId }) => state.cards[adventurerId]!.definitionId.startsWith('custom:starter/')))).toBe(true);
   });
 });

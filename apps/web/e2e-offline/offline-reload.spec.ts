@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { startNewExpedition } from '../e2e/game-entry.js';
 
 test('reloads and resumes the local session with the network disabled', async ({ page, context }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '開始新遠征' }).click();
+  await startNewExpedition(page);
   await page.getByTestId('end-phase').click();
   await expect(page.getByTestId('save-status')).toContainText('已保存');
   await page.evaluate(() => navigator.serviceWorker.ready);

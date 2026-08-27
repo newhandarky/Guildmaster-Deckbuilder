@@ -1,4 +1,4 @@
-import type { BondCondition, BondConditionRule, BondEvaluation, BondPlayerZone, GameState, PlayerState } from '@guildmaster/game-protocol';
+import type { BondCompletionTiming, BondCondition, BondConditionRule, BondEvaluation, BondPlayerZone, GameState, PlayerState } from '@guildmaster/game-protocol';
 import { getDefinition } from '../model/factories.js';
 import { attachedCardIds } from '../model/attachments.js';
 import type { Ruleset } from './ruleset.js';
@@ -85,6 +85,12 @@ export function evaluateBondPredicate(condition: BondCondition, state: GameState
 
 function rulesForBond(ruleset: Ruleset, bondId: string): readonly BondConditionRule[] {
   return ruleset.modules.flatMap((module) => module.bondConditionRules ?? []).filter((rule) => rule.bondId === bondId);
+}
+
+export function bondCompletionTimingFor(ruleset: Ruleset, bondId: string): BondCompletionTiming {
+  const timings = new Set(rulesForBond(ruleset, bondId).map(({ completionTiming }) => completionTiming ?? 'state'));
+  if (timings.size > 1) throw new Error(`Bond ${bondId} has conflicting completion timing policies.`);
+  return [...timings][0] ?? 'state';
 }
 
 function orderRules(rules: readonly BondConditionRule[]): BondEvaluationResult | readonly BondConditionRule[] {

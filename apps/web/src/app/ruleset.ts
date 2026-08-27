@@ -148,13 +148,13 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   },
   'provisional-original-full': {
     label: '基礎版原作衍生 Provisional 測試',
-    description: '固定一名真人與三名 CPU，載入完整候選 roster、起始裝備與已驗證的首批卡牌效果。',
-    warning: `內部測試模式：能力矩陣目前通過 ${webModeEffectSummary.full}；其餘效果保持停用，不得視為官方完整基礎版。`,
+    description: '固定一名真人與三名 CPU，載入完整候選 roster、30 張羈絆、12 張協助者與全部已驗證的基礎卡牌效果。',
+    warning: `內部測試模式：能力矩陣目前通過 ${webModeEffectSummary.full}；內容仍屬 provisional，不得視為官方發行版本。`,
   },
   'custom-adventurers-full': {
     label: '自定義冒險者完整模式',
     description: '固定一名真人與三名 CPU；沿用完整基礎牌桌，將起始隊伍與冒險者供應替換為自定義角色。',
-    warning: `公開測試模式：已接入 48 張自定義角色資料；${webModeEffectSummary.custom}。尚未封口的技能保持停用；HTTPS 圖片失敗時顯示 placeholder。`,
+    warning: `私人測試模式：已接入 45 張自定義角色資料（40 張公開冒險者與 5 張起始角色）；${webModeEffectSummary.custom}。HTTPS 圖片失敗時顯示 placeholder。`,
   },
 };
 

@@ -160,6 +160,9 @@ export const baseProvisionalOriginalFullContentPack: ContentPack = {
   manifest: { id: 'base:provisional-original-full', version: '0.20.0', hash: 'base-provisional-original-full-v21-all-base-card-effects-enabled', role: 'base', contentStatus: 'provisional-playtest' },
   definitions: [...starters, ...adventurers, ...resources, ...monsters, ...bosses],
   starter: { partyDefinitionIds: starters.slice(0, 5).map(({ id }) => id), summonStoneDefinitionId: 'base:starter/summoning-stone', crystalDefinitionId: 'base:starter/spirit-crystal' },
+  // `requiredBosses: 99` is a legacy compatibility sentinel required by the
+  // protocol shape. Full mode registers one authoritative BondConditionRule
+  // for every bond, so normal evaluation never falls back to this value.
   bonds: bondHonor.map((honor, index) => ({ id: `base:bond/bond-${pad(index + 1)}`, name: `候選羈絆 ${pad(index + 1)}`, honor, requiredBosses: 99 })),
   rulesModuleIds: ['base:rules', 'base:provisional-original-full-rules'],
 };

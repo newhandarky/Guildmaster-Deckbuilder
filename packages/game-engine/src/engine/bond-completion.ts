@@ -1,6 +1,6 @@
-import type { DomainEvent, EngineError, GameCommand, GameState, PlayerState } from '@guildmaster/game-protocol';
+import type { BondCompletionTiming, DomainEvent, EngineError, GameCommand, GameState, PlayerState } from '@guildmaster/game-protocol';
 import { previousSeat } from '../model/seats.js';
-import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
+import { bondCompletionTimingFor, evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { getEndConditions, type Ruleset } from '../rules/ruleset.js';
 
 function event(state: GameState, events: DomainEvent[], type: string, message: string, commandId: string): void {
@@ -28,6 +28,8 @@ export function applyBondCompletion(state: GameState, player: PlayerState, rules
     const owned = player.bonds.find((bond) => bond.bondId === bondId);
     const definition = ruleset.registry.bonds.find((bond) => bond.id === bondId);
     if (!owned || !definition || owned.completed) return { error: `羈絆 ${bondId} 不可完成。` } as const;
+    const timing = bondCompletionTimingFor(ruleset, bondId);
+    if (timing !== 'state' && (state.pendingBondCompletion?.playerId !== player.id || state.pendingBondCompletion.timing !== timing || !state.pendingBondCompletion.bondIds.includes(bondId))) return { error: `羈絆 ${bondId} 的完成時機已過。` } as const;
     const evaluation = evaluateBondCondition(state, ruleset, player.id, bondId);
     if (evaluation.status !== 'ready') return { error: evaluation.error } as const;
     if (!evaluation.evaluation.satisfied) return { error: `羈絆 ${bondId} 的條件目前未成立。` } as const;
@@ -35,6 +37,7 @@ export function applyBondCompletion(state: GameState, player: PlayerState, rules
   });
   const invalid = resolved.find((candidate) => 'error' in candidate);
   if (invalid && 'error' in invalid) return { code: 'INVALID_COMMAND', message: invalid.error };
+  delete state.pendingBondCompletion;
   for (const candidate of resolved) {
     if ('error' in candidate) continue;
     candidate.owned.completed = true;
@@ -42,4 +45,16 @@ export function applyBondCompletion(state: GameState, player: PlayerState, rules
   }
   checkEndConditions(state, ruleset, events, commandId);
   return undefined;
+}
+
+export function openBondCompletionOpportunity(state: GameState, ruleset: Ruleset, playerId: string, timing: Exclude<BondCompletionTiming, 'state'>, opportunityId: string): void {
+  const player = state.players.find(({ id }) => id === playerId);
+  if (!player) throw new Error(`Unknown bond completion opportunity player: ${playerId}.`);
+  const bondIds = player.bonds.filter(({ completed, bondId }) => {
+    if (completed || bondCompletionTimingFor(ruleset, bondId) !== timing) return false;
+    const evaluation = evaluateBondCondition(state, ruleset, playerId, bondId);
+    return evaluation.status === 'ready' && evaluation.evaluation.satisfied;
+  }).map(({ bondId }) => bondId);
+  if (!bondIds.length) return;
+  state.pendingBondCompletion = { schemaVersion: 1, opportunityId, playerId, timing, bondIds };
 }

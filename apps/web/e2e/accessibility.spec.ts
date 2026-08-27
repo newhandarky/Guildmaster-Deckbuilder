@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openGame } from './game-entry.js';
+import { openGame, openNewExpeditionSetup } from './game-entry.js';
 
 async function expectNoAccessibilityViolations(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page })
@@ -88,6 +88,7 @@ test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }
 
 test('bond setup is announced as a focused non-modal blocking choice', async ({ page }) => {
   await page.goto('/');
+  await openNewExpeditionSetup(page);
   await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 

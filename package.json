@@ -19,6 +19,7 @@
     "test:e2e:offline": "pnpm --filter @guildmaster/web test:e2e:offline",
     "test:four-player-expedition": "RUN_FULL_EXPEDITION=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t 'finishes a deterministic four-player provisional expedition'",
     "test:four-player-regression": "RUN_HEADLESS_REGRESSION=1 HEADLESS_SEED_START=10001 HEADLESS_SEED_COUNT=20 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned",
+    "test:four-cpu-rc": "RUN_HEADLESS_REGRESSION=1 HEADLESS_CONTENT_MODE=provisional-original-full HEADLESS_SEED_START=10001 HEADLESS_SEED_COUNT=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned && RUN_HEADLESS_REGRESSION=1 HEADLESS_CONTENT_MODE=custom-adventurers-full HEADLESS_SEED_START=20001 HEADLESS_SEED_COUNT=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned",
     "test:four-player-soak-shard": "RUN_HEADLESS_SOAK=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned",
     "check": "pnpm typecheck && pnpm lint && pnpm check:architecture && pnpm check:content-workflow && pnpm check:presentation-assets && pnpm test && pnpm test:e2e && pnpm test:e2e:offline && pnpm build"
   },

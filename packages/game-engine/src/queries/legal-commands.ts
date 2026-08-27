@@ -12,7 +12,7 @@ import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluat
 import { evaluateCombatRewards } from '../rules/combat-reward-evaluator.js';
 import { executeEffect } from '../effects/executor.js';
 import { validatePendingDynamicCardChoice } from '../engine/pending-dynamic-choice-validation.js';
-import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
+import { bondCompletionTimingFor, evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { evaluateAttachment } from '../rules/attachment-evaluator.js';
 import { combatAssistCanTarget, evaluateCombatAssist } from '../rules/combat-assist-evaluator.js';
@@ -246,6 +246,8 @@ export function getLegalCommands(state: GameState, ruleset: Ruleset, actorId: st
   const player = getPlayer(state, actorId);
   const commands: GameCommand[] = [];
   const completableBondIds = player.bonds.filter(({ completed }) => !completed).flatMap(({ bondId }) => {
+    const timing = bondCompletionTimingFor(ruleset, bondId);
+    if (timing !== 'state' && (state.pendingBondCompletion?.playerId !== actorId || state.pendingBondCompletion.timing !== timing || !state.pendingBondCompletion.bondIds.includes(bondId))) return [];
     const evaluation = evaluateBondCondition(state, ruleset, actorId, bondId);
     return evaluation.status === 'ready' && evaluation.evaluation.satisfied ? [bondId] : [];
   });

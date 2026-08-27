@@ -4,7 +4,7 @@ import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guil
 import { baseRulesModule, createGame, createRuleset, dispatch, replayGame, serializeSnapshot } from '@guildmaster/game-engine';
 import type { CommandEnvelope } from '@guildmaster/game-protocol';
 import { createWebRuleset } from '../src/app/ruleset.js';
-import { enterGame, openGame } from './game-entry.js';
+import { enterGame, openGame, openNewExpeditionSetup, startNewExpedition } from './game-entry.js';
 
 const localSaveKey = 'guildmaster-mvp-save-v2';
 
@@ -176,6 +176,7 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
   await expect(entry.getByTestId('expedition-summary')).toContainText('第 1 輪 · 行動一階段');
   await expect(entry.getByTestId('expedition-summary')).toContainText('完整紀錄');
   await expect(page.getByTestId('game-app')).toHaveCount(0);
+  await openNewExpeditionSetup(page);
   await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('game-app')).toBeVisible();
   await expect(page.getByTestId('player-summary')).toContainText('你的公會');
@@ -239,6 +240,7 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
 test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
+  await openNewExpeditionSetup(page);
   const provisional = entry.getByRole('radio', { name: /基礎候選數值測試/ });
   await expect(provisional).not.toBeChecked();
   await provisional.check();
@@ -253,12 +255,14 @@ test('provisional foundation mode is explicit, visibly limited, and restored by 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
   await expect(page.getByTestId('expedition-summary')).toContainText('基礎候選數值測試');
+  await openNewExpeditionSetup(page);
   await expect(page.getByRole('radio', { name: /基礎候選數值測試/ })).toBeChecked();
 });
 
 test('helper advanced rules are provisional-only and restore from pack/module identity', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
+  await openNewExpeditionSetup(page);
   await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toHaveCount(0);
   await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
   const helpers = entry.getByRole('checkbox', { name: /協助者進階規則/ });
@@ -268,6 +272,7 @@ test('helper advanced rules are provisional-only and restore from pack/module id
   await expect(page.getByTestId('provisional-content-warning')).toContainText('12/12 張協助者');
   await page.reload();
   await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
+  await openNewExpeditionSetup(page);
   await expect(page.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
 });
 
@@ -277,6 +282,7 @@ test('old helper 0.1 save is cleared with an explicit one-time recovery notice',
   const entry = page.getByTestId('expedition-entry');
   await expect(entry.getByRole('heading', { name: '準備新的遠征' })).toBeVisible();
   await expect(entry.getByTestId('helper-upgrade-recovery-notice')).toHaveText('協助者規則已更新，舊進度無法安全續玩，已建立新遠征。');
+  await openNewExpeditionSetup(page);
   await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toBeChecked();
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
 });
@@ -306,8 +312,9 @@ test('restored entry requires confirmation before replacing the saved expedition
   await page.reload();
 
   const entry = page.getByTestId('expedition-entry');
+  await openNewExpeditionSetup(page);
   await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
-  const startNew = entry.getByRole('button', { name: '開啟新遠征' });
+  const startNew = entry.getByRole('button', { name: '開始新遠征' });
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
@@ -350,7 +357,7 @@ test('storage read failure is explained at entry and still allows memory-only pl
   await expect(entry.getByTestId('entry-storage-warning')).toHaveText(
     '本機儲存目前不可用；仍可遊玩，但進度只會保留在此分頁。',
   );
-  await entry.getByRole('button', { name: '開始新遠征' }).click();
+  await startNewExpedition(page);
   await expect(page.getByTestId('game-app')).toBeVisible();
   await expect(page.getByTestId('save-status')).toHaveText('本機：僅保留在此分頁');
   await expect(page.getByTestId('storage-warning')).toContainText('最新進度只保留在此分頁');
@@ -600,7 +607,7 @@ test('malformed local save is cleared and starts a playable new game', async ({ 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '準備新的遠征' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBeNull();
-  await page.getByRole('button', { name: '開始新遠征' }).click();
+  await startNewExpedition(page);
   await expect(page.getByTestId('human-card-count')).toContainText('手牌 5');
   await expect(page.getByTestId('end-phase')).toBeEnabled();
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');

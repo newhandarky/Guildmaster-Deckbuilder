@@ -17,7 +17,7 @@ import { createTurnFactLedger } from './create-game.js';
 import { dispatchBondSetup } from './bond-setup.js';
 import { applyMarketRefresh } from './market-refresh.js';
 import { applyPhaseTransition } from './phase-transition.js';
-import { applyBondCompletion, checkEndConditions } from './bond-completion.js';
+import { applyBondCompletion, checkEndConditions, openBondCompletionOpportunity } from './bond-completion.js';
 import { evaluatePurchaseCost } from '../rules/purchase-cost-evaluator.js';
 import { pushDiscard } from '../rules/discard-redirect-evaluator.js';
 import { attachedCardIds, setAttachedCardIds } from '../model/attachments.js';
@@ -62,7 +62,9 @@ function playAdventurer(state: GameState, ruleset: Ruleset, player: PlayerState,
     }
   }
   player.party.push({ adventurerId: command.cardId });
-  facts(state, player.id).adventurersAddedToParty += 1;
+  const turnFacts = facts(state, player.id);
+  turnFacts.adventurersAddedToParty += 1;
+  if (getDefinition(ruleset.registry, state, command.cardId).type !== 'starter') turnFacts.nonStarterAdventurersAddedToParty = (turnFacts.nonStarterAdventurersAddedToParty ?? 0) + 1;
   event(state, events, 'ADVENTURER_ENTERED_PARTY', `${player.name} 加入了一名冒險者。`, commandId);
   return undefined;
 }
@@ -434,8 +436,18 @@ function dispatchInternal(state: GameState, ruleset: Ruleset, envelope: CommandE
 }
 
 export function dispatch(state: GameState, ruleset: Ruleset, envelope: CommandEnvelope): EngineResult {
+  const rootEnvelope = state.effectState.pendingPostCommand?.envelope ?? state.effectState.pendingCommand?.envelope ?? envelope;
   const result = dispatchInternal(state, ruleset, envelope);
   if (result.error) return result;
+  if (result.state.revision > state.revision) {
+    if (rootEnvelope.command.type !== 'COMPLETE_BONDS') delete result.state.pendingBondCompletion;
+    if (rootEnvelope.command.type === 'END_PHASE' && rootEnvelope.command.phase === 'action1' && result.state.phase === 'combat') {
+      openBondCompletionOpportunity(result.state, ruleset, rootEnvelope.actorId, 'combat-start', `bond-opportunity:${rootEnvelope.commandId}:combat-start`);
+    }
+    if (rootEnvelope.command.type === 'ATTACK_TARGET' && result.events.some(({ type }) => type === 'ENEMY_DEFEATED')) {
+      openBondCompletionOpportunity(result.state, ruleset, rootEnvelope.actorId, 'combat-resolved', `bond-opportunity:${rootEnvelope.commandId}:combat-resolved`);
+    }
+  }
   const errors = [...validateGameStateInvariants(result.state), ...validateRulesetGameStateInvariants(result.state, ruleset), ...validateSupplyContinuityState(result.state, ruleset)]; const registryError = validateRulesetStateCompatibility(result.state, ruleset);
   if (errors.length || registryError) return fail(state, 'INVALID_COMMAND', `Command produced invalid state: ${[...errors, ...(registryError ? [registryError] : [])].join(' ')}`);
   return result;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 export type BondPlayerZone = 'drawPile' | 'hand' | 'discardPile' | 'playArea' | 'party' | 'equipment';
-export type BondNumericTurnFact = 'adventurersRecruited' | 'adventurersAddedToParty' | 'itemsBought' | 'equipmentBought' | 'purchasePowerSpent' | 'extraCardsDrawn' | 'itemsUsed' | 'bossesDefeated' | 'monstersDefeated' | 'actionPhaseItemsUsed' | 'lastCombatParticipantCount' | 'lastCombatDiscardedEquipment' | 'monstersUsedForPurchase';
+export type BondNumericTurnFact = 'adventurersRecruited' | 'adventurersAddedToParty' | 'nonStarterAdventurersAddedToParty' | 'itemsBought' | 'equipmentBought' | 'purchasePowerSpent' | 'extraCardsDrawn' | 'itemsUsed' | 'bossesDefeated' | 'monstersDefeated' | 'actionPhaseItemsUsed' | 'lastCombatParticipantCount' | 'lastCombatDiscardedEquipment' | 'monstersUsedForPurchase';
 export type BondCondition =
   | { kind: 'defeated-bosses-at-least'; amount: number }
   | { kind: 'defeated-monsters-at-least'; amount: number }
@@ -23,11 +23,12 @@ export type BondCondition =
   | { kind: 'all'; conditions: readonly BondCondition[] }
   | { kind: 'any'; conditions: readonly BondCondition[] }
   | { kind: 'not'; condition: BondCondition };
-export type BondConditionRule = { schemaVersion: 1; ruleId: string; moduleId: string; bondId: string; priority?: number; condition: BondCondition };
+export type BondCompletionTiming = 'state' | 'combat-start' | 'combat-resolved';
+export type BondConditionRule = { schemaVersion: 1; ruleId: string; moduleId: string; bondId: string; priority?: number; completionTiming?: BondCompletionTiming; condition: BondCondition };
 export type BondEvaluation = { schemaVersion: 1; satisfied: boolean; appliedRules: readonly { moduleId: string; ruleId: string }[]; registry: { rulesetVersion: string; modules: readonly { id: string; version: string }[] } };
 const zones = z.array(z.enum(['drawPile','hand','discardPile','playArea','party','equipment'])).min(1);
 const bondTags = z.array(z.string().min(1)).min(1).refine((values) => new Set(values).size === values.length, 'Bond tags must be unique.');
-const numericTurnFact = z.enum(['adventurersRecruited','adventurersAddedToParty','itemsBought','equipmentBought','purchasePowerSpent','extraCardsDrawn','itemsUsed','bossesDefeated','monstersDefeated','actionPhaseItemsUsed','lastCombatParticipantCount','lastCombatDiscardedEquipment','monstersUsedForPurchase']);
+const numericTurnFact = z.enum(['adventurersRecruited','adventurersAddedToParty','nonStarterAdventurersAddedToParty','itemsBought','equipmentBought','purchasePowerSpent','extraCardsDrawn','itemsUsed','bossesDefeated','monstersDefeated','actionPhaseItemsUsed','lastCombatParticipantCount','lastCombatDiscardedEquipment','monstersUsedForPurchase']);
 export const BondConditionSchema: z.ZodType<BondCondition> = z.lazy(() => z.union([
   z.object({ kind: z.literal('defeated-bosses-at-least'), amount: z.number().int().nonnegative() }).strict(),
   z.object({ kind: z.literal('defeated-monsters-at-least'), amount: z.number().int().nonnegative() }).strict(),
@@ -51,7 +52,7 @@ export const BondConditionSchema: z.ZodType<BondCondition> = z.lazy(() => z.unio
   z.object({ kind: z.literal('any'), conditions: z.array(BondConditionSchema).min(1) }).strict(),
   z.object({ kind: z.literal('not'), condition: BondConditionSchema }).strict(),
 ]));
-export const BondConditionRuleSchema = z.object({ schemaVersion: z.literal(1), ruleId: z.string().min(1), moduleId: z.string().min(1), bondId: z.string().min(1), priority: z.number().finite().optional(), condition: BondConditionSchema }).strict();
+export const BondConditionRuleSchema = z.object({ schemaVersion: z.literal(1), ruleId: z.string().min(1), moduleId: z.string().min(1), bondId: z.string().min(1), priority: z.number().finite().optional(), completionTiming: z.enum(['state', 'combat-start', 'combat-resolved']).optional(), condition: BondConditionSchema }).strict();
 function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
