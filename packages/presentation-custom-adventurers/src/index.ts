@@ -187,7 +187,7 @@ const ambiguousEffects = new Set<string>(customAmbiguousEffectDefinitionIds);
 export const customAdventurerPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:custom-adventurers-public',
-    version: '0.4.0',
+    version: '0.5.0',
     theme: 'custom-adventurers',
     locale: 'zh-TW',
   },
@@ -221,7 +221,6 @@ export const customAdventurerPresentationPack: PresentationPack = {
     { definitionId: "custom:adventurer/tank-07", displayName: "ゆんゆん", portraitAssetKey: "custom:portrait/adventurer-tank-07", portraitAltText: "ゆんゆん的自定義冒險者圖片", shortDisplayText: "自己的每回合限 1 次，可讓ゆんゆん不因討伐離開隊伍。", detailDisplayText: "ゆんゆん作為參戰者即將因討伐離開隊伍時，可以選擇保留她與其全部附件。每個自己的回合最多使用 1 次；未使用或次數已用完時依一般規則離場。" },
     { definitionId: "custom:adventurer/tank-08", displayName: "ルミナス・バレンタイン", portraitAssetKey: "custom:portrait/adventurer-tank-08", portraitAltText: "ルミナス・バレンタイン的自定義冒險者圖片", shortDisplayText: "此冒險者可以作為裝備，配戴在其他冒險者上；配戴的冒險者增加戰力 2。", detailDisplayText: "此冒險者可以作為裝備，配戴在其他冒險者上；配戴的冒險者增加戰力 2。 發動時點：位於隊伍期間持續生效。 可略過：是。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：作為裝備時附著於指定冒險者；附件離場規則待確認。" },
     { definitionId: "custom:adventurer/tank-09", displayName: "ヨル・フォージャー", portraitAssetKey: "custom:portrait/adventurer-tank-09", portraitAltText: "ヨル・フォージャー的自定義冒險者圖片", shortDisplayText: "隊伍中至少有 3 位坦克時，每位坦克戰力 +2。", detailDisplayText: "隊伍中至少有 3 位坦克時，隊伍內每位坦克戰力 +2，包含ヨル・フォージャー自己；只計目前隊伍中的冒險者。條件不成立時立即失去加成。" },
-    { definitionId: "custom:adventurer/tank-10", displayName: "米莉安", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "米莉安的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:starter/support", displayName: "夜凪 櫻", portraitAssetKey: "custom:portrait/starter-support", portraitAltText: "夜凪 櫻的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：遊戲設置時直接置入玩家隊伍；因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/support-01", displayName: "月詠", portraitAssetKey: "custom:portrait/adventurer-support-01", portraitAltText: "月詠的自定義冒險者圖片", shortDisplayText: "進入隊伍時，可以移除自己棄牌堆中的 1 張牌。", detailDisplayText: "進入隊伍時，可以移除自己棄牌堆中的 1 張牌。 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/support-02", displayName: "朽木ルキア", portraitAssetKey: "custom:portrait/adventurer-support-02", portraitAltText: "朽木ルキア的自定義冒險者圖片", shortDisplayText: "購買階段時，商店內所有裝備費用減少 1。", detailDisplayText: "購買階段時，商店內所有裝備費用減少 1。 發動時點：購買階段。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
@@ -232,14 +231,12 @@ export const customAdventurerPresentationPack: PresentationPack = {
     { definitionId: "custom:adventurer/support-07", displayName: "Jessie", portraitAssetKey: "custom:portrait/adventurer-support-07", portraitAltText: "Jessie的自定義冒險者圖片", shortDisplayText: "進入隊伍時，抽 1 張牌。當此冒險者配戴裝備時，抽 1 張牌。", detailDisplayText: "進入隊伍時，抽 1 張牌。當此冒險者配戴裝備時，抽 1 張牌。 發動時點：進入隊伍時。 可略過：否。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/support-08", displayName: "リノア・ハーティリー", portraitAssetKey: "custom:portrait/adventurer-support-08", portraitAltText: "リノア・ハーティリー的自定義冒險者圖片", shortDisplayText: "討伐階段結束時，若本回合有擊敗魔物或魔王，可以從手牌、隊伍或棄牌堆中移除 1 張牌。", detailDisplayText: "討伐階段結束時，若本回合有擊敗魔物或魔王，可以從手牌、隊伍或棄牌堆中移除 1 張牌。 發動時點：討伐階段結束時。 可略過：是。 持續時間：目前回合。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/support-09", displayName: "ジュナ", portraitAssetKey: "custom:portrait/adventurer-support-09", portraitAltText: "ジュナ的自定義冒險者圖片", shortDisplayText: "進入隊伍時，可以將目前公會小姐放到牌庫底並換上下一張。", detailDisplayText: "進入隊伍時，若公會小姐牌庫仍有牌，可以選擇立即輪替：目前公會小姐置於牌庫底，從牌庫頂補上新的公會小姐並執行其進場效果；也可以略過。" },
-    { definitionId: "custom:adventurer/support-10", displayName: "尤伊爾", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "尤伊爾的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:starter/ranged", displayName: "九條 霧香", portraitAssetKey: "custom:portrait/starter-ranged", portraitAltText: "九條 霧香的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：遊戲設置時直接置入玩家隊伍；因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/ranged-01", displayName: "Ada Wong", portraitAssetKey: "custom:portrait/adventurer-ranged-01", portraitAltText: "Ada Wong的自定義冒險者圖片", shortDisplayText: "當此冒險者在隊伍第四或第五位時，增加戰力 1。", detailDisplayText: "當此冒險者在隊伍第四或第五位時，增加戰力 1。 發動時點：位於隊伍期間持續生效。 可略過：否。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/ranged-02", displayName: "シオン・アイメリス", portraitAssetKey: "custom:portrait/adventurer-ranged-02", portraitAltText: "シオン・アイメリス的自定義冒險者圖片", shortDisplayText: "進入隊伍時，可以選擇場上任意數量的魔物，將其放回魔物牌庫底，並翻出等量魔物。", detailDisplayText: "進入隊伍時，可以選擇場上任意數量的魔物，將其放回魔物牌庫底，並翻出等量魔物。 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/ranged-03", displayName: "詩乃", portraitAssetKey: "custom:portrait/adventurer-ranged-03", portraitAltText: "詩乃的自定義冒險者圖片", shortDisplayText: "只要在隊伍內 即使沒有參與討伐 攻擊力也可以加算到隊伍的第一位玩家身上 如果自己本身就是第一位 或是有參與到該次討伐 則不另外加算攻擊力", detailDisplayText: "只要在隊伍內 即使沒有參與討伐 攻擊力也可以加算到隊伍的第一位玩家身上 如果自己本身就是第一位 或是有參與到該次討伐 則不另外加算攻擊力 發動時點：位於隊伍期間持續生效。 可略過：是。 持續時間：此卡位於指定位置且條件成立期間。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
     { definitionId: "custom:adventurer/ranged-04", displayName: "莉莉西斯", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "莉莉西斯的自定義冒險者圖片", shortDisplayText: "進入隊伍的回合，購買階段時，魔物或魔王的購買力增加 1。", detailDisplayText: "進入隊伍的回合，購買階段時，魔物或魔王的購買力增加 1。 發動時點：進入隊伍時。 可略過：否。 持續時間：目前回合。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
-    { definitionId: "custom:adventurer/ranged-05", displayName: "レゼ", portraitAssetKey: "custom:portrait/adventurer-ranged-05", portraitAltText: "レゼ的自定義冒險者圖片", shortDisplayText: "進入隊伍時 可選擇手牌中一張道具卡執行兩次效果", detailDisplayText: "進入隊伍時 可選擇手牌中一張道具卡執行兩次效果 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" },
-    { definitionId: "custom:adventurer/ranged-06", displayName: "尤伊爾", portraitAssetKey: "placeholder:custom-adventurer", portraitAltText: "尤伊爾的自定義冒險者圖片", shortDisplayText: "無特殊效果。", detailDisplayText: "無特殊效果。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" }
+    { definitionId: "custom:adventurer/ranged-05", displayName: "レゼ", portraitAssetKey: "custom:portrait/adventurer-ranged-05", portraitAltText: "レゼ的自定義冒險者圖片", shortDisplayText: "進入隊伍時 可選擇手牌中一張道具卡執行兩次效果", detailDisplayText: "進入隊伍時 可選擇手牌中一張道具卡執行兩次效果 發動時點：進入隊伍時。 可略過：是。 持續時間：立即結算；衍生修正依完整效果指定。 最後目的地：因戰鬥離場時依一般規則置入棄牌堆。" }
   ] as PresentationPack['entries']).map((entry) => ambiguousEffects.has(entry.definitionId)
     ? {
         ...entry,

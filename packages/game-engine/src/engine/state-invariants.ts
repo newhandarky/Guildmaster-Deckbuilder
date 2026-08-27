@@ -1,6 +1,7 @@
 import { isFiniteJsonValue, type GameState } from '@guildmaster/game-protocol';
 import type { Ruleset } from '../rules/ruleset.js';
 import { attachedCardIds } from '../model/attachments.js';
+import { bondCompletionTimingFor } from '../rules/bond-condition-evaluator.js';
 
 const duplicates = (values: readonly string[]): string[] => {
   const seen = new Set<string>();
@@ -32,6 +33,11 @@ export function validateGameStateInvariants(state: GameState): string[] {
       }
     }
   } else if (state.bondSetup) errors.push('Bond setup must be absent after setup completes.');
+  const bondOpportunity = state.pendingBondCompletion;
+  if (bondOpportunity) {
+    const owner = state.players.find(({ id }) => id === bondOpportunity.playerId);
+    if (!bondOpportunity.opportunityId.trim() || bondOpportunity.playerId !== state.activePlayerId || !owner || !bondOpportunity.bondIds.length || duplicates(bondOpportunity.bondIds).length || bondOpportunity.bondIds.some((bondId) => !owner.bonds.some((bond) => bond.bondId === bondId && !bond.completed))) errors.push('Pending bond completion opportunity is invalid.');
+  }
   if (duplicates(state.rulesModules.map(({ id }) => id)).length) errors.push('Rules Module IDs must be unique.');
   if (duplicates(state.contentPacks.map(({ id }) => id)).length) errors.push('Content Pack IDs must be unique.');
 
@@ -146,6 +152,11 @@ export function assertGameStateInvariants(state: GameState): void {
 /** Validates module-owned zone contracts and setup-selected card pools. */
 export function validateRulesetGameStateInvariants(state: GameState, ruleset: Ruleset): string[] {
   const errors: string[] = [];
+  if (state.pendingBondCompletion) {
+    for (const bondId of state.pendingBondCompletion.bondIds) {
+      if (bondCompletionTimingFor(ruleset, bondId) !== state.pendingBondCompletion.timing) errors.push(`Pending bond completion opportunity timing does not match bond ${bondId}.`);
+    }
+  }
   if (state.bondSetup) {
     const bondIds = new Set(ruleset.registry.bonds.map(({ id }) => id));
     for (const [playerId, offer] of Object.entries(state.bondSetup.offers)) if (offer.some((bondId) => !bondIds.has(bondId))) errors.push(`Bond setup offer for ${playerId} contains an unknown bond.`);

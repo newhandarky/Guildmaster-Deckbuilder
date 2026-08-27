@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openGame } from './game-entry.js';
+import { openGame, openNewExpeditionSetup } from './game-entry.js';
 
 const viewportCases = [
   { name: 'minimum phone width', width: 320, height: 568, cardWidth: 112 },
@@ -101,6 +101,7 @@ for (const viewport of [
 test('four-player desktop keeps all three opponent summaries around the central table without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto('/');
+  await openNewExpeditionSetup(page);
   await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 

@@ -237,7 +237,7 @@ describe('LocalGameSession transactional boundary', () => {
     const initial = session.current();
     expect(initial.entrySummary).toMatchObject({ contentMode: 'custom-adventurers-full', advancedRules: { helpers: true } });
     expect(initial.view.opponents).toHaveLength(3);
-    expect(Object.values(initial.definitions).filter(({ type }) => type === 'adventurer')).toHaveLength(43);
+    expect(Object.values(initial.definitions).filter(({ type }) => type === 'adventurer')).toHaveLength(40);
     expect(initial.view.self.party.every(({ adventurerId }) => initial.view.cards[adventurerId]!.definitionId.startsWith('custom:starter/'))).toBe(true);
     const humanChoice = initial.legalCommands.find(({ type }) => type === 'SELECT_BONDS');
     if (!humanChoice) throw new Error('Expected custom-mode human bond setup command.');
@@ -734,6 +734,27 @@ describe('LocalGameSession transactional boundary', () => {
     expect(recovered.persistence).toMatchObject({
       state: 'fresh',
       recovery: { reasonCode: 'card-rules-upgraded', previousPackVersion: '0.19.0', previousModuleVersion: '2.9.0' },
+    });
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(recoveredSession.current().persistence.recovery).toBeUndefined();
+  });
+
+  it('clears full-mode rules 2.10 progress after the bond completion timing upgrade', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const current = new LocalGameSession(ruleset);
+    current.restart();
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as {
+      snapshot: { state: { rulesModules: Array<{ id: string; version: string }> } };
+    };
+    persisted.snapshot.state.rulesModules.find(({ id }) => id === 'base:provisional-original-full-rules')!.version = '2.10.0';
+    localStorage.setItem(storageKey, JSON.stringify(persisted));
+
+    const recoveredSession = new LocalGameSession(ruleset);
+    const recovered = recoveredSession.current();
+    expect(recovered.view).toMatchObject({ revision: 0, status: 'setup' });
+    expect(recovered.persistence).toMatchObject({
+      state: 'fresh',
+      recovery: { reasonCode: 'card-rules-upgraded', previousPackVersion: '0.20.0', previousModuleVersion: '2.10.0' },
     });
     expect(localStorage.getItem(storageKey)).toBeNull();
     expect(recoveredSession.current().persistence.recovery).toBeUndefined();

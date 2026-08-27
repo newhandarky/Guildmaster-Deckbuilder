@@ -154,7 +154,7 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   'custom-adventurers-full': {
     label: '自定義冒險者完整模式',
     description: '固定一名真人與三名 CPU；沿用完整基礎牌桌，將起始隊伍與冒險者供應替換為自定義角色。',
-    warning: `私人測試模式：已接入 48 張自定義角色資料；${webModeEffectSummary.custom}。HTTPS 圖片失敗時顯示 placeholder。`,
+    warning: `私人測試模式：已接入 45 張自定義角色資料（40 張公開冒險者與 5 張起始角色）；${webModeEffectSummary.custom}。HTTPS 圖片失敗時顯示 placeholder。`,
   },
 };
 

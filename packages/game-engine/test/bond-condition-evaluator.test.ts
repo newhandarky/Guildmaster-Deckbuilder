@@ -78,6 +78,79 @@ describe('generic bond condition evaluation', () => {
     expect(complete.error).toBeUndefined(); expect(complete.state.players[0]!.bonds[0]!.completed).toBe(true); expect(complete.events.filter((entry) => entry.type === 'BOND_COMPLETED')).toHaveLength(1); expect(complete.state.revision).toBe(2);
   });
 
+  it('offers combat-start bonds only for the phase-entry opportunity and expires them on deferral', () => {
+    const timedRule: BondConditionRule = {
+      ...rule({ kind: 'phase-is', phase: 'combat' }),
+      completionTiming: 'combat-start',
+    };
+    const module: RulesModule = {
+      id: 'test:bonds', version: '1', getPartyLimit: (_s, _p, limit) => limit,
+      onSupplyDepleted: () => 'handled', bondConditionRules: [timedRule],
+    };
+    const ruleset = createRuleset([testPack], [baseRulesModule, module]);
+    const state = createGame({ gameId: 'combat-start-bond', seed: 21, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset);
+    expect(getLegalCommands(state, ruleset, 'p1').some(({ type }) => type === 'COMPLETE_BONDS')).toBe(false);
+
+    const entered = dispatch(state, ruleset, envelope(state, 'p1', { type: 'END_PHASE', phase: 'action1' }, 'enter-combat'));
+    expect(entered.error).toBeUndefined();
+    expect(entered.state.pendingBondCompletion).toMatchObject({ playerId: 'p1', timing: 'combat-start', bondIds: ['test:bond/a'] });
+    expect(getLegalCommands(entered.state, ruleset, 'p1')).toContainEqual({ type: 'COMPLETE_BONDS', bondIds: ['test:bond/a'] });
+    expect(restoreSnapshot(serializeSnapshot(entered.state), ruleset)).toEqual(entered.state);
+
+    const tampered = structuredClone(entered.state);
+    tampered.pendingBondCompletion!.timing = 'combat-resolved';
+    expect(getLegalCommands(tampered, ruleset, 'p1').some(({ type }) => type === 'COMPLETE_BONDS')).toBe(false);
+    const rejected = dispatch(tampered, ruleset, envelope(tampered, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a'] }, 'tampered-opportunity'));
+    expect(rejected.error).toMatchObject({ code: 'INVALID_COMMAND' });
+    expect(rejected.state).toEqual(tampered);
+    expect(() => restoreSnapshot(serializeSnapshot(tampered), ruleset)).toThrow('Pending bond completion opportunity timing');
+
+    const deferred = dispatch(entered.state, ruleset, envelope(entered.state, 'p1', { type: 'END_PHASE', phase: 'combat' }, 'skip-combat-start-bond'));
+    expect(deferred.error).toBeUndefined();
+    expect(deferred.state.pendingBondCompletion).toBeUndefined();
+    expect(getLegalCommands(deferred.state, ruleset, 'p1').some(({ type }) => type === 'COMPLETE_BONDS')).toBe(false);
+  });
+
+  it('opens combat-resolved bonds only after the complete attack transaction and consumes one subset atomically', () => {
+    const pack = structuredClone(testPack);
+    pack.manifest = { ...pack.manifest, id: 'test:combat-resolved-bonds', hash: 'combat-resolved-bonds' };
+    pack.bonds = [
+      { id: 'test:bond/a', name: 'A', honor: 2, requiredBosses: 99 },
+      { id: 'test:bond/b', name: 'B', honor: 3, requiredBosses: 99 },
+    ];
+    const timedRules = ['a', 'b'].map((suffix, index): BondConditionRule => ({
+      schemaVersion: 1, moduleId: 'test:combat-bonds', ruleId: `combat-${suffix}`, bondId: `test:bond/${suffix}`,
+      priority: index + 1, completionTiming: 'combat-resolved',
+      condition: { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 },
+    }));
+    const module: RulesModule = {
+      id: 'test:combat-bonds', version: '1', getPartyLimit: (_s, _p, limit) => limit,
+      onSupplyDepleted: () => 'handled', bondConditionRules: timedRules,
+    };
+    const ruleset = createRuleset([pack], [baseRulesModule, module]);
+    const state = createGame({ gameId: 'combat-resolved-bond', seed: 22, players: [{ id: 'p1', name: 'P1', kind: 'human' }, { id: 'p2', name: 'P2', kind: 'ai' }] }, ruleset);
+    state.phase = 'combat';
+    state.players[0]!.turnCombatBonus = 100;
+    const targetId = Object.values(state.enemyTargets).find(({ kind }) => kind === 'monster')!.targetId;
+    const attacked = dispatch(state, ruleset, envelope(state, 'p1', { type: 'ATTACK_TARGET', targetId }, 'defeat-for-bonds'));
+    expect(attacked.error).toBeUndefined();
+    expect(attacked.state.pendingBondCompletion).toMatchObject({ playerId: 'p1', timing: 'combat-resolved', bondIds: ['test:bond/a', 'test:bond/b'] });
+    expect(getLegalCommands(attacked.state, ruleset, 'p1').filter(({ type }) => type === 'COMPLETE_BONDS')).toEqual([
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a'] },
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/b'] },
+      { type: 'COMPLETE_BONDS', bondIds: ['test:bond/a', 'test:bond/b'] },
+    ]);
+
+    const completed = dispatch(attacked.state, ruleset, envelope(attacked.state, 'p1', { type: 'COMPLETE_BONDS', bondIds: ['test:bond/b'] }, 'complete-one-bond'));
+    expect(completed.error).toBeUndefined();
+    expect(completed.state.pendingBondCompletion).toBeUndefined();
+    expect(completed.state.players[0]!.bonds).toEqual([
+      { bondId: 'test:bond/a', completed: false },
+      { bondId: 'test:bond/b', completed: true },
+    ]);
+    expect(getLegalCommands(completed.state, ruleset, 'p1').some(({ type }) => type === 'COMPLETE_BONDS')).toBe(false);
+  });
+
   it('offers every currently eligible non-empty subset, permits deferral, and rejects stale or duplicate completion atomically', () => {
     const pack = structuredClone(testPack);
     pack.manifest = { ...pack.manifest, id: 'test:bond-subsets', hash: 'bond-subsets' };

@@ -52,7 +52,6 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/tank-07", "tank", 2, 5, 1, 1, "enabled", undefined],
   ["custom:adventurer/tank-08", "tank", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-25"],
   ["custom:adventurer/tank-09", "tank", 2, 4, 2, 2, "enabled", undefined],
-  ["custom:adventurer/tank-10", "tank", 2, 4, 2, 2, "none", undefined],
   ["custom:starter/support", "support", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/support-01", "support", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-13"],
   ["custom:adventurer/support-02", "support", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-05"],
@@ -63,14 +62,12 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/support-07", "support", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-28"],
   ["custom:adventurer/support-08", "support", 2, 5, 0, 3, "enabled", "base:adventurer/adventurer-30"],
   ["custom:adventurer/support-09", "support", 2, 5, 0, 3, "enabled", undefined],
-  ["custom:adventurer/support-10", "support", 2, 5, 0, 3, "none", undefined],
   ["custom:starter/ranged", "ranged", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/ranged-01", "ranged", 2, 3, 2, 1, "enabled", "base:adventurer/adventurer-15"],
   ["custom:adventurer/ranged-02", "ranged", 2, 3, 2, 1, "enabled", "base:adventurer/adventurer-07"],
   ["custom:adventurer/ranged-03", "ranged", 2, 5, 1, 1, "enabled", undefined],
   ["custom:adventurer/ranged-04", "ranged", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-26"],
-  ["custom:adventurer/ranged-05", "ranged", 2, 5, 1, 1, "enabled", undefined],
-  ["custom:adventurer/ranged-06", "ranged", 2, 5, 0, 3, "none", undefined]
+  ["custom:adventurer/ranged-05", "ranged", 2, 5, 1, 1, "enabled", undefined]
 ];
 
 /** Custom mode uses one physical copy of every custom adventurer and starter. */
@@ -176,8 +173,8 @@ const customDefinitions: CardDefinition[] = customCardRows.map(([
 export const customAdventurerContentPack: ContentPack = {
   manifest: {
     id: customAdventurerContentPackId,
-    version: '0.8.0',
-    hash: 'custom-adventurers-full-v8-four-confirmed-character-effects',
+    version: '0.9.0',
+    hash: 'custom-adventurers-full-v9-remove-expansion-placeholders',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
     dependencies: ['base:provisional-original-full'],
@@ -211,9 +208,6 @@ const additionalMechanics: Readonly<Record<string, { readonly family: string; re
   'custom:adventurer/tank-07': { family: 'combat/once-per-turn-departure-replacement', decisions: ['choose-party-member'], testId: 'custom-tank-07-stay-after-combat' },
   'custom:adventurer/support-09': { family: 'helper/optional-rotation-on-entry', decisions: ['choose-effect-option'], testId: 'custom-support-09-rotate-helper' },
   'custom:adventurer/tank-09': { family: 'party/profession-threshold-aura', decisions: [], testId: 'custom-profession-threshold-aura' },
-  'custom:adventurer/tank-10': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
-  'custom:adventurer/support-10': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
-  'custom:adventurer/ranged-06': { family: 'no-special-effect', decisions: [], testId: 'custom-no-special-effect' },
 };
 
 const baseCapabilitiesById = new Map(

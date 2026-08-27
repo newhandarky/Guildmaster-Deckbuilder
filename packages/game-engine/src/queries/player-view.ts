@@ -6,7 +6,7 @@ import { evaluatePartyCombat } from '../rules/party-combat-modifier-evaluator.js
 import { evaluateCombat } from '../rules/combat-evaluator.js';
 import { inspectContinuousPreviewUncertainty } from '../rules/continuous-evaluator.js';
 import { attachedCardIds } from '../model/attachments.js';
-import { evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
+import { bondCompletionTimingFor, evaluateBondCondition } from '../rules/bond-condition-evaluator.js';
 
 function projectPublicParty(state: GameState, ruleset: Ruleset, player: GameState['players'][number]) {
   const combat = evaluatePartyCombat(state, ruleset, { schemaVersion: 1, playerId: player.id });
@@ -45,7 +45,9 @@ export function projectPlayerView(state: GameState, ruleset: Ruleset, viewerId: 
   const bondEvaluations = player.bonds.map(({ bondId }) => {
     const result = evaluateBondCondition(state, ruleset, player.id, bondId);
     if (result.status !== 'ready') throw new Error(`Cannot project bond evaluation ${bondId}: ${result.reason}: ${result.error}`);
-    return { bondId, satisfied: result.evaluation.satisfied, appliedRules: structuredClone(result.evaluation.appliedRules) };
+    const timing = bondCompletionTimingFor(ruleset, bondId);
+    const opportunityIsActive = timing === 'state' || (state.pendingBondCompletion?.playerId === player.id && state.pendingBondCompletion.timing === timing && state.pendingBondCompletion.bondIds.includes(bondId));
+    return { bondId, satisfied: result.evaluation.satisfied && opportunityIsActive, appliedRules: structuredClone(result.evaluation.appliedRules) };
   });
   return {
     viewerId, gameId: state.gameId, status: state.status, phase: state.phase, round: state.round, revision: state.revision, activePlayerId: state.activePlayerId,

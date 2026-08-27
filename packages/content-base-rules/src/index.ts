@@ -180,46 +180,47 @@ const defeatedEnemy: BondCondition = {
     { kind: 'turn-fact-at-least', fact: 'bossesDefeated', amount: 1 },
   ],
 };
-const bondRule = (suffix: string, condition: BondCondition): BondConditionRule => ({
+const bondRule = (suffix: string, condition: BondCondition, completionTiming: BondConditionRule['completionTiming'] = 'state'): BondConditionRule => ({
   schemaVersion: 1,
   ruleId: `bond-${suffix}-condition`,
   moduleId: baseProvisionalOriginalFullRulesModuleId,
   bondId: `base:bond/bond-${suffix}`,
+  completionTiming,
   condition,
 });
 const all = (...conditions: BondCondition[]): BondCondition => ({ kind: 'all', conditions });
 const combatPhase = { kind: 'phase-is', phase: 'combat' } as const;
 
 const baseBondConditionRules: readonly BondConditionRule[] = [
-  bondRule('01', all(combatPhase, { kind: 'party-size-between', minimum: 3, maximum: 3 }, { kind: 'party-all-tags-in', tags: [profession('support'), profession('mage')], minimum: 3 })),
-  bondRule('02', all({ kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 1 }, { kind: 'not', condition: { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 2 } })),
-  bondRule('03', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('mage')] })),
-  bondRule('04', all(defeatedEnemy, { kind: 'party-size-between', minimum: 1, maximum: 1 })),
+  bondRule('01', all(combatPhase, { kind: 'party-size-between', minimum: 3, maximum: 3 }, { kind: 'party-all-tags-in', tags: [profession('support'), profession('mage')], minimum: 3 }), 'combat-start'),
+  bondRule('02', all({ kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 1 }, { kind: 'not', condition: { kind: 'turn-fact-at-least', fact: 'lastCombatParticipantCount', amount: 2 } }), 'combat-resolved'),
+  bondRule('03', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('mage')] }), 'combat-start'),
+  bondRule('04', all(defeatedEnemy, { kind: 'party-size-between', minimum: 1, maximum: 1 }), 'combat-resolved'),
   bondRule('05', { kind: 'turn-fact-at-least', fact: 'equipmentBought', amount: 2 }),
   bondRule('06', all({ kind: 'turn-fact-at-least', fact: 'adventurersRecruited', amount: 1 }, { kind: 'any', conditions: [{ kind: 'turn-fact-at-least', fact: 'itemsBought', amount: 1 }, { kind: 'turn-fact-at-least', fact: 'equipmentBought', amount: 1 }] })),
-  bondRule('07', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('ranged')] })),
-  bondRule('08', { kind: 'turn-fact-at-least', fact: 'adventurersAddedToParty', amount: 3 }),
-  bondRule('09', all(combatPhase, { kind: 'party-tag-count-at-least', tags: [profession('tank'), profession('melee')], amount: 3 })),
-  bondRule('10', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('melee')] })),
-  bondRule('11', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('mage')], amount: 2 })),
-  bondRule('12', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('tank')], amount: 2 })),
+  bondRule('07', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('ranged')] }), 'combat-start'),
+  bondRule('08', { kind: 'turn-fact-at-least', fact: 'nonStarterAdventurersAddedToParty', amount: 3 }),
+  bondRule('09', all(combatPhase, { kind: 'party-tag-count-at-least', tags: [profession('tank'), profession('melee')], amount: 3 }), 'combat-start'),
+  bondRule('10', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('melee')] }), 'combat-start'),
+  bondRule('11', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('mage')], amount: 2 }), 'combat-resolved'),
+  bondRule('12', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('tank')], amount: 2 }), 'combat-resolved'),
   bondRule('13', { kind: 'turn-fact-at-least', fact: 'actionPhaseItemsUsed', amount: 3 }),
-  bondRule('14', all(combatPhase, { kind: 'party-size-between', minimum: 5, maximum: 5 }, { kind: 'party-distinct-tag-count-at-least', tagPrefix: 'profession:', amount: 5 }, { kind: 'party-nonstarter-count-at-least', amount: 3 })),
-  bondRule('15', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('ranged')], amount: 2 })),
+  bondRule('14', all(combatPhase, { kind: 'party-size-between', minimum: 5, maximum: 5 }, { kind: 'party-distinct-tag-count-at-least', tagPrefix: 'profession:', amount: 5 }, { kind: 'party-nonstarter-count-at-least', amount: 3 }), 'combat-start'),
+  bondRule('15', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('ranged')], amount: 2 }), 'combat-resolved'),
   bondRule('16', { kind: 'turn-fact-at-least', fact: 'adventurersRecruited', amount: 2 }),
   bondRule('17', { kind: 'turn-fact-at-least', fact: 'extraCardsDrawn', amount: 3 }),
-  bondRule('18', all(defeatedEnemy, { kind: 'turn-fact-distinct-values-at-least', fact: 'lastCombatDiscardedNonStarterProfessions', amount: 3 })),
-  bondRule('19', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('support')], amount: 2 })),
-  bondRule('20', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('melee')], amount: 2 })),
+  bondRule('18', all(defeatedEnemy, { kind: 'turn-fact-distinct-values-at-least', fact: 'lastCombatDiscardedNonStarterProfessions', amount: 3 }), 'combat-resolved'),
+  bondRule('19', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('support')], amount: 2 }), 'combat-resolved'),
+  bondRule('20', all(defeatedEnemy, { kind: 'party-tag-count-at-least', tags: [profession('melee')], amount: 2 }), 'combat-resolved'),
   bondRule('21', { kind: 'party-same-tag-count-at-least', tagPrefix: 'profession:', amount: 3 }),
-  bondRule('22', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('tank')] })),
-  bondRule('23', { kind: 'turn-fact-at-least', fact: 'lastCombatDiscardedEquipment', amount: 3 }),
-  bondRule('24', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }),
+  bondRule('22', all(combatPhase, { kind: 'party-edge-tags', edge: 'first', count: 2, tags: [profession('tank')] }), 'combat-start'),
+  bondRule('23', { kind: 'turn-fact-at-least', fact: 'lastCombatDiscardedEquipment', amount: 3 }, 'combat-resolved'),
+  bondRule('24', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 1 }, 'combat-resolved'),
   bondRule('25', { kind: 'turn-fact-at-least', fact: 'monstersUsedForPurchase', amount: 3 }),
-  bondRule('26', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 2 }),
+  bondRule('26', { kind: 'turn-fact-at-least', fact: 'monstersDefeated', amount: 2 }, 'combat-resolved'),
   bondRule('27', { kind: 'turn-fact-at-least', fact: 'purchasePowerSpent', amount: 7 }),
-  bondRule('28', all(defeatedEnemy, { kind: 'party-same-tag-count-at-least', tagPrefix: 'profession:', amount: 2, requireAll: true })),
-  bondRule('29', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('support')] })),
+  bondRule('28', all(defeatedEnemy, { kind: 'party-same-tag-count-at-least', tagPrefix: 'profession:', amount: 2, requireAll: true }), 'combat-resolved'),
+  bondRule('29', all(combatPhase, { kind: 'party-edge-tags', edge: 'last', count: 2, tags: [profession('support')] }), 'combat-start'),
   bondRule('30', { kind: 'party-distinct-tag-count-at-least', tagPrefix: 'profession:', amount: 3, nonStarterOnly: true }),
 ];
 
@@ -230,7 +231,7 @@ const baseBondConditionRules: readonly BondConditionRule[] = [
  */
 export const baseProvisionalOriginalFullRulesModule: RulesModule = {
   id: baseProvisionalOriginalFullRulesModuleId,
-  version: '2.10.0',
+  version: '2.11.0',
   config: {
     effectBatch: 'card-rules-a',
     enabledDefinitionIds: [

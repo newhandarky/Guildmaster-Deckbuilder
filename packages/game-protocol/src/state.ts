@@ -33,9 +33,11 @@ export type SetupSelectionState = {
   definitionIds: string[];
 };
 export type BondSetupState = { schemaVersion: 1; offerId: string; currentActorId: string; offers: Record<string, string[]>; completedPlayerIds: string[] };
+export type PendingBondCompletion = { schemaVersion: 1; opportunityId: string; playerId: string; timing: Exclude<import('./bond.js').BondCompletionTiming, 'state'>; bondIds: string[] };
 export type TurnFactLedger = {
   schemaVersion: 1; playerId: string;
   adventurersRecruited: number; adventurersAddedToParty: number;
+  nonStarterAdventurersAddedToParty?: number;
   itemsBought: number; equipmentBought: number; purchasePowerSpent: number;
   extraCardsDrawn: number; itemsUsed: number; bossesDefeated: number; monstersDefeated: number;
   actionPhaseItemsUsed?: number; lastCombatParticipantCount?: number;
@@ -67,7 +69,7 @@ export type GameState = {
   players: PlayerState[]; activePlayerId: string; startingPlayerId: string; round: number; phase: Phase;
   cards: Record<string, CardInstance>; zones: Record<ZoneId, ZoneState>;
   setupSelections?: Record<string, SetupSelectionState>;
-  bondSetup?: BondSetupState; turnFacts?: TurnFactLedger;
+  bondSetup?: BondSetupState; pendingBondCompletion?: PendingBondCompletion; turnFacts?: TurnFactLedger;
   enemyTargets: Record<string, EnemyTargetState>; enemyEncounters: EnemyEncounterState[];
   temporaryTargetModifiers?: TemporaryTargetModifier[];
   removedCards: string[]; moduleState: Record<string, unknown>; effectState: EffectExecutionState; endState?: EndState; eventLogCursor: number;

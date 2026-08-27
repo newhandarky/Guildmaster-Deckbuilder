@@ -156,7 +156,7 @@ describe('web content modes', () => {
 
     const adventurerDefinitions = Object.values(ruleset.registry.definitions)
       .filter(({ type }) => type === 'adventurer');
-    expect(adventurerDefinitions).toHaveLength(43);
+    expect(adventurerDefinitions).toHaveLength(40);
     expect(adventurerDefinitions.every(({ id }) => id.startsWith('custom:adventurer/'))).toBe(true);
     expect('partyDefinitionIds' in ruleset.registry.starter ? ruleset.registry.starter.partyDefinitionIds : []).toEqual([
       'custom:starter/support',
@@ -182,7 +182,7 @@ describe('web content modes', () => {
     expect([
       ...state.zones['base:adventurer-deck']!.cardIds,
       ...state.zones['base:adventurer-row']!.cardIds,
-    ]).toHaveLength(43);
+    ]).toHaveLength(40);
     expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
   });
 

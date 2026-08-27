@@ -448,7 +448,7 @@ describe('custom adventurer rules', () => {
     const rangedId = takeCard(state, 'custom:adventurer/ranged-05');
     const itemId = takeCard(state, 'base:resource/resource-01');
     const firstDiscard = takeCard(state, 'custom:adventurer/tank-09');
-    const secondDiscard = takeCard(state, 'custom:adventurer/tank-10');
+    const secondDiscard = takeCard(state, 'custom:adventurer/tank-08');
     player.hand.push(rangedId, itemId); player.discardPile.push(firstDiscard, secondDiscard);
     for (const cardId of [rangedId, itemId, firstDiscard, secondDiscard]) state.cards[cardId]!.ownerId = player.id;
     state.phase = 'action1';
