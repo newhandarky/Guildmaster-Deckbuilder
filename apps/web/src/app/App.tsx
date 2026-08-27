@@ -18,6 +18,7 @@ import { PlayerStatusStrip } from '../features/game/table/PlayerStatusStrip.js';
 import { ReplayDiagnosticsPanel } from '../features/game/table/ReplayDiagnosticsPanel.js';
 import { RestartControl } from '../features/game/table/RestartControl.js';
 import { TurnControlDock } from '../features/game/table/TurnControlDock.js';
+import { TestBuildInfo } from '../features/game/table/TestBuildInfo.js';
 import { UtilityDrawer, type UtilityDrawerSection } from '../features/game/table/UtilityDrawer.js';
 import { buildLegalActionSummary } from '../features/game/table/gameplay-feedback.js';
 import { buildInteractionHint, phaseDisplayName } from '../features/game/table/phase-copy.js';
@@ -69,10 +70,10 @@ export function App() {
       honor: bond.honor,
       conditionSummary: hasPresentationCopy
         ? copy.shortDisplayText
-        : bond.requiredBosses === 99 ? '依 Rules Module 的權威條件完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
+        : bond.requiredBosses === 99 ? '依本局規則完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
       detailDescription: hasPresentationCopy
         ? copy.detailDisplayText
-        : bond.requiredBosses === 99 ? '完成條件由本局 Rules Module 判定。' : `擊敗 ${bond.requiredBosses} 名魔王即可完成。`,
+        : bond.requiredBosses === 99 ? '完成條件由本局規則判定。' : `擊敗 ${bond.requiredBosses} 名魔王即可完成。`,
     };
   }), [bondDefinitions]);
   const lifecycleInteraction = useMemo(
@@ -181,6 +182,7 @@ export function App() {
     { id: 'events', label: '事件', content: <ActivityPanel events={events} /> },
     { id: 'cpu', label: 'CPU', content: cpuTools },
     { id: 'more', label: '更多', content: <div className="more-tools">
+      <TestBuildInfo contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} />
       <RestartControl scopeKey={`${view.gameId}:${view.revision}`} onRestart={restartAndClear} />
       <CardStateLegend />
       {replayDiagnostics}
@@ -224,7 +226,7 @@ export function App() {
       viewerId={view.viewerId}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
-      notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
+      notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
       persistence={persistence}
       onRestart={restartAndClear}
     />;
@@ -240,7 +242,7 @@ export function App() {
       persistence={persistence}
       contentLabel={webContentModeOptions[entrySummary.contentMode].label}
     />}
-    notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
+    notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
     playerStatus={<PlayerStatusStrip
       self={{
         handCount: view.self.hand.length,

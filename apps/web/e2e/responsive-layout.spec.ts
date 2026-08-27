@@ -139,7 +139,7 @@ test('four-player desktop keeps all three opponent summaries around the central 
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 
   await expect(page.locator('.player-seat-cluster')).toHaveCount(3);

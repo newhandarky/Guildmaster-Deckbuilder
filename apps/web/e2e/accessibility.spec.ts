@@ -95,7 +95,7 @@ test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }
 test('bond setup is a focus-contained modal blocking choice', async ({ page }) => {
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 
   const setup = page.getByRole('dialog', { name: '從七張私人羈絆保留五張' });

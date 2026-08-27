@@ -237,26 +237,29 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
   await expect(page.getByTestId('helper-panel')).not.toContainText('已離場');
 });
 
-test('provisional foundation mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
+test('foundation test mode is explicit, visibly limited, and restored by content fingerprint', async ({ page }) => {
   await page.goto('/');
   const entry = page.getByTestId('expedition-entry');
   await openNewExpeditionSetup(page);
-  const provisional = entry.getByRole('radio', { name: /基礎候選數值測試/ });
+  const provisional = entry.getByRole('radio', { name: /基礎數值測試/ });
   await expect(provisional).not.toBeChecked();
   await provisional.check();
-  await expect(entry.getByText(/內部測試模式：卡牌名稱使用中性代號/)).toBeVisible();
+  await expect(entry.getByText(/部分卡牌只使用基礎數值/)).toBeVisible();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
 
+  await expect(page.getByTestId('provisional-content-warning')).toBeHidden();
+  await page.getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByText('測試版本資訊').click();
   await expect(page.getByTestId('provisional-content-warning')).toContainText('10 項已驗證卡牌效果');
-  await expect(page.getByText('基礎候選數值測試 · 單機人機對戰')).toBeVisible();
+  await expect(page.getByText('基礎數值測試 · 單機人機對戰')).toBeVisible();
   const persistedPackId = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).snapshot.contentPacks[0].id);
   expect(persistedPackId).toBe('base:provisional-foundation');
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
-  await expect(page.getByTestId('expedition-summary')).toContainText('基礎候選數值測試');
+  await expect(page.getByTestId('expedition-summary')).toContainText('基礎數值測試');
   await openNewExpeditionSetup(page);
-  await expect(page.getByRole('radio', { name: /基礎候選數值測試/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /基礎數值測試/ })).toBeChecked();
 });
 
 test('helper advanced rules are provisional-only and restore from pack/module identity', async ({ page }) => {
@@ -264,11 +267,13 @@ test('helper advanced rules are provisional-only and restore from pack/module id
   const entry = page.getByTestId('expedition-entry');
   await openNewExpeditionSetup(page);
   await expect(entry.getByRole('checkbox', { name: /協助者進階規則/ })).toHaveCount(0);
-  await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
+  await entry.getByRole('radio', { name: /基礎數值測試/ }).check();
   const helpers = entry.getByRole('checkbox', { name: /協助者進階規則/ });
   await helpers.check();
   await entry.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('helper-panel')).toBeVisible();
+  await page.getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByText('測試版本資訊').click();
   await expect(page.getByTestId('provisional-content-warning')).toContainText('12/12 張協助者');
   await page.reload();
   await expect(page.getByTestId('expedition-summary')).toContainText('協助者');
@@ -313,16 +318,16 @@ test('restored entry requires confirmation before replacing the saved expedition
 
   const entry = page.getByTestId('expedition-entry');
   await openNewExpeditionSetup(page);
-  await entry.getByRole('radio', { name: /基礎候選數值測試/ }).check();
+  await entry.getByRole('radio', { name: /基礎數值測試/ }).check();
   const startNew = entry.getByRole('button', { name: '開始新遠征' });
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirmationDialog = page.getByRole('dialog', { name: '確定開啟新遠征？' });
   const confirm = confirmationDialog.getByRole('button', { name: '確認開啟新遠征' });
   await expect.poll(() => confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
-  await expect(entry.getByText(/會被「基礎候選數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
+  await expect(entry.getByText(/會被「基礎數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
   await expect(confirm).toBeFocused();
-  const modeRadio = entry.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ });
+  const modeRadio = entry.getByRole('radio', { name: /基礎完整牌組/ });
   const helperCheckbox = entry.getByRole('checkbox', { name: /協助者進階規則/ });
   const backButton = entry.getByRole('button', { name: '返回公會大廳' });
   for (const backgroundControl of [modeRadio, helperCheckbox, backButton]) {
@@ -377,8 +382,9 @@ test('storage read failure is explained at entry and still allows memory-only pl
 
 test('empty adventurer and item supplies show approved copy while monsters remain full', async ({ page }) => {
   await openGame(page, '/?e2eScenario=empty-partial-supplies');
-  await expect(page.getByText('目前沒有冒險者可以雇用')).toBeVisible();
-  await expect(page.getByText('目前沒有道具、裝備可以販售')).toBeVisible();
+  const emptyStates = page.locator('.supply-empty-state[role="status"][aria-live="polite"]');
+  await expect(emptyStates.filter({ hasText: '目前沒有冒險者可以雇用' })).toBeVisible();
+  await expect(emptyStates.filter({ hasText: '目前沒有道具、裝備可以販售' })).toBeVisible();
   const monsterRow = page.locator('[data-zone-id="base:monster-row"]');
   await expect(monsterRow.getByRole('button')).toHaveCount(3);
   await expect(monsterRow).not.toContainText(/沒有|耗盡/);
@@ -743,7 +749,9 @@ test('deterministic all-bosses journey reaches the scoreboard once and restarts 
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await expect(page.getByTestId('game-app')).toBeVisible();
   await finishTriggeredFinalRound(page);
-  await expect(page.getByText('base:all-bosses-defeated')).toBeVisible();
+  await expect(page.getByTestId('end-condition')).toHaveText('結束原因：所有魔王已被討伐');
+  await expect(page.getByTestId('game-app')).not.toContainText('base:all-bosses-defeated');
+  await expect(page.getByTestId('game-app')).not.toContainText('文字版 MVP');
   await expect(page.getByTestId('viewer-outcome')).toContainText('你的結果：失敗（第 2 名）');
 
   const rows = page.locator('.scoreboard .score-row');
@@ -821,7 +829,9 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await page.getByRole('button', { name: '完成所選羈絆' }).click();
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await finishTriggeredFinalRound(page);
-  await expect(page.getByText('base:all-bonds-completed')).toBeVisible();
+  await expect(page.getByTestId('end-condition')).toHaveText('結束原因：所有羈絆已完成');
+  await expect(page.getByTestId('game-app')).not.toContainText('base:all-bonds-completed');
+  await expect(page.getByTestId('game-app')).not.toContainText('文字版 MVP');
 
   const rows = page.locator('.scoreboard .score-row');
   await expect(rows).toHaveCount(2);

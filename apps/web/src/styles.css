@@ -18,7 +18,7 @@
 
 * { box-sizing: border-box; }
 html { scroll-padding-bottom: 12rem; }
-body { margin: 0; min-width: 320px; overflow-x: clip; background: radial-gradient(circle at top, #23344f, #101827 56%); }
+body { margin: 0; min-width: 0; overflow-x: clip; background: radial-gradient(circle at top, #23344f, #101827 56%); }
 button { font: inherit; }
 button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 :where(a[href], button, summary, textarea):focus-visible {
@@ -662,6 +662,9 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .notice { color: #dcf5e8; background: #1d543f; }
 .warning { background: #71451e; }
 .error { background: #6b2633; }
+.test-build-info { margin-bottom: 1rem; color: #d7e3f3; border: 1px solid #405878; border-radius: .65rem; background: rgb(20 33 55 / .78); }
+.test-build-info summary { padding: .65rem .8rem; color: #f4d9a5; cursor: pointer; }
+.test-build-info p { margin: 0; padding: 0 .8rem .8rem; color: #c6d1e4; font-size: .82rem; line-height: 1.5; }
 .scoreboard-list { margin: 0; padding: 0; list-style: none; }
 .score-row { display: grid; grid-template-columns: 1fr auto; gap: .25rem; padding: .8rem 0; border-bottom: 1px solid #304664; }
 .score-row small { grid-column: 1 / -1; }

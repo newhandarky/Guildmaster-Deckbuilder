@@ -41,7 +41,7 @@ test('a broken approved source falls back to the existing CSS placeholder', asyn
   await expect(detailsFallback.locator('[data-html-artwork="true"]')).toBeVisible();
   await expect(detailsFallback).toHaveAttribute(
     'aria-label',
-    '起始牌 A的原創示範插畫（目前使用中性 placeholder）',
+    '起始牌 A的原創示範插畫（目前使用替代插畫）',
   );
 });
 

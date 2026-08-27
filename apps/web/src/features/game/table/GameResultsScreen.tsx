@@ -21,6 +21,15 @@ type Props = {
   onRestart: () => void;
 };
 
+const endConditionCopy: Readonly<Record<string, string>> = {
+  'base:all-bonds-completed': '所有羈絆已完成',
+  'base:all-bosses-defeated': '所有魔王已被討伐',
+};
+
+export function endConditionDisplayText(conditionId: string): string {
+  return endConditionCopy[conditionId] ?? '遠征目標已完成';
+}
+
 export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameResultsScreen(
   { conditionId, viewerId, scoreboard, diagnostics, notices, persistence, onRestart },
   ref,
@@ -40,9 +49,9 @@ export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameRes
   return <main ref={ref} className="app-shell results-shell" data-testid="game-app" tabIndex={-1}>
     <section className="hero">
       <div>
-        <p className="eyebrow">文字版 MVP</p>
+        <p className="eyebrow">晨星公會遠征紀錄</p>
         <h1>遠征結算</h1>
-        <p>{conditionId}</p>
+        <p data-testid="end-condition">結束原因：{endConditionDisplayText(conditionId)}</p>
         <p data-testid="viewer-outcome"><strong>你的結果：{viewerOutcome}</strong>{viewer ? `（第 ${viewer.rank} 名）` : ''}</p>
       </div>
       <div className="status">

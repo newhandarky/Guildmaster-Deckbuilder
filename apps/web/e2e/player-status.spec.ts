@@ -5,7 +5,7 @@ test('compact opponent summaries expose only authorized counts, combat, and comp
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 
   const seats = page.locator('.player-seat');
@@ -56,7 +56,7 @@ test('moving directly between seats switches the public details in four-player m
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
   await expect(page.getByTestId('game-app')).toBeVisible();
 
