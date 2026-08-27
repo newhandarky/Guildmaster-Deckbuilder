@@ -806,6 +806,9 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await expect(page.getByRole('heading', { name: '羈絆條件已成立' })).toBeVisible();
   await expect(page.getByTestId('final-round-notice')).toHaveCount(0);
   const completionTrigger = page.getByRole('button', { name: /1 個羈絆可完成/ });
+  const completionTriggerBox = await completionTrigger.boundingBox();
+  expect(completionTriggerBox?.height).toBeGreaterThanOrEqual(44);
+  expect(completionTriggerBox?.width).toBeGreaterThanOrEqual(44);
   await page.getByRole('button', { name: '稍後處理' }).click();
   await expect(completionTrigger).toBeFocused();
   await expect(completionTrigger).toHaveAttribute('aria-expanded', 'false');

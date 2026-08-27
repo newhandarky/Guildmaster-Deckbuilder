@@ -168,6 +168,10 @@ test('mobile controls meet the 44px target baseline and remain inside the docume
   await openGame(page);
   const controls = [
     page.getByTestId('end-phase'),
+    page.getByRole('button', { name: /我的羈絆/ }),
+    page.getByRole('button', { name: '事件', exact: true }),
+    page.getByRole('button', { name: 'CPU', exact: true }),
+    page.getByRole('button', { name: '更多', exact: true }),
   ];
   for (const control of controls) {
     const box = await control.boundingBox();
@@ -185,6 +189,24 @@ test('mobile controls meet the 44px target baseline and remain inside the docume
   expect(closeBox?.height).toBeGreaterThanOrEqual(44);
   expect(closeBox?.width).toBeGreaterThanOrEqual(44);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('/?e2eScenario=lifecycle-choice');
+  await enterGameFromEntry(page);
+  await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+  for (const action of await page.getByTestId('lifecycle-dock').getByRole('button').all()) {
+    const box = await action.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.goto('/');
+  await openNewExpeditionSetup(page);
+  for (const option of await page.locator('.content-mode-option').all()) {
+    const box = await option.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test('320px reflow with enlarged text keeps actions and details usable', async ({ page }) => {
@@ -214,4 +236,15 @@ async function tabUntilFocused(page: Page, key: 'Tab' | 'Shift+Tab', target: Loc
     if (await target.evaluate((element) => element === document.activeElement)) return;
   }
   throw new Error(`Keyboard navigation did not reach target with ${key}.`);
+}
+
+async function enterGameFromEntry(page: Page): Promise<void> {
+  const entry = page.getByTestId('expedition-entry');
+  const continueButton = entry.getByRole('button', { name: '繼續最近進度' });
+  if (await continueButton.count()) await continueButton.click();
+  else {
+    await openNewExpeditionSetup(page);
+    await entry.getByRole('button', { name: '開始新遠征', exact: true }).click();
+  }
+  await expect(page.getByTestId('game-app')).toBeVisible();
 }
