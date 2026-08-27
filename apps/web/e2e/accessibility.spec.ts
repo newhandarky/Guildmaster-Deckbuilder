@@ -82,11 +82,17 @@ test('card details meet automated WCAG A/AA checks', async ({ page }) => {
 test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }) => {
   await openGame(page, '/?e2eScenario=lifecycle-choice');
   await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
-  await expect(page.getByTestId('lifecycle-dock')).toBeVisible();
+  const lifecycleDock = page.getByTestId('lifecycle-dock');
+  await expect(lifecycleDock).toBeVisible();
+  await expect(lifecycleDock).toContainText('你仍可查看卡片');
+  await expect(page.getByTestId('end-phase')).toBeDisabled();
+  await page.getByTestId('hand').getByRole('button').first().click();
+  await expect(page.locator('.card-details-dialog')).toBeVisible();
+  await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
   await expectNoAccessibilityViolations(page);
 });
 
-test('bond setup is announced as a focused non-modal blocking choice', async ({ page }) => {
+test('bond setup is a focus-contained modal blocking choice', async ({ page }) => {
   await page.goto('/');
   await openNewExpeditionSetup(page);
   await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
@@ -94,8 +100,15 @@ test('bond setup is announced as a focused non-modal blocking choice', async ({ 
 
   const setup = page.getByRole('dialog', { name: '從七張私人羈絆保留五張' });
   await expect(setup).toBeVisible();
-  await expect(setup).not.toHaveAttribute('aria-modal');
+  await expect.poll(() => setup.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
   await expect(setup.getByRole('heading', { name: '從七張私人羈絆保留五張' })).toBeFocused();
+  const backgroundEndPhase = page.getByTestId('end-phase');
+  await backgroundEndPhase.evaluate((button: HTMLButtonElement) => button.focus());
+  await expect(backgroundEndPhase).not.toBeFocused();
+  for (let index = 0; index < 16; index += 1) {
+    await page.keyboard.press(index % 2 === 0 ? 'Tab' : 'Shift+Tab');
+    await expect.poll(() => setup.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  }
   await expectNoAccessibilityViolations(page);
 });
 

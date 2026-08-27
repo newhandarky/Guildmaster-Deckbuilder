@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
+import { BondCompletionDock } from '../features/game/bonds/BondCompletionDock.js';
 import { BondPanel } from '../features/game/bonds/BondPanel.js';
 import { BondSetupPanel } from '../features/game/bonds/BondSetupPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
@@ -54,6 +55,7 @@ export function App() {
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
   const bondSetupHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousCompletableBondCountRef = useRef(0);
   const cardDefinitions = useMemo(
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
@@ -104,6 +106,7 @@ export function App() {
     (command): command is Extract<GameCommand, { type: 'COMPLETE_BONDS' }> => command.type === 'COMPLETE_BONDS',
   );
   const completableBondIds = [...new Set(completeBondCommands.flatMap(({ bondIds }) => bondIds))];
+  const completableBondKey = completableBondIds.join('|');
   const selectedCompleteBondCommand = completeBondCommands.find(({ bondIds }) =>
     bondIds.length === selectedCompletionBondIds.length
     && bondIds.every((bondId) => selectedCompletionBondIds.includes(bondId)),
@@ -197,7 +200,13 @@ export function App() {
       window.requestAnimationFrame(() => bondSetupHeadingRef.current?.focus());
     }
   }, [bondSetupActorId, bondSetupOfferId, hasBondSetupOffer, hasEnteredGame]);
-  useEffect(() => { setSelectedCompletionBondIds([]); }, [view.gameId, view.revision, view.activePlayerId]);
+  useEffect(() => { setSelectedCompletionBondIds([]); }, [completableBondKey, view.gameId]);
+  useEffect(() => {
+    if (previousCompletableBondCountRef.current > 0 && completableBondIds.length === 0) {
+      window.requestAnimationFrame(() => interactionFallbackRef.current?.focus());
+    }
+    previousCompletableBondCountRef.current = completableBondIds.length;
+  }, [completableBondIds.length]);
 
   if (!hasEnteredGame) {
     return <ExpeditionEntryScreen
@@ -299,16 +308,14 @@ export function App() {
           />
         : null}
       {completableBondIds.length > 0
-        ? <section className="bond-setup-panel bond-completion-panel" aria-labelledby="bond-completion-heading">
-            <h2 id="bond-completion-heading">羈絆條件已成立</h2>
-            <p>可以完成任意子集合，也可以暫不完成；暫不完成不會保存資格。</p>
-            <div className="bond-choice-grid">{completableBondIds.map((bondId) => {
-              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
-              const checked = selectedCompletionBondIds.includes(bondId);
-              return <label key={bondId}><input type="checkbox" checked={checked} onChange={() => setSelectedCompletionBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
-            })}</div>
-            <button className="primary" type="button" disabled={!selectedCompleteBondCommand} onClick={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}>完成所選羈絆</button>
-          </section>
+        ? <BondCompletionDock
+            bondIds={completableBondIds}
+            definitions={displayedBondDefinitions}
+            selectedBondIds={selectedCompletionBondIds}
+            canComplete={Boolean(selectedCompleteBondCommand)}
+            onToggle={(bondId) => setSelectedCompletionBondIds((current) => current.includes(bondId) ? current.filter((id) => id !== bondId) : [...current, bondId])}
+            onComplete={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}
+          />
         : null}
       <LifecycleInteractionDock
         ref={lifecycleHeadingRef}

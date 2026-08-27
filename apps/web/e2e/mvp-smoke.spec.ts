@@ -317,9 +317,18 @@ test('restored entry requires confirmation before replacing the saved expedition
   const startNew = entry.getByRole('button', { name: '開始新遠征' });
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
-  const confirm = entry.getByRole('button', { name: '確認開啟新遠征' });
+  const confirmationDialog = page.getByRole('dialog', { name: '確定開啟新遠征？' });
+  const confirm = confirmationDialog.getByRole('button', { name: '確認開啟新遠征' });
+  await expect.poll(() => confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
   await expect(entry.getByText(/會被「基礎候選數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
   await expect(confirm).toBeFocused();
+  const modeRadio = entry.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ });
+  const helperCheckbox = entry.getByRole('checkbox', { name: /協助者進階規則/ });
+  const backButton = entry.getByRole('button', { name: '返回公會大廳' });
+  for (const backgroundControl of [modeRadio, helperCheckbox, backButton]) {
+    await backgroundControl.evaluate((control: HTMLElement) => control.focus());
+    await expect(backgroundControl).not.toBeFocused();
+  }
   await page.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
   await expect(startNew).toBeFocused();
@@ -331,7 +340,10 @@ test('restored entry requires confirmation before replacing the saved expedition
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(saveBeforeConfirmation);
 
   await startNew.click();
-  await entry.getByRole('button', { name: '確認開啟新遠征' }).click();
+  await confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.close());
+  await modeRadio.check();
+  await confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.showModal());
+  await confirmationDialog.getByRole('button', { name: '確認開啟新遠征' }).click();
   await expect(page.getByText('版本 0')).toBeVisible();
   await expect(page.getByTestId('interaction-hint')).toBeFocused();
   const restarted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
@@ -793,6 +805,15 @@ test('deterministic all-bonds journey triggers the registered bond end condition
 
   await expect(page.getByRole('heading', { name: '羈絆條件已成立' })).toBeVisible();
   await expect(page.getByTestId('final-round-notice')).toHaveCount(0);
+  const completionTrigger = page.getByRole('button', { name: /1 個羈絆可完成/ });
+  await page.getByRole('button', { name: '稍後處理' }).click();
+  await expect(completionTrigger).toBeFocused();
+  await expect(completionTrigger).toHaveAttribute('aria-expanded', 'false');
+  await completionTrigger.press('Enter');
+  await expect(page.getByRole('heading', { name: '羈絆條件已成立' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(completionTrigger).toBeFocused();
+  await completionTrigger.click();
   await page.getByRole('checkbox', { name: '終局驗證 · 2 榮譽' }).check();
   await page.getByRole('button', { name: '完成所選羈絆' }).click();
   await expect(page.getByTestId('final-round-notice')).toBeVisible();

@@ -22,7 +22,31 @@ export const BondSetupPanel = forwardRef<HTMLHeadingElement, Props>(function Bon
     };
   }, []);
 
-  return <dialog ref={dialogRef} className="bond-setup-panel blocking-choice-panel" aria-labelledby="bond-setup-heading" aria-describedby="bond-setup-instructions" onCancel={(event) => event.preventDefault()}>
+  return <dialog
+    ref={dialogRef}
+    className="bond-setup-panel blocking-choice-panel"
+    aria-labelledby="bond-setup-heading"
+    aria-describedby="bond-setup-instructions"
+    onCancel={(event) => event.preventDefault()}
+    onKeyDown={(event) => {
+      if (event.key !== 'Tab') return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => !element.hasAttribute('hidden'));
+      const first = focusable.at(0);
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }}
+  >
     <header className="bond-setup-header">
       <div>
         <p className="eyebrow">私人目標</p>

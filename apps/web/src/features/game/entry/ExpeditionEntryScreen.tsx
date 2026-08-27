@@ -39,12 +39,13 @@ const contentModePresentation: Readonly<Record<WebContentMode, {
 
 export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStartNew }: Props) {
   const [entryView, setEntryView] = useState<EntryView>('menu');
-  const [confirmingNew, setConfirmingNew] = useState(false);
+  const [pendingSetup, setPendingSetup] = useState<WebGameSetup>();
   const [selectedMode, setSelectedMode] = useState<WebContentMode>(summary.contentMode);
   const [helpersEnabled, setHelpersEnabled] = useState(summary.advancedRules.helpers);
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const setupHeadingRef = useRef<HTMLHeadingElement>(null);
   const setupLaunchRef = useRef<HTMLButtonElement>(null);
+  const confirmationDialogRef = useRef<HTMLDialogElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const startNewRef = useRef<HTMLButtonElement>(null);
 
@@ -54,37 +55,35 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
   }, [entryView]);
 
   useEffect(() => {
-    if (!confirmingNew) return undefined;
-    confirmRef.current?.focus();
-    const cancelWithEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setConfirmingNew(false);
-      window.requestAnimationFrame(() => startNewRef.current?.focus());
-    };
-    window.addEventListener('keydown', cancelWithEscape);
-    return () => window.removeEventListener('keydown', cancelWithEscape);
-  }, [confirmingNew]);
+    const dialog = confirmationDialogRef.current;
+    if (!dialog) return;
+    if (pendingSetup && !dialog.open) {
+      dialog.showModal();
+      confirmRef.current?.focus();
+    } else if (!pendingSetup && dialog.open) {
+      dialog.close();
+    }
+  }, [pendingSetup]);
 
   const cancelNewExpedition = () => {
-    setConfirmingNew(false);
+    setPendingSetup(undefined);
     window.requestAnimationFrame(() => startNewRef.current?.focus());
   };
 
   const openNewExpeditionSetup = () => {
-    setConfirmingNew(false);
+    setPendingSetup(undefined);
     setEntryView('setup');
   };
 
   const returnToMainMenu = () => {
-    setConfirmingNew(false);
+    setPendingSetup(undefined);
     setEntryView('menu');
     window.requestAnimationFrame(() => setupLaunchRef.current?.focus());
   };
 
   const startSelectedExpedition = () => {
     const setup = { contentMode: selectedMode, advancedRules: { helpers: helpersEnabled } } satisfies WebGameSetup;
-    if (summary.canContinue) setConfirmingNew(true);
+    if (summary.canContinue) setPendingSetup(setup);
     else onStartNew(setup);
   };
 
@@ -216,22 +215,33 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                     </fieldset>
                   : null}
 
-              {confirmingNew
-                ? <div className="expedition-new-confirmation" role="alertdialog" aria-labelledby="new-expedition-confirmation-heading" aria-describedby="new-expedition-confirmation-copy">
-                    <h3 id="new-expedition-confirmation-heading">確定開啟新遠征？</h3>
-                    <p id="new-expedition-confirmation-copy">目前的本機進度會被「{selectedOption.label} · 協助者{helpersEnabled ? '啟用' : '關閉'}」新對局覆蓋，這個動作無法復原。</p>
-                    <div className="controls">
-                      <button ref={confirmRef} className="danger" type="button" onClick={() => onStartNew({ contentMode: selectedMode, advancedRules: { helpers: helpersEnabled } })}>確認開啟新遠征</button>
-                      <button type="button" onClick={cancelNewExpedition}>保留目前進度</button>
-                    </div>
-                  </div>
-                : <div className="controls expedition-entry-actions">
-                    <button ref={startNewRef} className="primary" type="button" onClick={startSelectedExpedition}>開始新遠征</button>
-                    <button type="button" onClick={returnToMainMenu}>取消</button>
-                  </div>}
+              <div className="controls expedition-entry-actions">
+                <button ref={startNewRef} className="primary" type="button" onClick={startSelectedExpedition}>開始新遠征</button>
+                <button type="button" onClick={returnToMainMenu}>取消</button>
+              </div>
             </>}
       </section>
     </div>
+
+    <dialog
+      ref={confirmationDialogRef}
+      className="expedition-new-confirmation"
+      aria-labelledby="new-expedition-confirmation-heading"
+      aria-describedby="new-expedition-confirmation-copy"
+      onCancel={(event) => {
+        event.preventDefault();
+        cancelNewExpedition();
+      }}
+    >
+      {pendingSetup ? <>
+        <h3 id="new-expedition-confirmation-heading">確定開啟新遠征？</h3>
+        <p id="new-expedition-confirmation-copy">目前的本機進度會被「{webContentModeOptions[pendingSetup.contentMode].label} · 協助者{pendingSetup.advancedRules.helpers ? '啟用' : '關閉'}」新對局覆蓋，這個動作無法復原。</p>
+        <div className="controls">
+          <button ref={confirmRef} className="danger" type="button" onClick={() => onStartNew(pendingSetup)}>確認開啟新遠征</button>
+          <button type="button" onClick={cancelNewExpedition}>保留目前進度</button>
+        </div>
+      </> : null}
+    </dialog>
 
     <footer className="expedition-entry-footer"><span>晨星公會</span><span aria-hidden="true">◆</span><span>四人離線遠征</span></footer>
   </main>;

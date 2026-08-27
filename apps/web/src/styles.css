@@ -220,7 +220,8 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 .expedition-entry-actions button { min-width: 8.5rem; }
 .expedition-entry-actions .primary { color: #17120b; background: linear-gradient(135deg, #edca80, #bd8737); box-shadow: 0 .5rem 1.4rem rgb(0 0 0 / .24), inset 0 1px 0 rgb(255 255 255 / .38); }
 .expedition-entry-actions button:not(.primary) { color: #d8cbb5; border: 1px solid rgb(211 165 82 / .24); background: rgb(255 255 255 / .035); }
-.expedition-new-confirmation { display: grid; gap: .8rem; padding: 1rem; border: 1px solid rgb(200 107 123 / .7); border-radius: .25rem; background: rgb(77 35 48 / .9); }
+.expedition-new-confirmation { position: fixed; inset: 50% auto auto 50%; display: grid; width: min(32rem, calc(100vw - 2rem)); max-width: calc(100vw - 2rem); max-height: calc(100dvh - 2rem); gap: .8rem; margin: 0; padding: 1rem; overflow-y: auto; color: #fff; border: 1px solid rgb(200 107 123 / .7); border-radius: .75rem; background: #4d2330; box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); transform: translate(-50%, -50%); }
+.expedition-new-confirmation::backdrop { background: rgb(5 10 18 / .76); backdrop-filter: blur(3px); }
 .expedition-new-confirmation h3, .expedition-new-confirmation p { margin: 0; }
 .expedition-new-confirmation p { color: #efdbe0; font-size: .82rem; line-height: 1.5; }
 .expedition-new-confirmation .controls .danger { color: #fff; background: #8d394a; }
@@ -711,7 +712,8 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .lifecycle-dock-copy { min-width: 0; }
 .lifecycle-dock-copy .eyebrow { margin-bottom: .25rem; }
 .lifecycle-dock-copy h2 { margin-bottom: .35rem; font-size: 1.25rem; }
-.lifecycle-dock-copy > p:last-child { margin: 0; color: #d7e3f3; line-height: 1.5; }
+.lifecycle-dock-copy > p { margin: 0; color: #d7e3f3; line-height: 1.5; }
+.lifecycle-dock-copy .lifecycle-availability { margin-top: .45rem; color: #f4d9a5; font-size: .82rem; }
 .lifecycle-actions, .lifecycle-confirmation { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: .65rem; }
 .lifecycle-actions button, .lifecycle-confirmation button {
   border: 0;
@@ -780,7 +782,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .action-preview dt { color: #a9d9c2; font-size: .7rem; }
 .action-preview dd { margin: 0; font-size: 1.05rem; font-weight: 800; }
 .bond-setup-panel, .cpu-controls { display: grid; gap: .75rem; padding: 1rem; border: 1px solid #6f5a45; border-radius: .75rem; background: #211b17; }
-.interaction-rail > .blocking-choice-panel, .interaction-rail > .bond-completion-panel { position: fixed; z-index: var(--layer-modal); inset: 50% auto auto 50%; width: min(42rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; transform: translate(-50%, -50%); box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); }
+.interaction-rail > .blocking-choice-panel { position: fixed; z-index: var(--layer-modal); inset: 50% auto auto 50%; width: min(42rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; transform: translate(-50%, -50%); box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); }
 .interaction-rail > .bond-setup-panel.blocking-choice-panel { grid-template-rows: auto minmax(0, 1fr) auto; width: min(64rem, calc(100vw - 2rem)); margin: 0; padding: clamp(.9rem, 2vw, 1.35rem); overflow: hidden; color: inherit; }
 .bond-setup-panel::backdrop { background: rgb(3 7 12 / .76); backdrop-filter: blur(2px); }
 .bond-setup-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding-bottom: .85rem; border-bottom: 1px solid #574737; }
@@ -812,8 +814,18 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .bond-setup-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .85rem; border-top: 1px solid #574737; background: #211b17; }
 .bond-setup-actions p { margin: 0; color: #cbbba7; font-size: .82rem; }
 .bond-setup-actions button { min-width: min(18rem, 100%); }
-.bond-completion-panel .bond-choice-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); overflow: visible; }
-.bond-completion-panel .bond-choice-grid label { display: flex; gap: .5rem; align-items: start; padding: .55rem; border: 1px solid #574737; border-radius: .5rem; }
+.bond-completion-dock { display: grid; gap: .65rem; width: 100%; min-width: 0; padding: .65rem; border: 1px solid #8c704f; border-radius: .85rem; background: rgb(33 27 23 / .97); box-shadow: 0 .6rem 1.8rem rgb(0 0 0 / .3); }
+.bond-completion-toggle { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-block-size: 2.75rem; padding: .6rem .75rem; color: #fff8e9; border: 1px solid #725d43; border-radius: .65rem; background: #33281f; cursor: pointer; text-align: start; }
+.bond-completion-toggle span { color: #e9c894; font-size: .78rem; }
+.bond-completion-content { display: grid; grid-template-columns: minmax(11rem, .8fr) minmax(14rem, 1.2fr) auto; gap: .75rem; align-items: center; }
+.bond-completion-content[hidden] { display: none; }
+.bond-completion-content h2 { margin-bottom: .25rem; color: #fff8e9; font-size: 1.05rem; }
+.bond-completion-content p { margin: 0; color: #cbbba7; font-size: .78rem; line-height: 1.45; }
+.bond-completion-content .eyebrow { margin-bottom: .15rem; color: #e9b868; font-size: .68rem; letter-spacing: .1em; }
+.bond-completion-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .4rem; }
+.bond-completion-options label { display: flex; align-items: center; gap: .45rem; min-block-size: 2.75rem; padding: .45rem .55rem; border: 1px solid #574737; border-radius: .5rem; background: #251e18; }
+.bond-completion-options input { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; margin: 0; }
+.bond-completion-actions { justify-content: end; }
 .cpu-controls summary { cursor: pointer; color: #f4d9a5; }
 .card-details-meta { display: grid; gap: .5rem; }
 .card-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -860,6 +872,9 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .bond-choice-effect { min-height: 0; }
   .bond-setup-actions { align-items: stretch; flex-direction: column; }
   .bond-setup-actions button { width: 100%; min-width: 0; }
+  .bond-completion-content { grid-template-columns: minmax(0, 1fr); }
+  .bond-completion-actions { justify-content: stretch; }
+  .bond-completion-actions button { flex: 1 1 8rem; }
   .table-command-area { grid-template-columns: minmax(0, 1fr); }
   .utility-launcher { justify-content: stretch; }
   .utility-launcher button { flex: 1 1 5rem; }
