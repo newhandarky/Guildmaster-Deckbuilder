@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
 import { BondPanel } from '../features/game/bonds/BondPanel.js';
+import { BondSetupPanel } from '../features/game/bonds/BondSetupPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
@@ -67,6 +68,9 @@ export function App() {
       conditionSummary: hasPresentationCopy
         ? copy.shortDisplayText
         : bond.requiredBosses === 99 ? '依 Rules Module 的權威條件完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
+      detailDescription: hasPresentationCopy
+        ? copy.detailDisplayText
+        : bond.requiredBosses === 99 ? '完成條件由本局 Rules Module 判定。' : `擊敗 ${bond.requiredBosses} 名魔王即可完成。`,
     };
   }), [bondDefinitions]);
   const lifecycleInteraction = useMemo(
@@ -280,15 +284,19 @@ export function App() {
     />}
     interaction={<div className="interaction-rail" data-testid="interaction-rail">
       {view.bondSetup?.offeredBondIds
-        ? <section className="bond-setup-panel blocking-choice-panel" role="dialog" aria-labelledby="bond-setup-heading">
-            <h2 ref={bondSetupHeadingRef} id="bond-setup-heading" tabIndex={-1}>從七張私人羈絆保留五張</h2>
-            <div className="bond-choice-grid">{view.bondSetup.offeredBondIds.map((bondId) => {
-              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
-              const checked = selectedBondIds.includes(bondId);
-              return <label key={bondId}><input type="checkbox" checked={checked} disabled={!checked && selectedBondIds.length >= 5} onChange={() => setSelectedBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
-            })}</div>
-            <button className="primary" type="button" disabled={selectedBondIds.length !== 5} onClick={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}>確認保留五張</button>
-          </section>
+        ? <BondSetupPanel
+            ref={bondSetupHeadingRef}
+            bonds={view.bondSetup.offeredBondIds.map((bondId) => displayedBondDefinitions.find(({ id }) => id === bondId) ?? {
+              id: bondId,
+              name: bondId,
+              honor: 0,
+              conditionSummary: '尚未提供條件摘要',
+              detailDescription: '尚未提供完整規則說明。',
+            })}
+            selectedBondIds={selectedBondIds}
+            onToggle={(bondId) => setSelectedBondIds((current) => current.includes(bondId) ? current.filter((id) => id !== bondId) : [...current, bondId])}
+            onConfirm={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}
+          />
         : null}
       {completableBondIds.length > 0
         ? <section className="bond-setup-panel bond-completion-panel" aria-labelledby="bond-completion-heading">

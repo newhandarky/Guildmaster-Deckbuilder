@@ -264,8 +264,8 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .entry-menu-button, .content-mode-option { transition: none; }
-  .entry-menu-button:hover, .content-mode-option:hover { transform: none; }
+  .entry-menu-button, .content-mode-option, .bond-choice-card { transition: none; }
+  .entry-menu-button:hover, .content-mode-option:hover, .bond-choice-card:hover { transform: none; }
 }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: clamp(2rem, 6vw, 3.6rem); margin-bottom: .25rem; }
@@ -781,8 +781,39 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
 .action-preview dd { margin: 0; font-size: 1.05rem; font-weight: 800; }
 .bond-setup-panel, .cpu-controls { display: grid; gap: .75rem; padding: 1rem; border: 1px solid #6f5a45; border-radius: .75rem; background: #211b17; }
 .interaction-rail > .blocking-choice-panel, .interaction-rail > .bond-completion-panel { position: fixed; z-index: var(--layer-modal); inset: 50% auto auto 50%; width: min(42rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; transform: translate(-50%, -50%); box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); }
-.bond-choice-grid { display: grid; gap: .45rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-.bond-choice-grid label { display: flex; gap: .5rem; align-items: start; padding: .55rem; border: 1px solid #574737; border-radius: .5rem; }
+.interaction-rail > .bond-setup-panel.blocking-choice-panel { grid-template-rows: auto minmax(0, 1fr) auto; width: min(64rem, calc(100vw - 2rem)); margin: 0; padding: clamp(.9rem, 2vw, 1.35rem); overflow: hidden; color: inherit; }
+.bond-setup-panel::backdrop { background: rgb(3 7 12 / .76); backdrop-filter: blur(2px); }
+.bond-setup-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding-bottom: .85rem; border-bottom: 1px solid #574737; }
+.bond-setup-header h2 { margin-bottom: .35rem; color: #fff8e9; font-size: clamp(1.25rem, 2.4vw, 1.75rem); }
+.bond-setup-header p { margin-bottom: 0; color: #cbbba7; line-height: 1.5; }
+.bond-setup-header .eyebrow { margin-bottom: .25rem; color: #e9b868; font-size: .7rem; letter-spacing: .12em; }
+.bond-selection-count { flex: 0 0 auto; padding: .5rem .7rem; border: 1px solid #725d43; border-radius: 999px; background: #17130f; white-space: nowrap; }
+.bond-selection-count strong { color: #f2c87c; font-size: 1.15rem; }
+.bond-selection-count[data-complete="true"] { color: #d9f5e8; border-color: #568f73; background: #173126; }
+.bond-choice-grid { display: grid; grid-auto-rows: max-content; gap: .65rem; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .1rem .2rem .1rem 0; }
+.bond-choice-card { display: grid; align-content: start; min-width: 0; overflow: hidden; border: 1px solid #574737; border-radius: .7rem; background: linear-gradient(145deg, #251e18, #1a1612); transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.bond-choice-card:hover { border-color: #8c704f; transform: translateY(-1px); }
+.bond-choice-card[data-selected="true"] { border-color: #e0ad5f; box-shadow: inset 0 0 0 1px rgb(224 173 95 / .24), 0 .4rem 1.25rem rgb(0 0 0 / .22); }
+.bond-choice-select { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .65rem; align-items: center; min-width: 0; padding: .75rem; cursor: pointer; }
+.bond-choice-select:has(input:disabled) { cursor: not-allowed; opacity: .58; }
+.bond-choice-select input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: #dca85b; }
+.bond-choice-title { display: grid; gap: .15rem; min-width: 0; }
+.bond-choice-title strong { color: #fff6e8; overflow-wrap: anywhere; }
+.bond-choice-title small { color: #aa9b88; font-size: .68rem; }
+.bond-choice-card[data-selected="true"] .bond-choice-title small { color: #f2c87c; }
+.bond-choice-honor { display: grid; justify-items: center; min-width: 3.5rem; padding: .35rem .45rem; color: #cbbba7; border-left: 1px solid #574737; font-size: .7rem; }
+.bond-choice-honor strong { color: #f2c87c; font-size: 1.15rem; }
+.bond-choice-effect { display: grid; gap: .25rem; min-height: 5.4rem; padding: .7rem .75rem; border-top: 1px solid #44382d; background: rgb(10 8 7 / .2); }
+.bond-choice-effect > span { color: #c49a61; font-size: .65rem; font-weight: 800; letter-spacing: .08em; }
+.bond-choice-effect p { margin: 0; color: #eee4d5; font-size: .83rem; line-height: 1.52; }
+.bond-choice-details { border-top: 1px solid #44382d; }
+.bond-choice-details summary { min-block-size: 2.5rem; padding: .6rem .75rem; color: #d8b982; cursor: pointer; font-size: .76rem; }
+.bond-choice-details p { margin: 0; padding: 0 .75rem .75rem; color: #baad9c; font-size: .75rem; line-height: 1.55; }
+.bond-setup-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .85rem; border-top: 1px solid #574737; background: #211b17; }
+.bond-setup-actions p { margin: 0; color: #cbbba7; font-size: .82rem; }
+.bond-setup-actions button { min-width: min(18rem, 100%); }
+.bond-completion-panel .bond-choice-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); overflow: visible; }
+.bond-completion-panel .bond-choice-grid label { display: flex; gap: .5rem; align-items: start; padding: .55rem; border: 1px solid #574737; border-radius: .5rem; }
 .cpu-controls summary { cursor: pointer; color: #f4d9a5; }
 .card-details-meta { display: grid; gap: .5rem; }
 .card-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -822,6 +853,13 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .action-preview dl { grid-template-columns: 1fr; }
   .card-details-footer { padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom)); }
   .interaction-rail { bottom: .35rem; }
+  .interaction-rail > .bond-setup-panel.blocking-choice-panel { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); padding: .85rem; }
+  .bond-setup-header { align-items: stretch; flex-direction: column; gap: .65rem; }
+  .bond-selection-count { align-self: start; }
+  .bond-choice-grid { grid-template-columns: minmax(0, 1fr); }
+  .bond-choice-effect { min-height: 0; }
+  .bond-setup-actions { align-items: stretch; flex-direction: column; }
+  .bond-setup-actions button { width: 100%; min-width: 0; }
   .table-command-area { grid-template-columns: minmax(0, 1fr); }
   .utility-launcher { justify-content: stretch; }
   .utility-launcher button { flex: 1 1 5rem; }

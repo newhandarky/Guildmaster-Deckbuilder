@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { PlayerView } from '@guildmaster/game-protocol';
 
-export type BondDisplayDefinition = { id: string; name: string; honor: number; conditionSummary: string };
+export type BondDisplayDefinition = { id: string; name: string; honor: number; conditionSummary: string; detailDescription: string };
 type Props = { bonds: PlayerView['self']['bonds']; evaluations: PlayerView['bondEvaluations']; definitions: readonly BondDisplayDefinition[]; completableBondIds: readonly string[] };
 
 export function BondPanel({ bonds, evaluations, definitions, completableBondIds }: Props) {
