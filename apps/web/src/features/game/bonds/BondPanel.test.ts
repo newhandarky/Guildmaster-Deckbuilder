@@ -12,7 +12,7 @@ describe('BondPanel', () => {
       { bondId: 'b4', completed: false },
       { bondId: 'b5', completed: false },
     ];
-    const definitions = bonds.map(({ bondId }, index) => ({ id: bondId, name: `羈絆 ${index + 1}`, honor: index + 2, conditionSummary: `真實條件摘要 ${index + 1}` }));
+    const definitions = bonds.map(({ bondId }, index) => ({ id: bondId, name: `羈絆 ${index + 1}`, honor: index + 2, conditionSummary: `真實條件摘要 ${index + 1}`, detailDescription: `完整規則 ${index + 1}` }));
     const evaluations = bonds.map(({ bondId }, index) => ({ bondId, satisfied: index === 1 || index === 2, appliedRules: [{ moduleId: 'test:bonds', ruleId: `${bondId}-condition` }] }));
     const markup = renderToStaticMarkup(createElement(BondPanel, { bonds, definitions, evaluations, completableBondIds: ['b2'] }));
 

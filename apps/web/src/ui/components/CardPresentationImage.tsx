@@ -25,7 +25,7 @@ export function CardPresentationImage({ art, sizes, placeholderAccessible = fals
       className="card-art-placeholder"
       data-image-fallback={showImage ? 'hidden' : 'visible'}
       role={!showImage && placeholderAccessible ? 'img' : undefined}
-      aria-label={!showImage && placeholderAccessible ? `${art.altText}（目前使用中性 placeholder）` : undefined}
+      aria-label={!showImage && placeholderAccessible ? `${art.altText}（目前使用替代插畫）` : undefined}
       aria-hidden={showImage || !placeholderAccessible ? true : undefined}
     >
       <CardFallbackArtwork />

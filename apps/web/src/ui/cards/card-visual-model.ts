@@ -161,8 +161,8 @@ function fallbackPresentation(definitionId: string): Pick<CardVisualViewModel, '
   const shortId = definitionId.split('/').at(-1) ?? definitionId;
   return {
     displayName: `中性卡牌 ${shortId}`,
-    art: { key: 'placeholder:neutral-card', altText: '中性卡牌圖像 placeholder' },
-    shortDisplayText: '原創文字 placeholder；不影響遊戲規則。',
+    art: { key: 'placeholder:neutral-card', altText: '中性卡牌替代圖像' },
+    shortDisplayText: '尚未提供完整卡牌說明；不影響遊戲規則。',
     detailDisplayText: '尚未提供此卡牌的詳細視覺說明。',
   };
 }

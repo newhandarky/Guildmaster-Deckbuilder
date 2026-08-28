@@ -9,8 +9,8 @@ const entry = (definitionId: string, displayName: string, assetKey: string) => (
   displayName,
   portraitAssetKey: assetKey,
   portraitAltText: `${displayName}的原創示範插畫`,
-  shortDisplayText: '原創文字 placeholder。',
-  detailDisplayText: '目前只有中性文字版；核准插畫將由獨立素材 manifest 漸進載入。',
+  shortDisplayText: '原創卡牌文字。',
+  detailDisplayText: '目前使用中性文字與替代插畫；核准插畫會隨素材更新逐步加入。',
 });
 
 /** Demo-specific display data; mechanics remain owned by the Content Pack. */
@@ -58,7 +58,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-01',
       portraitAltText: '候選物資 01 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張冒險者。',
-      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張冒險者加入手牌；此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張冒險者加入手牌。',
     },
     {
       definitionId: 'base:resource/resource-02',
@@ -66,7 +66,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-02',
       portraitAltText: '候選物資 02 的卡牌插畫',
       shortDisplayText: '印刷戰力 1；完整四人模式由近戰配戴時額外 +1。',
-      detailDisplayText: '火焰拳套的印刷戰力為 1。完整四人 Provisional 模式中，由近戰冒險者配戴時額外增加戰力 1，合計提供 2；foundation 切片只保留通用配戴流程。',
+      detailDisplayText: '火焰拳套的印刷戰力為 1；由近戰冒險者配戴時額外增加戰力 1，合計提供 2。',
     },
     {
       definitionId: 'base:resource/resource-04',
@@ -74,7 +74,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-04',
       portraitAltText: '候選物資 04 的卡牌插畫',
       shortDisplayText: '使用：棄 1 張魔王，然後抽 3 張牌。',
-      detailDisplayText: '行動階段使用後，從手牌選擇並棄置 1 張魔王，再抽 3 張牌；此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，從手牌選擇並棄置 1 張魔王，再抽 3 張牌。',
     },
     {
       definitionId: 'base:resource/resource-05',
@@ -82,7 +82,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-05',
       portraitAltText: '候選物資 05 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張裝備。',
-      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張裝備加入手牌；此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張裝備加入手牌。',
     },
     {
       definitionId: 'base:resource/resource-08',
@@ -90,7 +90,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-08',
       portraitAltText: '候選物資 08 的卡牌插畫',
       shortDisplayText: '使用：抽 2 張牌。',
-      detailDisplayText: '行動階段使用後抽 2 張牌；此為 provisional 候選效果，尚不代表正式卡表。',
+      detailDisplayText: '行動階段使用後抽 2 張牌。',
     },
     {
       definitionId: 'base:resource/resource-10',
@@ -98,7 +98,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-10',
       portraitAltText: '候選物資 10 的卡牌插畫',
       shortDisplayText: '使用：棄 1 張手牌，然後抽 2 張牌。',
-      detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌；此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌。',
     },
     {
       definitionId: 'base:resource/resource-13',
@@ -106,7 +106,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-13',
       portraitAltText: '候選物資 13 的卡牌插畫',
       shortDisplayText: '使用：從棄牌堆取回 1 張非同名道具卡。',
-      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張道具卡加入手牌；賢者之石不能被選擇。此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張道具卡加入手牌；賢者之石不能被選擇。',
     },
     {
       definitionId: 'base:resource/resource-15',
@@ -114,7 +114,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-15',
       portraitAltText: '候選物資 15 的卡牌插畫',
       shortDisplayText: '使用：從手牌、隊伍或棄牌堆移除 1 張牌。',
-      detailDisplayText: '行動階段使用後，從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；若移除配戴裝備的隊員，其裝備置入棄牌堆。此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；若移除配戴裝備的隊員，其裝備置入棄牌堆。',
     },
     {
       definitionId: 'base:resource/resource-17',
@@ -122,7 +122,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-17',
       portraitAltText: '候選物資 17 的卡牌插畫',
       shortDisplayText: '使用：抽 3 張牌，然後棄 1 張手牌。',
-      detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌；此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌。',
     },
     {
       definitionId: 'base:resource/resource-18',
@@ -130,7 +130,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-18',
       portraitAltText: '候選物資 18 的卡牌插畫',
       shortDisplayText: '配戴者仍在隊伍時，每次擊敗目標後抽 1 張牌。',
-      detailDisplayText: '本次行動玩家擊敗目標後，若此裝備仍掛在自己的隊伍中，該裝備實例會觸發並抽 1 張牌；多個實例各自觸發。此為 provisional 候選效果。',
+      detailDisplayText: '本次行動玩家擊敗目標後，若此裝備仍掛在自己的隊伍中，該裝備實例會觸發並抽 1 張牌；多個實例各自觸發。',
     },
     {
       definitionId: 'base:resource/resource-27',
@@ -138,7 +138,7 @@ export const provisionalFoundationPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/resource-27',
       portraitAltText: '候選物資 27 的卡牌插畫',
       shortDisplayText: '使用：依目前隊伍中的職業種類數抽牌。',
-      detailDisplayText: '行動階段使用後，計算目前隊伍中不同的冒險者職業種類，並抽取等量卡牌；同職業只計算一次。此為 provisional 候選效果。',
+      detailDisplayText: '行動階段使用後，計算目前隊伍中不同的冒險者職業種類，並抽取等量卡牌；同職業只計算一次。',
     },
   ],
 };
@@ -147,42 +147,42 @@ const fullExistingResourceEntries = new Set(['01','02','04','05','08','10','13',
 const fullNeutralEntry = (definitionId: string, displayName: string, kind: 'starter' | 'adventurer' | 'item' | 'equipment' | 'monster' | 'boss') => ({
   definitionId, displayName,
   portraitAssetKey: `placeholder:provisional-${kind}`,
-  portraitAltText: `${displayName} 的中性圖像 placeholder`,
+  portraitAltText: `${displayName} 的中性替代插畫`,
   shortDisplayText: '候選數值已載入；個別效果尚未啟用。',
-  detailDisplayText: '此卡屬於基礎版原作衍生 Provisional 測試。數值與非官方數位張數可供完整流程測試；未完成第二人覆核的個別效果保持停用。',
+  detailDisplayText: '這張卡目前使用測試數值；尚未完成確認的個別效果不會啟用。',
 });
 const enabledMonsterRewardCopy: Readonly<Record<string, { shortDisplayText: string; detailDisplayText: string }>> = {
   '01': {
     shortDisplayText: '擊敗獎勵：可使本回合購買力 +1；此牌回到魔物牌庫底。',
-    detailDisplayText: '擊敗後，當回合玩家可選擇獲得 1 點購買力或略過；此魔物不進入玩家棄牌堆，依既有供應循環規則回到魔物牌庫底。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後，當回合玩家可選擇獲得 1 點購買力或略過；此魔物不進入玩家棄牌堆，依既有供應循環規則回到魔物牌庫底。',
   },
   '02': {
     shortDisplayText: '擊敗獎勵：可擲六面骰，獲得骰面一半（無條件進位）的購買力。',
-    detailDisplayText: '擊敗後，當回合玩家可選擇略過，或擲 1 顆六面骰並獲得骰面數值一半、無條件進位的購買力；擲骰使用權威 RNG，能隨存檔及 Replay 重現。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後，當回合玩家可選擇略過，或擲 1 顆六面骰並獲得骰面數值一半、無條件進位的購買力；擲骰結果會隨本局進度保存。',
   },
   '03': {
     shortDisplayText: '擊敗獎勵：可從手牌、隊伍或棄牌堆移除 0 或 1 張牌。',
-    detailDisplayText: '擊敗後可選擇略過，或從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；移除配戴裝備的隊員時，其裝備置入棄牌堆。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後可選擇略過，或從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；移除配戴裝備的隊員時，其裝備置入棄牌堆。',
   },
   '06': {
     shortDisplayText: '擊敗獎勵：可從手牌、隊伍或棄牌堆移除最多 2 張牌。',
-    detailDisplayText: '擊敗後分兩次選擇；每次都可略過或移除 1 張自己手牌、隊伍或棄牌堆中的牌，因此可移除 0、1 或 2 張。候選會依每次選擇後的權威狀態重算。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後分兩次選擇；每次都可略過或移除 1 張自己手牌、隊伍或棄牌堆中的牌，因此可移除 0、1 或 2 張。每次選擇後都會重新計算可選卡牌。',
   },
   '09': {
     shortDisplayText: '擊敗獎勵：可抽 2 張牌。',
-    detailDisplayText: '擊敗後，當回合玩家可選擇抽 2 張牌或略過；抽牌與必要的棄牌堆重洗都在同一個權威討伐 transaction 中完成。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後，當回合玩家可選擇抽 2 張牌或略過；牌庫不足時依一般規則重洗棄牌堆。',
   },
   '10': {
     shortDisplayText: '擊敗獎勵：可從手牌移除 0 或 1 張牌。',
-    detailDisplayText: '擊敗後可選擇略過，或從自己的手牌移除 1 張牌；手牌沒有合法候選時仍可安全略過並完成討伐 transaction。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後可選擇略過，或從自己的手牌移除 1 張牌；手牌沒有可選卡牌時可以略過。',
   },
   '11': {
     shortDisplayText: '擊敗獎勵：可從棄牌堆移除 0 或 1 張牌。',
-    detailDisplayText: '擊敗後可選擇略過，或從自己的棄牌堆移除 1 張牌；候選與來源位置由權威狀態驗證並可經 Snapshot 恢復。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後可選擇略過，或從自己的棄牌堆移除 1 張牌；可選卡牌會依目前棄牌堆內容更新。',
   },
   '14': {
     shortDisplayText: '擊敗獎勵：可抽 1 張牌。',
-    detailDisplayText: '擊敗後，當回合玩家可選擇抽 1 張牌或略過；抽牌與討伐結果會一併儲存及重播。此為 Provisional 候選效果。',
+    detailDisplayText: '擊敗後，當回合玩家可選擇抽 1 張牌或略過；抽牌與討伐結果會一併儲存及重播。',
   },
 };
 const enabledAdditionalMonsterCopy: Readonly<Record<string, string>> = {
@@ -237,57 +237,57 @@ const enabledProfessionEquipmentCopy: Readonly<Record<string, { profession: stri
   '25': { profession: '坦克', name: '騎士之盾' },
 };
 const enabledPartyCombatCopy: Readonly<Record<string, { shortDisplayText: string; detailDisplayText: string }>> = {
-  '04': { shortDisplayText: '隊伍第一位的其他冒險者戰力 +2。', detailDisplayText: '只要此冒險者在隊伍中，隊伍第一位的另一名冒險者有效戰力增加 2；若此卡自己位於第一位則不套用。位置變動後會立即重算。此為已啟用的 Provisional 候選效果。' },
-  '10': { shortDisplayText: '位於隊伍第一位時，自身戰力 +2。', detailDisplayText: '此冒險者只有在隊伍第一位時，自身有效戰力增加 2；離開第一位後立即失去此加成。此為已啟用的 Provisional 候選效果。' },
-  '15': { shortDisplayText: '位於隊伍第四或第五位時，自身戰力 +1。', detailDisplayText: '此冒險者位於隊伍第 4 或第 5 位時，自身有效戰力增加 1；其他位置不套用。此為已啟用的 Provisional 候選效果。' },
-  '20': { shortDisplayText: '自身戰力減少隊伍中其他冒險者的數量。', detailDisplayText: '計算有效戰力時，每有 1 名其他隊伍冒險者，自身戰力便減少 1；單張卡的有效戰力最低為 0。此為已啟用的 Provisional 候選效果。' },
-  '24': { shortDisplayText: '討伐魔物時，自身戰力 +3。', detailDisplayText: '本次討伐目標為魔物時，此冒險者有效戰力增加 3；討伐魔王或沒有指定目標的公開隊伍摘要不套用。此為已啟用的 Provisional 候選效果。' },
-  '27': { shortDisplayText: '相鄰的其他冒險者戰力各 +1。', detailDisplayText: '此冒險者前後直接相鄰的隊伍冒險者有效戰力各增加 1；隊伍位置改變後立即重算。此為已啟用的 Provisional 候選效果。' },
+  '04': { shortDisplayText: '隊伍第一位的其他冒險者戰力 +2。', detailDisplayText: '只要此冒險者在隊伍中，隊伍第一位的另一名冒險者有效戰力增加 2；若此卡自己位於第一位則不套用。位置變動後會立即重算。' },
+  '10': { shortDisplayText: '位於隊伍第一位時，自身戰力 +2。', detailDisplayText: '此冒險者只有在隊伍第一位時，自身有效戰力增加 2；離開第一位後立即失去此加成。' },
+  '15': { shortDisplayText: '位於隊伍第四或第五位時，自身戰力 +1。', detailDisplayText: '此冒險者位於隊伍第 4 或第 5 位時，自身有效戰力增加 1；其他位置不套用。' },
+  '20': { shortDisplayText: '自身戰力減少隊伍中其他冒險者的數量。', detailDisplayText: '計算有效戰力時，每有 1 名其他隊伍冒險者，自身戰力便減少 1；單張卡的有效戰力最低為 0。' },
+  '24': { shortDisplayText: '討伐魔物時，自身戰力 +3。', detailDisplayText: '本次討伐目標為魔物時，此冒險者有效戰力增加 3；討伐魔王或沒有指定目標的公開隊伍摘要不套用。' },
+  '27': { shortDisplayText: '相鄰的其他冒險者戰力各 +1。', detailDisplayText: '此冒險者前後直接相鄰的隊伍冒險者有效戰力各增加 1；隊伍位置改變後立即重算。' },
 };
 const enabledBossCopy: Readonly<Record<string, { shortDisplayText: string; detailDisplayText: string }>> = {
   '01': {
     shortDisplayText: '戰力增加商店中的裝備數；擊敗後購買力 +5，並取得商店最多 2 張費用 4 以下的牌。',
-    detailDisplayText: '此魔王的有效戰力等於印刷戰力 9，加上當下商店公開列中的裝備張數；商店變動後會重新計算。擊敗後先取得 5 點購買力，再依序取得最多 2 張費用 4 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 9，加上當下商店公開列中的裝備張數；商店變動後會重新計算。擊敗後先取得 5 點購買力，再依序取得最多 2 張費用 4 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。',
   },
   '02': {
     shortDisplayText: '參戰起始冒險者移出遊戲，其他冒險者洗回公共牌庫，再依參戰人數補抽；擊敗後購買力 +5 並再取得 2 張冒險者。',
-    detailDisplayText: '只處理實際提供戰力的最短隊伍前綴：其中起始冒險者移出遊戲，非起始冒險者洗回公共冒險者牌庫，裝備依各自離場規則進入棄牌堆或移出遊戲。完成洗牌後，依全部參戰者人數從該牌庫頂取得等量冒險者置入棄牌堆；牌庫不足時只取得現存牌。擊敗後再取得 5 點購買力與最多 2 張公共冒險者。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '只處理實際提供戰力的最短隊伍前綴：其中起始冒險者移出遊戲，非起始冒險者洗回公共冒險者牌庫，裝備依各自離場規則進入棄牌堆或移出遊戲。完成洗牌後，依全部參戰者人數從該牌庫頂取得等量冒險者置入棄牌堆；牌庫不足時只取得現存牌。擊敗後再取得 5 點購買力與最多 2 張公共冒險者。',
   },
   '03': {
     shortDisplayText: '戰鬥後必須從手牌棄 1 張冒險者；無法支付時討伐失敗。成功後購買力 +5，並可從棄牌堆移除最多 2 張牌。',
-    detailDisplayText: '隊伍戰力足夠時，即使手牌沒有冒險者仍可發起討伐。實際參戰的最短隊伍前綴與裝備會先依戰鬥規則離場；接著必須從手牌選擇並棄置 1 張帶有職業的冒險者。零候選時巫妖留在公共區域、沒有任何報酬，已離場隊伍不回復。支付成功後取得 5 點購買力，再分兩次選擇從自己的棄牌堆移除 0、1 或 2 張牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '隊伍戰力足夠時，即使手牌沒有冒險者仍可發起討伐。實際參戰的最短隊伍前綴與裝備會先依戰鬥規則離場；接著必須從手牌選擇並棄置 1 張帶有職業的冒險者。零候選時巫妖留在公共區域、沒有任何報酬，已離場隊伍不回復。支付成功後取得 5 點購買力，再分兩次選擇從自己的棄牌堆移除 0、1 或 2 張牌。',
   },
   '04': {
     shortDisplayText: '進場時配戴 1 張物資牌庫頂卡並增加其戰力；擊敗後購買力 +5 並抽 4 張牌。',
-    detailDisplayText: '進場時從公共物資牌庫取得頂牌作為公開附件，此魔王增加該附件的印刷戰力。擊敗後先取得 5 點購買力，再抽 4 張牌，附件依權威 enemy-attachment policy 一同處理。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '進場時從公共物資牌庫取得頂牌作為公開附件，此魔王增加該附件的印刷戰力。擊敗後先取得 5 點購買力，再抽 4 張牌；附件會與魔王一同處理。',
   },
   '05': {
     shortDisplayText: '本次討伐所有裝備失效；擊敗後購買力 +5，並取得商店最多 2 張費用 3 以下的牌。',
-    detailDisplayText: '討伐此魔王的整次戰鬥中，裝備的戰力、修正、觸發與離場替代全部失效，但仍保持配戴並隨實際參戰者依核心規則棄置。擊敗後先取得 5 點購買力，再依序從當下商店取得最多 2 張費用 3 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '討伐此魔王的整次戰鬥中，裝備的戰力、修正、觸發與離場替代全部失效，但仍保持配戴並隨實際參戰者依核心規則棄置。擊敗後先取得 5 點購買力，再依序從當下商店取得最多 2 張費用 3 以下的道具或裝備置入棄牌堆；沒有候選時自動略過，商店不立即補牌。',
   },
   '06': {
     shortDisplayText: '完整隊伍每有 1 種職業，戰力 +1；擊敗後購買力 +5，並從冒險者牌庫取得 2 張牌。',
-    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，裝備不提供職業。擊敗後先取得 5 點購買力，再從公共冒險者牌庫頂取得最多 2 張牌置入自己的棄牌堆；牌庫不足時只取得現存牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，裝備不提供職業。擊敗後先取得 5 點購買力，再從公共冒險者牌庫頂取得最多 2 張牌置入自己的棄牌堆；牌庫不足時只取得現存牌。',
   },
   '07': {
     shortDisplayText: '進場時配戴 1 張冒險者牌庫頂卡並增加其戰力；擊敗後購買力 +5 並取得 1 張冒險者。',
-    detailDisplayText: '進場時從公共冒險者牌庫取得頂牌作為公開附件，此魔王增加該附件的印刷戰力。擊敗後先取得 5 點購買力，再從冒險者牌庫取得 1 張牌；魔王與附件依權威 enemy-attachment policy 一同置入棄牌堆。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '進場時從公共冒險者牌庫取得頂牌作為公開附件，此魔王增加該附件的印刷戰力。擊敗後先取得 5 點購買力，再從冒險者牌庫取得 1 張牌；魔王與附件一同置入棄牌堆。',
   },
   '08': {
     shortDisplayText: '最多使用隊伍最前方 3 名冒險者；擊敗後購買力 +5，並取得招募區最多 2 張費用 3 以下的冒險者。',
-    detailDisplayText: '討伐時只能使用隊伍最前方連續的 1 至 3 名冒險者及其裝備，不能跳過前方成員；未參戰的後方成員保留。擊敗後先取得 5 點購買力，再依序取得招募區最多 2 張費用 3 以下的冒險者置入棄牌堆；沒有候選時自動略過，招募區不立即補牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '討伐時只能使用隊伍最前方連續的 1 至 3 名冒險者及其裝備，不能跳過前方成員；未參戰的後方成員保留。擊敗後先取得 5 點購買力，再依序取得招募區最多 2 張費用 3 以下的冒險者置入棄牌堆；沒有候選時自動略過，招募區不立即補牌。',
   },
   '09': {
     shortDisplayText: '左手邊玩家完整隊伍每有 1 種職業，戰力 +1；擊敗後購買力 +5，並從物資牌庫取得 1 張牌。',
-    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家左手邊玩家完整公開隊伍中的不同職業種類數；active player 改變時會重新計算。擊敗後先取得 5 點購買力，再從公共物資牌庫頂取得最多 1 張牌置入自己的棄牌堆；牌庫為空時略過取牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 8，加上當回合玩家左手邊玩家完整公開隊伍中的不同職業種類數；輪到不同玩家行動時會重新計算。擊敗後先取得 5 點購買力，再從公共物資牌庫頂取得最多 1 張牌置入自己的棄牌堆；牌庫為空時略過取牌。',
   },
   '10': {
     shortDisplayText: '完整隊伍每有 1 種職業，戰力 −1；擊敗後購買力 +5，並抽 3 張牌。',
-    detailDisplayText: '此魔王的有效戰力等於印刷戰力 14，減去當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，最低戰力為 0。擊敗後先取得 5 點購買力，再從自己的牌庫抽 3 張，必要時依一般規則重洗棄牌堆。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '此魔王的有效戰力等於印刷戰力 14，減去當回合玩家完整公開隊伍中的不同職業種類數；重複職業只計一次，最低戰力為 0。擊敗後先取得 5 點購買力，再從自己的牌庫抽 3 張，必要時依一般規則重洗棄牌堆。',
   },
   '11': {
     shortDisplayText: '只能使用隊伍最前方 1 名冒險者；擊敗後購買力 +5，並取得商店最多 2 張費用 3 以下的道具。',
-    detailDisplayText: '討伐時只能使用隊伍最前方第 1 名冒險者及其裝備，不能改選後方成員；所有未參戰成員保留。擊敗後先取得 5 點購買力，再依序取得商店最多 2 張費用 3 以下的道具置入棄牌堆，裝備不是合法候選；沒有候選時自動略過，商店不立即補牌。此為已啟用的 Provisional 候選效果。',
+    detailDisplayText: '討伐時只能使用隊伍最前方第 1 名冒險者及其裝備，不能改選後方成員；所有未參戰成員保留。擊敗後先取得 5 點購買力，再依序取得商店最多 2 張費用 3 以下的道具置入棄牌堆，裝備不是合法候選；沒有候選時自動略過，商店不立即補牌。',
   },
 };
 const provisionalBondConditionSummaries = [
@@ -332,7 +332,7 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         portraitAssetKey: `base:portrait/starter-adventurer-${id}`,
         portraitAltText: `候選起始冒險者 ${id} 的卡牌插畫`,
         shortDisplayText: '起始冒險者；沒有個別文字效果。',
-        detailDisplayText: '這張起始冒險者依印刷戰力與職業參與隊伍規則，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
+        detailDisplayText: '這張起始冒險者依印刷戰力與職業參與隊伍規則，本身沒有需要另行啟用的個別文字效果。',
       };
     }),
     {
@@ -340,14 +340,14 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
       portraitAssetKey: 'base:portrait/starter-summoning-stone',
       portraitAltText: '候選起始資源 A 的卡牌插畫',
       shortDisplayText: '起始資源；提供購買力 1，沒有個別文字效果。',
-      detailDisplayText: '這張起始資源依印刷數值提供購買力 1，本身沒有需要另行啟用的個別文字效果。此為 Provisional 候選資料。',
+      detailDisplayText: '這張起始資源依印刷數值提供購買力 1，本身沒有需要另行啟用的個別文字效果。',
     },
     {
       ...fullNeutralEntry('base:starter/spirit-crystal', '候選起始裝備 B', 'equipment'),
       portraitAssetKey: 'base:portrait/starter-spirit-crystal',
       portraitAltText: '候選起始裝備 B 的卡牌插畫',
       shortDisplayText: '起始裝備；印刷戰力 1。',
-      detailDisplayText: '這張牌是起始手牌中的裝備，可在行動階段配戴給隊伍中的冒險者，提供印刷戰力 1。此欄位依 card-07 圖例校正為 Provisional 候選資料。',
+      detailDisplayText: '這張牌是起始手牌中的裝備，可在行動階段配戴給隊伍中的冒險者，提供印刷戰力 1。',
     },
     ...Array.from({ length: 30 }, (_, index) => {
       const id = String(index + 1).padStart(2, '0');
@@ -357,16 +357,16 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         portraitAltText: `候選冒險者 ${id} 的卡牌插畫`,
         ...(id === '02' ? {
           shortDisplayText: '此冒險者不能配戴裝備。',
-          detailDisplayText: '此冒險者在隊伍中時，任何裝備都不會成為其合法配戴指令；Legal Commands、CPU 與權威 dispatch 共用相同限制。此為 Provisional 候選效果。',
+          detailDisplayText: '此冒險者在隊伍中時，不能配戴任何裝備。',
         } : id === '05' ? {
           shortDisplayText: '在自己的隊伍中時，購買所有裝備費用 −1。',
-          detailDisplayText: '此冒險者位於自己的隊伍時，自己從商店購買的每張裝備費用減少 1，最低為 0；不影響道具，也不替其他玩家折價。Legal Commands、購買預覽、CPU 與權威 dispatch 共用此 Provisional 規則。',
+          detailDisplayText: '此冒險者位於自己的隊伍時，自己從商店購買的每張裝備費用減少 1，最低為 0；不影響道具，也不替其他玩家折價。',
         } : id === '09' ? {
           shortDisplayText: '配戴任一裝備時，額外增加戰力 1。',
-          detailDisplayText: '此冒險者實際配戴裝備時，除裝備本身與其他合法修正外，再增加戰力 1；未配戴裝備時不套用。此為已確認並啟用的 Provisional 候選持續效果。',
+          detailDisplayText: '此冒險者實際配戴裝備時，除裝備本身與其他合法修正外，再增加戰力 1；未配戴裝備時不套用。',
         } : enabledPartyCombatCopy[id] ?? (enabledAdditionalAdventurerCopy[id] ? {
           shortDisplayText: enabledAdditionalAdventurerCopy[id],
-          detailDisplayText: `${enabledAdditionalAdventurerCopy[id]} 此效果已透過 Rules Module 與通用 Engine 能力接線；Legal Commands、CPU 與權威 dispatch 共用同一規則。此為已啟用的 Provisional 候選效果。`,
+          detailDisplayText: enabledAdditionalAdventurerCopy[id],
         } : {})),
       };
     }),
@@ -378,13 +378,13 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         portraitAltText: `候選物資 ${id} 的卡牌插畫`,
         ...(id === '12' ? {
           shortDisplayText: '配戴者因戰鬥進入棄牌堆時，此裝備改為移出遊戲。',
-          detailDisplayText: '配戴者實際作為討伐參戰者進入棄牌堆時，冒險者照常棄置，但真龍斧連枷會強制永久移出本局；隊伍超額、休息或卡牌效果造成的離場不觸發。此為已啟用的 Provisional 候選效果。',
+          detailDisplayText: '配戴者實際作為討伐參戰者進入棄牌堆時，冒險者照常棄置，但真龍斧連枷會強制永久移出本局；隊伍超額、休息或卡牌效果造成的離場不觸發。',
         } : professionEquipment ? {
           shortDisplayText: `印刷戰力 1；由${professionEquipment.profession}配戴時額外 +1。`,
-          detailDisplayText: `${professionEquipment.name}的印刷戰力為 1；由${professionEquipment.profession}冒險者配戴時額外增加戰力 1，合計提供 2。此為已確認並啟用的 Provisional 候選效果。`,
+          detailDisplayText: `${professionEquipment.name}的印刷戰力為 1；由${professionEquipment.profession}冒險者配戴時額外增加戰力 1，合計提供 2。`,
         } : enabledAdditionalResourceCopy[id] ? {
           shortDisplayText: enabledAdditionalResourceCopy[id],
-          detailDisplayText: `${enabledAdditionalResourceCopy[id]} 此效果已透過 Rules Module 或 JSON-only effect 接線，並由權威 dispatch 驗證。此為已啟用的 Provisional 候選效果。`,
+          detailDisplayText: enabledAdditionalResourceCopy[id],
         } : {}),
       };
     }),
@@ -396,7 +396,7 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         portraitAltText: `候選魔物 ${id} 的卡牌插畫`,
         ...(enabledMonsterRewardCopy[id] ?? (enabledAdditionalMonsterCopy[id] ? {
           shortDisplayText: enabledAdditionalMonsterCopy[id],
-          detailDisplayText: `${enabledAdditionalMonsterCopy[id]} 選擇、略過、零候選與多人 ownership transfer 均由權威效果流程處理。此為已啟用的 Provisional 候選效果。`,
+          detailDisplayText: `${enabledAdditionalMonsterCopy[id]} 每次選擇後會重新計算可選卡牌；沒有可選卡牌時可以略過。`,
         } : {})),
       };
     }),
@@ -410,9 +410,9 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         definitionId: `base:bond/bond-${id}`,
         displayName: `候選羈絆 ${id}`,
         portraitAssetKey: 'placeholder:provisional-bond',
-        portraitAltText: `候選羈絆 ${id} 的中性羈絆圖像 placeholder`,
+        portraitAltText: `候選羈絆 ${id} 的中性替代插畫`,
         shortDisplayText: condition,
-        detailDisplayText: `${condition} 條件是否成立由 Rules Module 的權威評估決定；玩家可選擇完成或暫不完成。此為已接線的 Provisional 羈絆條件摘要。`,
+        detailDisplayText: `${condition} 達成條件後，玩家可以選擇完成或暫不完成。`,
       };
     }),
   ],
@@ -439,9 +439,9 @@ export const provisionalHelpersPresentationPack: PresentationPack = {
       definitionId: `base:helper/helper-${sequence}`,
       displayName: `候選協助者 ${sequence}`,
       portraitAssetKey: `base:portrait/helper-${sequence}`,
-      portraitAltText: `候選協助者 ${sequence} 的卡牌插畫`,
+      portraitAltText: `候選協助者 ${sequence} 的替代插畫`,
       shortDisplayText: copy?.[0] ?? '目前僅測試揭示與輪替，卡牌效果尚未啟用。',
-      detailDisplayText: copy?.[1] ?? '此 provisional 協助者會參與本局抽選、揭示、離場與輪替；目前尚未啟用其個別卡牌效果。',
+      detailDisplayText: copy?.[1] ?? '此協助者會參與本局抽選、揭示、離場與輪替；目前尚未啟用其個別卡牌效果。',
     };
   }),
 };

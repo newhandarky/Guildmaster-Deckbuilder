@@ -1,16 +1,13 @@
 import type { EngineError, GameStatus } from '@guildmaster/game-protocol';
 import type { SessionPersistenceStatus } from '../../../adapters/game-session.js';
-import { webModeEffectSummary, type WebContentMode } from '../../../app/ruleset.js';
 
 type Props = {
   status: GameStatus;
   persistence: SessionPersistenceStatus;
-  contentMode: WebContentMode;
-  helpersEnabled: boolean;
   error?: EngineError | undefined;
 };
 
-export function GameNotices({ status, persistence, contentMode, helpersEnabled, error }: Props) {
+export function GameNotices({ status, persistence, error }: Props) {
   const recoveryCopy = persistence.recoveryReason === 'CPU_PROFILE_MISMATCH'
     ? 'CPU 規則版本已更新，舊進度無法安全續玩，已建立新遠征。'
     : persistence.recoveryReason === 'REGISTRY_MISMATCH'
@@ -22,20 +19,11 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
           : undefined;
   return <>
     {recoveryCopy ? <aside className="warning" data-testid="save-recovery-notice" role="status">{recoveryCopy}</aside> : null}
-    {contentMode === 'provisional-playtest'
-      ? <aside className="warning" data-testid="provisional-content-warning" role="status">基礎候選數值測試模式：{webModeEffectSummary.foundation}；其餘個別卡牌效果仍未啟用，此內容不代表正式卡表。{helpersEnabled ? `目前已啟用 ${webModeEffectSummary.helpers} 的效果，其餘協助者僅測試輪替。` : ''}</aside>
-      : null}
     {persistence.recovery?.reasonCode === 'helper-rules-upgraded'
       ? <aside className="warning" data-testid="helper-upgrade-recovery-notice" role="status">協助者規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
       : null}
     {persistence.recovery?.reasonCode === 'card-rules-upgraded'
       ? <aside className="warning" data-testid="card-rules-upgrade-recovery-notice" role="status">卡牌效果規則已更新，舊進度無法安全續玩，已建立新遠征。</aside>
-      : null}
-    {contentMode === 'provisional-original-full'
-      ? <aside className="warning" data-testid="full-provisional-content-warning" role="status">基礎版原作衍生 Provisional 測試：能力矩陣目前通過 {webModeEffectSummary.full}；其餘效果保持停用。數位逐種類配比不代表官方完整卡表。</aside>
-      : null}
-    {contentMode === 'custom-adventurers-full'
-      ? <aside className="warning" data-testid="custom-adventurer-content-warning" role="status">自定義冒險者公開測試：已替換五名起始成員與完整冒險者供應；{webModeEffectSummary.custom}。未通過能力矩陣驗證的技能只套用印刷數值。遠端圖片失敗或缺圖時會自動顯示 placeholder，不影響遊戲規則。</aside>
       : null}
     {persistence.state === 'restored'
       ? <aside className="notice" data-testid="restore-notice" role="status">
@@ -48,7 +36,7 @@ export function GameNotices({ status, persistence, contentMode, helpersEnabled, 
       ? <aside className="warning" data-testid="storage-warning" role="status">本機儲存目前不可用；最新進度只保留在此分頁，重新整理前請勿關閉。</aside>
       : null}
     {status === 'pendingOfficialRuling'
-      ? <aside className="warning" role="status">目前啟用的 Rules Module 尚有必須先完成的規則裁定；本局已安全暫停。</aside>
+      ? <aside className="warning" role="status">目前尚有必須先完成的規則裁定；本局已安全暫停。</aside>
       : null}
     {status === 'finalRound'
       ? <aside className="warning" data-testid="final-round-notice" role="status">最終輪已觸發；將完成目前輪次後結算。</aside>

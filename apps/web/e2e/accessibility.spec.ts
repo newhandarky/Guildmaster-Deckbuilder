@@ -27,6 +27,10 @@ test('desktop expedition entry meets automated WCAG A/AA checks and focuses its 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '準備新的遠征' })).toBeFocused();
   await expect(page.getByRole('button', { name: '開始新遠征' })).toBeVisible();
+  const closedConfirmation = page.locator('.expedition-new-confirmation');
+  await expect(closedConfirmation).toBeHidden();
+  await expect(closedConfirmation).toHaveCSS('display', 'none');
+  expect(await closedConfirmation.boundingBox()).toBeNull();
   await expectNoAccessibilityViolations(page);
 });
 
@@ -82,20 +86,33 @@ test('card details meet automated WCAG A/AA checks', async ({ page }) => {
 test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }) => {
   await openGame(page, '/?e2eScenario=lifecycle-choice');
   await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
-  await expect(page.getByTestId('lifecycle-dock')).toBeVisible();
+  const lifecycleDock = page.getByTestId('lifecycle-dock');
+  await expect(lifecycleDock).toBeVisible();
+  await expect(lifecycleDock).toContainText('你仍可查看卡片');
+  await expect(page.getByTestId('end-phase')).toBeDisabled();
+  await page.getByTestId('hand').getByRole('button').first().click();
+  await expect(page.locator('.card-details-dialog')).toBeVisible();
+  await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
   await expectNoAccessibilityViolations(page);
 });
 
-test('bond setup is announced as a focused non-modal blocking choice', async ({ page }) => {
+test('bond setup is a focus-contained modal blocking choice', async ({ page }) => {
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 
   const setup = page.getByRole('dialog', { name: '從七張私人羈絆保留五張' });
   await expect(setup).toBeVisible();
-  await expect(setup).not.toHaveAttribute('aria-modal');
+  await expect.poll(() => setup.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
   await expect(setup.getByRole('heading', { name: '從七張私人羈絆保留五張' })).toBeFocused();
+  const backgroundEndPhase = page.getByTestId('end-phase');
+  await backgroundEndPhase.evaluate((button: HTMLButtonElement) => button.focus());
+  await expect(backgroundEndPhase).not.toBeFocused();
+  for (let index = 0; index < 16; index += 1) {
+    await page.keyboard.press(index % 2 === 0 ? 'Tab' : 'Shift+Tab');
+    await expect.poll(() => setup.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  }
   await expectNoAccessibilityViolations(page);
 });
 
@@ -155,6 +172,10 @@ test('mobile controls meet the 44px target baseline and remain inside the docume
   await openGame(page);
   const controls = [
     page.getByTestId('end-phase'),
+    page.getByRole('button', { name: /我的羈絆/ }),
+    page.getByRole('button', { name: '事件', exact: true }),
+    page.getByRole('button', { name: 'CPU', exact: true }),
+    page.getByRole('button', { name: '更多', exact: true }),
   ];
   for (const control of controls) {
     const box = await control.boundingBox();
@@ -172,6 +193,24 @@ test('mobile controls meet the 44px target baseline and remain inside the docume
   expect(closeBox?.height).toBeGreaterThanOrEqual(44);
   expect(closeBox?.width).toBeGreaterThanOrEqual(44);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('/?e2eScenario=lifecycle-choice');
+  await enterGameFromEntry(page);
+  await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+  for (const action of await page.getByTestId('lifecycle-dock').getByRole('button').all()) {
+    const box = await action.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.goto('/');
+  await openNewExpeditionSetup(page);
+  for (const option of await page.locator('.content-mode-option').all()) {
+    const box = await option.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test('320px reflow with enlarged text keeps actions and details usable', async ({ page }) => {
@@ -201,4 +240,15 @@ async function tabUntilFocused(page: Page, key: 'Tab' | 'Shift+Tab', target: Loc
     if (await target.evaluate((element) => element === document.activeElement)) return;
   }
   throw new Error(`Keyboard navigation did not reach target with ${key}.`);
+}
+
+async function enterGameFromEntry(page: Page): Promise<void> {
+  const entry = page.getByTestId('expedition-entry');
+  const continueButton = entry.getByRole('button', { name: '繼續最近進度' });
+  if (await continueButton.count()) await continueButton.click();
+  else {
+    await openNewExpeditionSetup(page);
+    await entry.getByRole('button', { name: '開始新遠征', exact: true }).click();
+  }
+  await expect(page.getByTestId('game-app')).toBeVisible();
 }

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameCommand } from '@guildmaster/game-protocol';
 import { BoardPanel } from '../features/game/board/BoardPanel.js';
+import { BondCompletionDock } from '../features/game/bonds/BondCompletionDock.js';
 import { BondPanel } from '../features/game/bonds/BondPanel.js';
+import { BondSetupPanel } from '../features/game/bonds/BondSetupPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
@@ -16,6 +18,7 @@ import { PlayerStatusStrip } from '../features/game/table/PlayerStatusStrip.js';
 import { ReplayDiagnosticsPanel } from '../features/game/table/ReplayDiagnosticsPanel.js';
 import { RestartControl } from '../features/game/table/RestartControl.js';
 import { TurnControlDock } from '../features/game/table/TurnControlDock.js';
+import { TestBuildInfo } from '../features/game/table/TestBuildInfo.js';
 import { UtilityDrawer, type UtilityDrawerSection } from '../features/game/table/UtilityDrawer.js';
 import { buildLegalActionSummary } from '../features/game/table/gameplay-feedback.js';
 import { buildInteractionHint, phaseDisplayName } from '../features/game/table/phase-copy.js';
@@ -53,6 +56,7 @@ export function App() {
   const interactionFallbackRef = useRef<HTMLParagraphElement>(null);
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
   const bondSetupHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousCompletableBondCountRef = useRef(0);
   const cardDefinitions = useMemo(
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
@@ -66,7 +70,10 @@ export function App() {
       honor: bond.honor,
       conditionSummary: hasPresentationCopy
         ? copy.shortDisplayText
-        : bond.requiredBosses === 99 ? '依 Rules Module 的權威條件完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
+        : bond.requiredBosses === 99 ? '依本局規則完成' : `擊敗 ${bond.requiredBosses} 名魔王`,
+      detailDescription: hasPresentationCopy
+        ? copy.detailDisplayText
+        : bond.requiredBosses === 99 ? '完成條件由本局規則判定。' : `擊敗 ${bond.requiredBosses} 名魔王即可完成。`,
     };
   }), [bondDefinitions]);
   const lifecycleInteraction = useMemo(
@@ -100,6 +107,7 @@ export function App() {
     (command): command is Extract<GameCommand, { type: 'COMPLETE_BONDS' }> => command.type === 'COMPLETE_BONDS',
   );
   const completableBondIds = [...new Set(completeBondCommands.flatMap(({ bondIds }) => bondIds))];
+  const completableBondKey = completableBondIds.join('|');
   const selectedCompleteBondCommand = completeBondCommands.find(({ bondIds }) =>
     bondIds.length === selectedCompletionBondIds.length
     && bondIds.every((bondId) => selectedCompletionBondIds.includes(bondId)),
@@ -174,6 +182,7 @@ export function App() {
     { id: 'events', label: '事件', content: <ActivityPanel events={events} /> },
     { id: 'cpu', label: 'CPU', content: cpuTools },
     { id: 'more', label: '更多', content: <div className="more-tools">
+      <TestBuildInfo contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} />
       <RestartControl scopeKey={`${view.gameId}:${view.revision}`} onRestart={restartAndClear} />
       <CardStateLegend />
       {replayDiagnostics}
@@ -193,7 +202,13 @@ export function App() {
       window.requestAnimationFrame(() => bondSetupHeadingRef.current?.focus());
     }
   }, [bondSetupActorId, bondSetupOfferId, hasBondSetupOffer, hasEnteredGame]);
-  useEffect(() => { setSelectedCompletionBondIds([]); }, [view.gameId, view.revision, view.activePlayerId]);
+  useEffect(() => { setSelectedCompletionBondIds([]); }, [completableBondKey, view.gameId]);
+  useEffect(() => {
+    if (previousCompletableBondCountRef.current > 0 && completableBondIds.length === 0) {
+      window.requestAnimationFrame(() => interactionFallbackRef.current?.focus());
+    }
+    previousCompletableBondCountRef.current = completableBondIds.length;
+  }, [completableBondIds.length]);
 
   if (!hasEnteredGame) {
     return <ExpeditionEntryScreen
@@ -207,11 +222,11 @@ export function App() {
   if (scoreboard) {
     return <GameResultsScreen
       ref={appRootRef}
-      conditionId={view.endState?.conditionId ?? '遊戲結束'}
+      conditionIds={view.endState?.conditionIds ?? [view.endState?.conditionId ?? '遊戲結束']}
       viewerId={view.viewerId}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}
-      notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
+      notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
       persistence={persistence}
       onRestart={restartAndClear}
     />;
@@ -227,7 +242,7 @@ export function App() {
       persistence={persistence}
       contentLabel={webContentModeOptions[entrySummary.contentMode].label}
     />}
-    notices={<GameNotices status={view.status} persistence={persistence} contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} error={error} />}
+    notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
     playerStatus={<PlayerStatusStrip
       self={{
         handCount: view.self.hand.length,
@@ -280,27 +295,29 @@ export function App() {
     />}
     interaction={<div className="interaction-rail" data-testid="interaction-rail">
       {view.bondSetup?.offeredBondIds
-        ? <section className="bond-setup-panel blocking-choice-panel" role="dialog" aria-labelledby="bond-setup-heading">
-            <h2 ref={bondSetupHeadingRef} id="bond-setup-heading" tabIndex={-1}>從七張私人羈絆保留五張</h2>
-            <div className="bond-choice-grid">{view.bondSetup.offeredBondIds.map((bondId) => {
-              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
-              const checked = selectedBondIds.includes(bondId);
-              return <label key={bondId}><input type="checkbox" checked={checked} disabled={!checked && selectedBondIds.length >= 5} onChange={() => setSelectedBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
-            })}</div>
-            <button className="primary" type="button" disabled={selectedBondIds.length !== 5} onClick={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}>確認保留五張</button>
-          </section>
+        ? <BondSetupPanel
+            ref={bondSetupHeadingRef}
+            bonds={view.bondSetup.offeredBondIds.map((bondId) => displayedBondDefinitions.find(({ id }) => id === bondId) ?? {
+              id: bondId,
+              name: bondId,
+              honor: 0,
+              conditionSummary: '尚未提供條件摘要',
+              detailDescription: '尚未提供完整規則說明。',
+            })}
+            selectedBondIds={selectedBondIds}
+            onToggle={(bondId) => setSelectedBondIds((current) => current.includes(bondId) ? current.filter((id) => id !== bondId) : [...current, bondId])}
+            onConfirm={() => submitAndClear({ type: 'SELECT_BONDS', offerId: view.bondSetup!.offerId, bondIds: selectedBondIds })}
+          />
         : null}
       {completableBondIds.length > 0
-        ? <section className="bond-setup-panel bond-completion-panel" aria-labelledby="bond-completion-heading">
-            <h2 id="bond-completion-heading">羈絆條件已成立</h2>
-            <p>可以完成任意子集合，也可以暫不完成；暫不完成不會保存資格。</p>
-            <div className="bond-choice-grid">{completableBondIds.map((bondId) => {
-              const bond = displayedBondDefinitions.find(({ id }) => id === bondId);
-              const checked = selectedCompletionBondIds.includes(bondId);
-              return <label key={bondId}><input type="checkbox" checked={checked} onChange={() => setSelectedCompletionBondIds((current) => checked ? current.filter((id) => id !== bondId) : [...current, bondId])} /><span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span></label>;
-            })}</div>
-            <button className="primary" type="button" disabled={!selectedCompleteBondCommand} onClick={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}>完成所選羈絆</button>
-          </section>
+        ? <BondCompletionDock
+            bondIds={completableBondIds}
+            definitions={displayedBondDefinitions}
+            selectedBondIds={selectedCompletionBondIds}
+            canComplete={Boolean(selectedCompleteBondCommand)}
+            onToggle={(bondId) => setSelectedCompletionBondIds((current) => current.includes(bondId) ? current.filter((id) => id !== bondId) : [...current, bondId])}
+            onComplete={() => selectedCompleteBondCommand && submitAndClear(selectedCompleteBondCommand)}
+          />
         : null}
       <LifecycleInteractionDock
         ref={lifecycleHeadingRef}

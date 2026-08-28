@@ -14,17 +14,39 @@ import {
 } from '../src/index.js';
 
 describe('demo presentation package', () => {
-  it('covers every full provisional runtime definition with neutral copy', () => {
+  it('keeps developer terminology out of every player-facing presentation field', () => {
+    const forbiddenPlayerTerms = /provisional|legal commands|rules module|card-07|json-only|placeholder|manifest|文字版 mvp/i;
+    for (const pack of [
+      demoPresentationPack,
+      provisionalFoundationPresentationPack,
+      provisionalOriginalFullPresentationPack,
+      provisionalHelpersPresentationPack,
+    ]) {
+      for (const entry of pack.entries) {
+        expect([
+          entry.displayName,
+          entry.portraitAltText,
+          entry.shortDisplayText,
+          entry.detailDisplayText,
+        ].join(' '), entry.definitionId).not.toMatch(forbiddenPlayerTerms);
+      }
+    }
+  });
+
+  it('covers every full runtime definition with player-facing neutral copy', () => {
     expect(validatePresentationPack(provisionalOriginalFullPresentationPack)).toEqual({ valid: true, errors: [] });
     const covered = new Set([...provisionalFoundationPresentationPack.entries, ...provisionalOriginalFullPresentationPack.entries].map(({ definitionId }) => definitionId));
     expect(covered.size).toBe(120);
-    expect(provisionalOriginalFullPresentationPack.entries.every(({ displayName, detailDisplayText }) => displayName.startsWith('候選') && detailDisplayText.includes('Provisional'))).toBe(true);
+    expect(provisionalOriginalFullPresentationPack.entries.every(({ displayName, detailDisplayText }) => displayName.startsWith('候選') && detailDisplayText.length > 8)).toBe(true);
+    expect(provisionalOriginalFullPresentationPack.entries.every(({ detailDisplayText }) =>
+      !['Provisional', 'Legal Commands', 'Rules Module', 'card-07', 'JSON-only'].some((term) => detailDisplayText.includes(term))
+    )).toBe(true);
   });
   it('provides one non-placeholder condition summary for every full provisional bond', () => {
     const bonds = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:bond/'));
     expect(bonds).toHaveLength(30);
     expect(new Set(bonds.map(({ definitionId }) => definitionId))).toHaveLength(30);
-    expect(bonds.every(({ shortDisplayText, detailDisplayText }) => shortDisplayText.length > 8 && !shortDisplayText.includes('99') && detailDisplayText.includes('Rules Module'))).toBe(true);
+    expect(bonds.every(({ shortDisplayText, detailDisplayText }) => shortDisplayText.length > 8 && !shortDisplayText.includes('99') && detailDisplayText.includes('玩家可以選擇完成或暫不完成'))).toBe(true);
     expect(bonds[12]?.shortDisplayText).toContain('一個行動階段');
     expect(bonds[17]?.shortDisplayText).toContain('非基礎冒險者');
     expect(bonds[29]?.shortDisplayText).toContain('非起始冒險者');
@@ -94,20 +116,20 @@ describe('demo presentation package', () => {
       'base:monster/monster-14',
     ]);
     expect(monsters.every(({ shortDisplayText, detailDisplayText }) => !shortDisplayText.includes('尚未啟用') && !detailDisplayText.includes('尚未啟用'))).toBe(true);
-    expect(monsters.filter(({ definitionId }) => ['04', '05', '07', '08', '12', '13'].some((id) => definitionId === `base:monster/monster-${id}`)).every(({ detailDisplayText }) => detailDisplayText.includes('權威效果流程'))).toBe(true);
+    expect(monsters.filter(({ definitionId }) => ['04', '05', '07', '08', '12', '13'].some((id) => definitionId === `base:monster/monster-${id}`)).every(({ detailDisplayText }) => detailDisplayText.includes('沒有可選卡牌時可以略過'))).toBe(true);
   });
 
   it('shows the enabled adventurer equipment restriction instead of a placeholder', () => {
     expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-02')).toMatchObject({
       shortDisplayText: expect.stringContaining('不能配戴裝備'),
-      detailDisplayText: expect.stringContaining('Legal Commands'),
+      detailDisplayText: expect.stringContaining('不能配戴任何裝備'),
     });
   });
 
   it('shows adventurer 09 as a mandatory equipped passive rather than an optional action', () => {
     expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-09')).toMatchObject({
       shortDisplayText: expect.stringContaining('配戴任一裝備時'),
-      detailDisplayText: expect.stringContaining('持續效果'),
+      detailDisplayText: expect.stringContaining('未配戴裝備時不套用'),
     });
   });
 
@@ -154,7 +176,7 @@ describe('demo presentation package', () => {
   it('shows dynamic profession combat and deck reward boundaries for bosses 06, 09, and 10', () => {
     const expected = new Map([
       ['06', ['完整隊伍每有 1 種職業', '牌庫不足時只取得現存牌']],
-      ['09', ['左手邊玩家完整隊伍', 'active player 改變時會重新計算']],
+      ['09', ['左手邊玩家完整隊伍', '輪到不同玩家行動時會重新計算']],
       ['10', ['戰力 −1', '最低戰力為 0']],
     ]);
     for (const [id, copy] of expected) {

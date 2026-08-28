@@ -83,6 +83,9 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
       <p className="eyebrow">待處理規則互動</p>
       <h2 id="lifecycle-dock-title" ref={internalHeadingRef} tabIndex={-1}>{model.title}</h2>
       <p id="lifecycle-dock-description">{model.description}</p>
+      {model.kind === 'choice' || model.kind === 'counter-consent' || model.kind === 'waiting'
+        ? <p className="lifecycle-availability">你仍可查看卡片；必須先完成這項選擇，才能繼續其他遊戲操作。</p>
+        : null}
     </div>
     {'progress' in model && model.progress ? <ul className="lifecycle-progress" aria-label="回覆進度">
       {model.progress.map((actor) => <li key={actor.actorId} className={`progress-${actor.status}`}>

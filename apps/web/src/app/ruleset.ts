@@ -142,19 +142,19 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
     description: '完整可玩、適合一般測試；使用原創文字內容與既有卡牌效果。',
   },
   'provisional-playtest': {
-    label: '基礎候選數值測試',
-    description: '載入候選起始卡、冒險者、首批十一種物資、魔物與魔王數值。',
-    warning: `內部測試模式：卡牌名稱使用中性代號；${webModeEffectSummary.foundation}，其餘個別效果尚未啟用。`,
+    label: '基礎數值測試',
+    description: '使用精簡的基礎卡牌組合，適合快速檢查核心流程。',
+    warning: '這是測試版本，部分卡牌只使用基礎數值，內容可能調整。',
   },
   'provisional-original-full': {
-    label: '基礎版原作衍生 Provisional 測試',
-    description: '固定一名真人與三名 CPU，載入完整候選 roster、30 張羈絆、12 張協助者與全部已驗證的基礎卡牌效果。',
-    warning: `內部測試模式：能力矩陣目前通過 ${webModeEffectSummary.full}；內容仍屬 provisional，不得視為官方發行版本。`,
+    label: '基礎完整牌組',
+    description: '一名玩家與三名電腦對手，使用完整基礎牌組、羈絆與協助者。',
+    warning: '這是測試版本，卡牌內容與張數可能調整，請勿視為正式卡表。',
   },
   'custom-adventurers-full': {
-    label: '自定義冒險者完整模式',
-    description: '固定一名真人與三名 CPU；沿用完整基礎牌桌，將起始隊伍與冒險者供應替換為自定義角色。',
-    warning: `私人測試模式：已接入 45 張自定義角色資料（40 張公開冒險者與 5 張起始角色）；${webModeEffectSummary.custom}。HTTPS 圖片失敗時顯示 placeholder。`,
+    label: '自訂冒險者完整牌組',
+    description: '一名玩家與三名電腦對手，使用自訂起始角色與冒險者供應。',
+    warning: '這是私人測試版本，部分角色技能仍只套用卡面數值。',
   },
 };
 

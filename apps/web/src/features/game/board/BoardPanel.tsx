@@ -101,7 +101,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
           {targetStatus ? <p className="combat-target-status">{targetStatus}</p> : null}
         </div>;
       })}</div>
-      {emptyMessage ? <p className="supply-empty-state">{emptyMessage}</p> : null}
+      {emptyMessage ? <p className="supply-empty-state" role="status" aria-live="polite">{emptyMessage}</p> : null}
     </section>;
   };
 

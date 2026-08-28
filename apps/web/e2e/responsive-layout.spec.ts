@@ -41,6 +41,43 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
+for (const viewport of [
+  { name: 'minimum phone', width: 320, height: 568, enlarged: false },
+  { name: 'phone', width: 390, height: 844, enlarged: false },
+  { name: 'tablet', width: 768, height: 1024, enlarged: false },
+  { name: '200 percent reflow', width: 720, height: 450, enlarged: true },
+]) {
+  test(`${viewport.name} keeps compact turn controls persistently visible`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await openGame(page);
+    if (viewport.enlarged) await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+
+    const dock = page.getByTestId('turn-control-dock');
+    const dockBox = await dock.boundingBox();
+    const actionBox = await page.getByTestId('end-phase').boundingBox();
+    expect(dockBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect(dockBox?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect((dockBox?.x ?? 0) + (dockBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width + 1);
+    expect((dockBox?.y ?? 0) + (dockBox?.height ?? 0)).toBeLessThanOrEqual(viewport.height + 1);
+    expect(actionBox?.width).toBeGreaterThanOrEqual(44);
+    expect(actionBox?.height).toBeGreaterThanOrEqual(44);
+    await expect(dock.locator('.turn-vitals')).toContainText('購買');
+    await expect(dock.locator('.turn-vitals')).toContainText('戰力');
+    await expectNoDocumentOverflow(page);
+  });
+}
+
+test('compact cards preserve readable names and state labels while hiding secondary copy', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page);
+  const card = page.getByTestId('hand').getByRole('button').first();
+  const nameSize = await card.locator('.game-card__nameplate strong').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const stateSize = await card.locator('.game-card__state-label').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  expect(nameSize).toBeGreaterThanOrEqual(12);
+  expect(stateSize).toBeGreaterThanOrEqual(11.5);
+  await expect(card.locator('.game-card__skill-summary')).toBeHidden();
+});
+
 test('card frame stays rectangular while details use an artwork-only visual pane', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openGame(page);
@@ -102,7 +139,7 @@ test('four-player desktop keeps all three opponent summaries around the central 
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto('/');
   await openNewExpeditionSetup(page);
-  await page.getByRole('radio', { name: /基礎版原作衍生 Provisional 測試/ }).check();
+  await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
 
   await expect(page.locator('.player-seat-cluster')).toHaveCount(3);
@@ -179,6 +216,24 @@ test('card details stay centered and adapt from stacked portrait to split landsc
   expect(landscapeBox?.width).toBeCloseTo(828, 0);
   expect(landscapeBox?.height).toBeCloseTo(374, 0);
   expect((landscapeVisual?.x ?? 0) + (landscapeVisual?.width ?? 0)).toBeLessThanOrEqual((landscapeContent?.x ?? 0) + 1);
+});
+
+test('landscape card details stay inside asymmetric device safe areas', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await openGame(page);
+  await page.addStyleTag({ content: `:root {
+    --card-dialog-safe-top: 0px;
+    --card-dialog-safe-right: 21px;
+    --card-dialog-safe-bottom: 34px;
+    --card-dialog-safe-left: 47px;
+  }` });
+  await page.getByTestId('hand').getByRole('button').first().click();
+
+  const box = await page.getByRole('dialog').boundingBox();
+  expect(box?.x).toBeCloseTo(55, 0);
+  expect(box?.y).toBeCloseTo(8, 0);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(815);
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(348);
 });
 
 test('encounter and tavern areas stay simultaneously visible without tab semantics or game mutations', async ({ page }) => {
