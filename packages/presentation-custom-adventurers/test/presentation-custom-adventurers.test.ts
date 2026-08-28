@@ -49,18 +49,23 @@ describe('custom adventurer presentation', () => {
     }
   });
 
-  it('keeps missing and unknown artwork on the presentation fallback path', () => {
-    expect(customAdventurerPresentationPack.entries.filter(({ portraitAssetKey }) => portraitAssetKey === 'placeholder:custom-adventurer').map(({ definitionId }) => definitionId)).toEqual([
-      'custom:adventurer/melee-08',
-      'custom:adventurer/melee-09',
-      'custom:adventurer/mage-08',
-      'custom:adventurer/ranged-04',
+  it('resolves artwork for every custom adventurer, including replacements that reuse base portraits', () => {
+    expect(customAdventurerPresentationPack.entries.map(({ definitionId, portraitAssetKey }) => [definitionId, portraitAssetKey]).filter(([, portraitAssetKey]) => portraitAssetKey?.startsWith('base:'))).toEqual([
+      ['custom:adventurer/melee-08', 'base:portrait/adventurer-21'],
+      ['custom:adventurer/melee-09', 'base:portrait/adventurer-24'],
+      ['custom:adventurer/mage-08', 'base:portrait/adventurer-29'],
+      ['custom:adventurer/ranged-04', 'base:portrait/adventurer-26'],
     ]);
+    for (const { definitionId, portraitAssetKey } of customAdventurerPresentationPack.entries) {
+      expect(resolveCustomRemoteAsset(portraitAssetKey), definitionId).toBeDefined();
+    }
+  });
+
+  it('keeps unknown artwork on the presentation fallback path', () => {
     expect(resolveCustomRemoteAsset('placeholder:custom-adventurer')).toBeUndefined();
     expect(resolveCustomRemoteAsset('custom:portrait/not-registered')).toBeUndefined();
     const resolver = createPresentationResolver([customAdventurerPresentationPack], { resolveAsset: resolveCustomRemoteAsset });
-    const missing = resolver.resolve('custom:adventurer/melee-08');
-    expect(missing.displayName).toBe('阿爾梅斯');
+    const missing = resolver.resolve('custom:adventurer/not-registered');
     expect(missing.portraitAsset.src).toBeUndefined();
   });
 
