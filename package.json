@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm --filter @guildmaster/web dev",
     "build": "pnpm -r --if-present build",
+    "build:pages": "pnpm --filter @guildmaster/web build:pages",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint . --max-warnings=0",
     "check:architecture": "node scripts/check-architecture.mjs",
@@ -17,6 +18,7 @@
     "test:watch": "pnpm --filter @guildmaster/game-engine test:watch",
     "test:e2e": "pnpm --filter @guildmaster/web test:e2e",
     "test:e2e:offline": "pnpm --filter @guildmaster/web test:e2e:offline",
+    "test:e2e:pages": "pnpm --filter @guildmaster/web test:e2e:pages",
     "test:four-player-expedition": "RUN_FULL_EXPEDITION=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t 'finishes a deterministic four-player provisional expedition'",
     "test:four-player-regression": "RUN_HEADLESS_REGRESSION=1 HEADLESS_SEED_START=10001 HEADLESS_SEED_COUNT=20 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned",
     "test:four-cpu-rc": "RUN_HEADLESS_REGRESSION=1 HEADLESS_CONTENT_MODE=provisional-original-full HEADLESS_SEED_START=10001 HEADLESS_SEED_COUNT=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned && RUN_HEADLESS_REGRESSION=1 HEADLESS_CONTENT_MODE=custom-adventurers-full HEADLESS_SEED_START=20001 HEADLESS_SEED_COUNT=1 pnpm --filter @guildmaster/web exec vitest run src/adapters/local-session/LocalGameSession.test.ts -t assigned",

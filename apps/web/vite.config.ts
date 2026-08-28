@@ -20,6 +20,7 @@ function e2ePresentationAssetPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
+  base: mode === 'github-pages' ? '/Guildmaster-Deckbuilder/' : '/',
   plugins: [react(), tailwindcss(), ...(mode === 'e2e' ? [e2ePresentationAssetPlugin()] : [])],
   publicDir: '../../public-assets',
 }));

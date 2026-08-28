@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
+    "build:pages": "tsc -p tsconfig.json && vite build --mode github-pages",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run src",
     "test:e2e": "playwright test",
-    "test:e2e:offline": "vite build && playwright test -c playwright.offline.config.ts"
+    "test:e2e:offline": "vite build && playwright test -c playwright.offline.config.ts",
+    "test:e2e:pages": "pnpm build:pages && playwright test -c playwright.pages.config.ts"
   },
   "dependencies": {
     "@guildmaster/content-base": "workspace:*",
