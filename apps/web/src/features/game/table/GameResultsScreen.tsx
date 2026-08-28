@@ -12,7 +12,7 @@ type ScoreboardRow = {
 };
 
 type Props = {
-  conditionId: string;
+  conditionIds: readonly string[];
   viewerId: string;
   scoreboard: readonly ScoreboardRow[];
   diagnostics: ReactNode;
@@ -26,12 +26,13 @@ const endConditionCopy: Readonly<Record<string, string>> = {
   'base:all-bosses-defeated': '所有魔王已被討伐',
 };
 
-export function endConditionDisplayText(conditionId: string): string {
-  return endConditionCopy[conditionId] ?? '遠征目標已完成';
+export function endConditionDisplayText(conditionIds: readonly string[]): string {
+  const labels = [...new Set(conditionIds.map((conditionId) => endConditionCopy[conditionId] ?? '遠征目標已完成'))];
+  return labels.length ? labels.join('、') : '遠征目標已完成';
 }
 
 export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameResultsScreen(
-  { conditionId, viewerId, scoreboard, diagnostics, notices, persistence, onRestart },
+  { conditionIds, viewerId, scoreboard, diagnostics, notices, persistence, onRestart },
   ref,
 ) {
   const restartRef = useRef<HTMLButtonElement>(null);
@@ -51,7 +52,7 @@ export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameRes
       <div>
         <p className="eyebrow">晨星公會遠征紀錄</p>
         <h1>遠征結算</h1>
-        <p data-testid="end-condition">結束原因：{endConditionDisplayText(conditionId)}</p>
+        <p data-testid="end-condition">結束原因：{endConditionDisplayText(conditionIds)}</p>
         <p data-testid="viewer-outcome"><strong>你的結果：{viewerOutcome}</strong>{viewer ? `（第 ${viewer.rank} 名）` : ''}</p>
       </div>
       <div className="status">

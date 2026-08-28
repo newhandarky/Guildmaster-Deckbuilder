@@ -27,6 +27,10 @@ test('desktop expedition entry meets automated WCAG A/AA checks and focuses its 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '準備新的遠征' })).toBeFocused();
   await expect(page.getByRole('button', { name: '開始新遠征' })).toBeVisible();
+  const closedConfirmation = page.locator('.expedition-new-confirmation');
+  await expect(closedConfirmation).toBeHidden();
+  await expect(closedConfirmation).toHaveCSS('display', 'none');
+  expect(await closedConfirmation.boundingBox()).toBeNull();
   await expectNoAccessibilityViolations(page);
 });
 

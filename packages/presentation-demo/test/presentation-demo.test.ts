@@ -14,6 +14,25 @@ import {
 } from '../src/index.js';
 
 describe('demo presentation package', () => {
+  it('keeps developer terminology out of every player-facing presentation field', () => {
+    const forbiddenPlayerTerms = /provisional|legal commands|rules module|card-07|json-only|placeholder|manifest|文字版 mvp/i;
+    for (const pack of [
+      demoPresentationPack,
+      provisionalFoundationPresentationPack,
+      provisionalOriginalFullPresentationPack,
+      provisionalHelpersPresentationPack,
+    ]) {
+      for (const entry of pack.entries) {
+        expect([
+          entry.displayName,
+          entry.portraitAltText,
+          entry.shortDisplayText,
+          entry.detailDisplayText,
+        ].join(' '), entry.definitionId).not.toMatch(forbiddenPlayerTerms);
+      }
+    }
+  });
+
   it('covers every full runtime definition with player-facing neutral copy', () => {
     expect(validatePresentationPack(provisionalOriginalFullPresentationPack)).toEqual({ valid: true, errors: [] });
     const covered = new Set([...provisionalFoundationPresentationPack.entries, ...provisionalOriginalFullPresentationPack.entries].map(({ definitionId }) => definitionId));

@@ -218,6 +218,24 @@ test('card details stay centered and adapt from stacked portrait to split landsc
   expect((landscapeVisual?.x ?? 0) + (landscapeVisual?.width ?? 0)).toBeLessThanOrEqual((landscapeContent?.x ?? 0) + 1);
 });
 
+test('landscape card details stay inside asymmetric device safe areas', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await openGame(page);
+  await page.addStyleTag({ content: `:root {
+    --card-dialog-safe-top: 0px;
+    --card-dialog-safe-right: 21px;
+    --card-dialog-safe-bottom: 34px;
+    --card-dialog-safe-left: 47px;
+  }` });
+  await page.getByTestId('hand').getByRole('button').first().click();
+
+  const box = await page.getByRole('dialog').boundingBox();
+  expect(box?.x).toBeCloseTo(55, 0);
+  expect(box?.y).toBeCloseTo(8, 0);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(815);
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(348);
+});
+
 test('encounter and tavern areas stay simultaneously visible without tab semantics or game mutations', async ({ page }) => {
   await openGame(page);
   const snapshotBefore = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));

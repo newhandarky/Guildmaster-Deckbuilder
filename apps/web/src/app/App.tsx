@@ -222,7 +222,7 @@ export function App() {
   if (scoreboard) {
     return <GameResultsScreen
       ref={appRootRef}
-      conditionId={view.endState?.conditionId ?? '遊戲結束'}
+      conditionIds={view.endState?.conditionIds ?? [view.endState?.conditionId ?? '遊戲結束']}
       viewerId={view.viewerId}
       scoreboard={scoreboard}
       diagnostics={replayDiagnostics}

@@ -323,6 +323,7 @@ test('restored entry requires confirmation before replacing the saved expedition
   const saveBeforeConfirmation = await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'));
   await startNew.click();
   const confirmationDialog = page.getByRole('dialog', { name: '確定開啟新遠征？' });
+  const confirmationDialogElement = page.locator('.expedition-new-confirmation');
   const confirm = confirmationDialog.getByRole('button', { name: '確認開啟新遠征' });
   await expect.poll(() => confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
   await expect(entry.getByText(/會被「基礎數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
@@ -345,9 +346,9 @@ test('restored entry requires confirmation before replacing the saved expedition
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(saveBeforeConfirmation);
 
   await startNew.click();
-  await confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.close());
+  await confirmationDialogElement.evaluate((dialog: HTMLDialogElement) => dialog.close());
   await modeRadio.check();
-  await confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.showModal());
+  await confirmationDialogElement.evaluate((dialog: HTMLDialogElement) => dialog.showModal());
   await confirmationDialog.getByRole('button', { name: '確認開啟新遠征' }).click();
   await expect(page.getByText('版本 0')).toBeVisible();
   await expect(page.getByTestId('interaction-hint')).toBeFocused();

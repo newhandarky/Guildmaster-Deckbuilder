@@ -9,8 +9,8 @@ const entry = (definitionId: string, displayName: string, assetKey: string) => (
   displayName,
   portraitAssetKey: assetKey,
   portraitAltText: `${displayName}的原創示範插畫`,
-  shortDisplayText: '原創文字 placeholder。',
-  detailDisplayText: '目前只有中性文字版；核准插畫將由獨立素材 manifest 漸進載入。',
+  shortDisplayText: '原創卡牌文字。',
+  detailDisplayText: '目前使用中性文字與替代插畫；核准插畫會隨素材更新逐步加入。',
 });
 
 /** Demo-specific display data; mechanics remain owned by the Content Pack. */
@@ -410,7 +410,7 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
         definitionId: `base:bond/bond-${id}`,
         displayName: `候選羈絆 ${id}`,
         portraitAssetKey: 'placeholder:provisional-bond',
-        portraitAltText: `候選羈絆 ${id} 的中性羈絆圖像 placeholder`,
+        portraitAltText: `候選羈絆 ${id} 的中性替代插畫`,
         shortDisplayText: condition,
         detailDisplayText: `${condition} 達成條件後，玩家可以選擇完成或暫不完成。`,
       };

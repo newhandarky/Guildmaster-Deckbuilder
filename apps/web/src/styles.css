@@ -14,6 +14,10 @@
   --layer-sticky: 20;
   --layer-overlay: 40;
   --layer-modal: 60;
+  --card-dialog-safe-top: env(safe-area-inset-top);
+  --card-dialog-safe-right: env(safe-area-inset-right);
+  --card-dialog-safe-bottom: env(safe-area-inset-bottom);
+  --card-dialog-safe-left: env(safe-area-inset-left);
 }
 
 * { box-sizing: border-box; }
@@ -220,7 +224,8 @@ button, summary { min-block-size: 2.75rem; touch-action: manipulation; }
 .expedition-entry-actions button { min-width: 8.5rem; }
 .expedition-entry-actions .primary { color: #17120b; background: linear-gradient(135deg, #edca80, #bd8737); box-shadow: 0 .5rem 1.4rem rgb(0 0 0 / .24), inset 0 1px 0 rgb(255 255 255 / .38); }
 .expedition-entry-actions button:not(.primary) { color: #d8cbb5; border: 1px solid rgb(211 165 82 / .24); background: rgb(255 255 255 / .035); }
-.expedition-new-confirmation { position: fixed; inset: 50% auto auto 50%; display: grid; width: min(32rem, calc(100vw - 2rem)); max-width: calc(100vw - 2rem); max-height: calc(100dvh - 2rem); gap: .8rem; margin: 0; padding: 1rem; overflow-y: auto; color: #fff; border: 1px solid rgb(200 107 123 / .7); border-radius: .75rem; background: #4d2330; box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); transform: translate(-50%, -50%); }
+.expedition-new-confirmation { position: fixed; inset: 50% auto auto 50%; width: min(32rem, calc(100vw - 2rem)); max-width: calc(100vw - 2rem); max-height: calc(100dvh - 2rem); gap: .8rem; margin: 0; padding: 1rem; overflow-y: auto; color: #fff; border: 1px solid rgb(200 107 123 / .7); border-radius: .75rem; background: #4d2330; box-shadow: 0 1.4rem 4rem rgb(0 0 0 / .58); transform: translate(-50%, -50%); }
+.expedition-new-confirmation[open] { display: grid; }
 .expedition-new-confirmation::backdrop { background: rgb(5 10 18 / .76); backdrop-filter: blur(3px); }
 .expedition-new-confirmation h3, .expedition-new-confirmation p { margin: 0; }
 .expedition-new-confirmation p { color: #efdbe0; font-size: .82rem; line-height: 1.5; }
@@ -879,7 +884,7 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .status { text-align: left; }
   .expedition-entry-shell { align-content: start; }
   .expedition-summary { grid-template-columns: minmax(0, 1fr); }
-  .card-details-dialog { inset: 50% auto auto 50%; width: calc(100% - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right)); max-width: calc(100% - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right)); height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)); max-height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border: 1px solid #526987; border-radius: 1rem; box-shadow: 0 1rem 3rem rgb(0 0 0 / .45); transform: translate(-50%, -50%); }
+  .card-details-dialog { inset: calc(.5rem + var(--card-dialog-safe-top)) calc(.5rem + var(--card-dialog-safe-right)) calc(.5rem + var(--card-dialog-safe-bottom)) calc(.5rem + var(--card-dialog-safe-left)); width: auto; max-width: none; height: auto; max-height: none; border: 1px solid #526987; border-radius: 1rem; box-shadow: 0 1rem 3rem rgb(0 0 0 / .45); transform: none; }
   .card-details { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(10rem, 42%) minmax(0, 1fr); }
   .card-details-visual { padding: .75rem; border-inline-end: 0; border-bottom: 1px solid #405878; }
   .card-details-header { padding: 1rem; }
@@ -993,15 +998,15 @@ h3 { margin: 0 0 .65rem; font-size: .98rem; }
   .turn-control-dock { grid-template-columns: minmax(0, 1fr) auto; padding: .7rem; }
   .lifecycle-dock { max-height: none; overflow: visible; padding: .7rem; }
   .card-details-dialog {
-    inset: 50% auto auto 50%;
-    width: calc(100% - 1rem);
-    max-width: calc(100% - 1rem);
-    height: calc(100dvh - 1rem);
-    max-height: calc(100dvh - 1rem);
+    inset: calc(.5rem + var(--card-dialog-safe-top)) calc(.5rem + var(--card-dialog-safe-right)) calc(.5rem + var(--card-dialog-safe-bottom)) calc(.5rem + var(--card-dialog-safe-left));
+    width: auto;
+    max-width: none;
+    height: auto;
+    max-height: none;
     border: 1px solid #526987;
     border-radius: .8rem;
     box-shadow: 0 1rem 3rem rgb(0 0 0 / .45);
-    transform: translate(-50%, -50%);
+    transform: none;
   }
   .card-details { grid-template-columns: minmax(14rem, .8fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr); }
   .card-details-visual { padding: .65rem; border-inline-end: 1px solid #405878; border-bottom: 0; }
