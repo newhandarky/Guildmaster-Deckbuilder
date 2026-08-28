@@ -93,7 +93,7 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
   return <section className="player-summary" data-testid="player-summary" aria-label="玩家座位資訊">
     <div className="self-seat">
       <h2>你的公會</h2>
-      <span data-testid="human-card-count">手牌 {self.handCount} · 牌庫 {self.drawPileCount} · 棄牌 {self.discardCount}</span>
+      <span data-testid="human-card-count"><span data-motion-zone="self:hand">手牌 {self.handCount}</span> · <span data-motion-zone="self:draw">牌庫 {self.drawPileCount}</span> · <span data-motion-zone="self:discard">棄牌 {self.discardCount}</span></span>
       <strong data-testid="phase-status">{phase === 'purchase' ? '購買階段' : '準備行動'}</strong>
       <span>道具加成：購買 +{self.turnPurchaseBonus}／戰力 +{self.turnCombatBonus}</span>
       <span>羈絆 {self.completedBondCount}/{self.bondCount}</span>
@@ -102,6 +102,7 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
       const expanded = openId === opponent.id;
       return <div
         className={`player-seat-cluster seat-${index}`}
+        data-motion-zone={`opponent:${opponent.id}:party`}
         data-testid={`player-seat-cluster-${opponent.id}`}
         key={opponent.id}
         onPointerEnter={(event) => {

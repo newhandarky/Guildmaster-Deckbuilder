@@ -49,7 +49,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
   const renderRow = (zoneId: string, title: string, ids: readonly string[], action: 'attack' | 'buy') => {
     const emptyMessage = emptySupplyMessage(zoneId, ids.length);
     const headingId = `${zoneId.replaceAll(':', '-')}-title`;
-    return <section className="board-row board-zone" data-zone-id={zoneId} aria-labelledby={headingId}>
+    return <section className="board-row board-zone" data-zone-id={zoneId} data-motion-zone={zoneId} aria-labelledby={headingId}>
       <h3 id={headingId}>{title}</h3>
       <div className="card-row public-card-grid" aria-label={`${title}卡片`}>{ids.map((id) => {
         const target = availableTargets.get(id);
@@ -109,7 +109,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
     <section className="table-area encounter-area" data-testid="encounter-area" aria-labelledby="encounter-area-title">
       <h2 id="encounter-area-title" className="area-title">公共遭遇區</h2>
       <div className={`encounter-board-grid${helperZone ? ' encounter-board-grid-with-helper' : ''}`}>
-        {helperZone ? <section className="board-row board-zone helper-panel" data-testid="helper-panel" data-zone-id="base:helper-active" aria-labelledby="helper-panel-title">
+        {helperZone ? <section className="board-row board-zone helper-panel" data-testid="helper-panel" data-zone-id="base:helper-active" data-motion-zone="base:helper-active" aria-labelledby="helper-panel-title">
           <h3 id="helper-panel-title">目前協助者</h3>
           {helperCard
             ? <div className="card-row public-card-grid" aria-label="目前協助者卡片"><Card card={helperCard} onInspect={onInspect} /></div>

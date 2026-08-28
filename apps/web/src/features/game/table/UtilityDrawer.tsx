@@ -14,23 +14,71 @@ type Props = {
 
 export function UtilityDrawer({ sections, autoOpenId, suspended = false }: Props) {
   const [openId, setOpenId] = useState<UtilityDrawerSection['id']>();
+  const [closingId, setClosingId] = useState<UtilityDrawerSection['id']>();
   const triggerRefs = useRef(new Map<UtilityDrawerSection['id'], HTMLButtonElement>());
+  const drawerRefs = useRef(new Map<UtilityDrawerSection['id'], HTMLElement>());
+  const closingAnimationRef = useRef<Animation>();
+  const closingGenerationRef = useRef(0);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => {
-    const trigger = openId ? triggerRefs.current.get(openId) : undefined;
+    if (!openId) return;
+    const closing = openId;
+    const generation = ++closingGenerationRef.current;
+    const trigger = triggerRefs.current.get(closing);
     setOpenId(undefined);
-    window.requestAnimationFrame(() => trigger?.focus());
+    const complete = () => {
+      if (generation !== closingGenerationRef.current) return;
+      setClosingId((current) => current === closing ? undefined : current);
+      window.requestAnimationFrame(() => trigger?.focus());
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      complete();
+      return;
+    }
+    setClosingId(closing);
+    window.requestAnimationFrame(() => {
+      const drawer = drawerRefs.current.get(closing);
+      const mobile = window.matchMedia('(max-width: 767px)').matches;
+      const animation = drawer?.animate(
+        [{ transform: 'translate3d(0, 0, 0)', opacity: 1 }, { transform: mobile ? 'translate3d(0, 1.5rem, 0)' : 'translate3d(1.5rem, 0, 0)', opacity: 0 }],
+        { duration: 180, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' },
+      );
+      if (!animation) complete();
+      else {
+        closingAnimationRef.current = animation;
+        const settle = () => {
+          animation.cancel();
+          if (closingAnimationRef.current === animation) closingAnimationRef.current = undefined;
+          complete();
+        };
+        void animation.finished.then(settle, settle);
+      }
+    });
   }, [openId]);
+
+  const open = useCallback((sectionId: UtilityDrawerSection['id']) => {
+    closingGenerationRef.current += 1;
+    closingAnimationRef.current?.cancel();
+    closingAnimationRef.current = undefined;
+    setClosingId(undefined);
+    setOpenId(sectionId);
+  }, []);
 
   useEffect(() => {
     if (suspended) {
+      closingGenerationRef.current += 1;
+      closingAnimationRef.current?.cancel();
+      closingAnimationRef.current = undefined;
       setOpenId(undefined);
+      setClosingId(undefined);
       return;
     }
     if (!autoOpenId) return;
-    setOpenId(autoOpenId);
-  }, [autoOpenId, suspended]);
+    open(autoOpenId);
+  }, [autoOpenId, open, suspended]);
+
+  useEffect(() => () => closingAnimationRef.current?.cancel(), []);
 
   useEffect(() => {
     if (openId) closeButtonRef.current?.focus();
@@ -59,24 +107,31 @@ export function UtilityDrawer({ sections, autoOpenId, suspended = false }: Props
         disabled={suspended}
         aria-expanded={openId === section.id}
         aria-controls={`utility-drawer-${section.id}`}
-        onClick={() => setOpenId((current) => current === section.id ? undefined : section.id)}
+        onClick={() => openId === section.id ? close() : open(section.id)}
       >{section.label}</button>)}
     </div>
     {sections.map((section) => {
       const open = openId === section.id;
+      const closing = closingId === section.id;
+      const visible = open || closing;
       return <aside
+        ref={(node) => {
+          if (node) drawerRefs.current.set(section.id, node);
+          else drawerRefs.current.delete(section.id);
+        }}
         key={section.id}
         id={`utility-drawer-${section.id}`}
         className="utility-drawer"
         data-testid={open ? 'utility-drawer' : undefined}
-        role={open ? 'dialog' : undefined}
-        aria-modal={open ? 'false' : undefined}
+        data-closing={closing ? 'true' : undefined}
+        role={visible ? 'dialog' : undefined}
+        aria-modal={visible ? 'false' : undefined}
         aria-labelledby={`utility-drawer-title-${section.id}`}
-        hidden={!open}
+        hidden={!visible}
       >
         <header className="utility-drawer__header">
           <h2 id={`utility-drawer-title-${section.id}`}>{section.label}</h2>
-          <button ref={open ? closeButtonRef : undefined} type="button" className="icon-button" aria-label={`關閉${section.label}`} onClick={close}>×</button>
+          <button ref={open ? closeButtonRef : undefined} type="button" className="icon-button" aria-label={`關閉${section.label}`} disabled={closing} onClick={close}>×</button>
         </header>
         <div className="utility-drawer__body">{section.content}</div>
       </aside>;

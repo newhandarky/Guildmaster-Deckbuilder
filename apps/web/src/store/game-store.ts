@@ -5,6 +5,8 @@ import { LocalGameSession } from '../adapters/local-session/LocalGameSession.js'
 import { loadLocalGame } from '../adapters/local-session/local-storage.js';
 import { resolveE2EScenario } from '../app/e2e-scenarios.js';
 import { createWebRuleset, defaultWebGameSetup, webGameSetupFromSnapshot, type WebGameSetup } from '../app/ruleset.js';
+import type { PresentationTransitionBatch } from '../ui/motion/types.js';
+import { appendPresentationBatch, createPresentationTransitionBatch } from '../ui/motion/transition-batch.js';
 
 const scenario = resolveE2EScenario(window.location.search);
 const loaded = scenario ? undefined : loadLocalGame();
@@ -29,7 +31,13 @@ function loadCpuPreference(): { paused: boolean; speed: CpuSpeed } {
 const cpuPreference = loadCpuPreference();
 
 export type CpuSpeed = 'slow' | 'normal' | 'fast' | 'instant';
-type GameStore = SessionUpdate & { replayReport: ReplayRunnerReport | undefined; cpuPaused: boolean; cpuSpeed: CpuSpeed; submit: (command: GameCommand) => void; stepCpu: () => void; setCpuPaused: (paused: boolean) => void; setCpuSpeed: (speed: CpuSpeed) => void; restart: (setup?: WebGameSetup) => void; loadCurrentReplay: () => string | undefined; runReplay: (source: string) => void; clearReplayReport: () => void };
+type GameStore = SessionUpdate & { presentationBatches: readonly PresentationTransitionBatch[]; replayReport: ReplayRunnerReport | undefined; cpuPaused: boolean; cpuSpeed: CpuSpeed; submit: (command: GameCommand) => void; stepCpu: () => void; acknowledgePresentationBatch: (batchId: string) => void; setCpuPaused: (paused: boolean) => void; setCpuSpeed: (speed: CpuSpeed) => void; restart: (setup?: WebGameSetup) => void; loadCurrentReplay: () => string | undefined; runReplay: (source: string) => void; clearReplayReport: () => void };
+
+let batchSequence = 0;
+function transitionBatch(before: SessionUpdate['view'], update: SessionUpdate, source: PresentationTransitionBatch['source']): PresentationTransitionBatch | undefined {
+  batchSequence += 1;
+  return createPresentationTransitionBatch(before, update, source, `${update.view.gameId}:${before.revision}:${update.view.revision}:${batchSequence}`);
+}
 
 function current(): SessionUpdate { return session.current(); }
 function settlePersistence(set: (partial: Partial<GameStore>) => void): void {
@@ -37,13 +45,27 @@ function settlePersistence(set: (partial: Partial<GameStore>) => void): void {
   void activeSession.whenPersistenceSettled().then((update) => { if (session === activeSession) set(update); });
 }
 
-export const useGameStore = create<GameStore>((set) => ({
+export const useGameStore = create<GameStore>((set, get) => ({
   ...current(),
+  presentationBatches: [],
   replayReport: undefined,
   cpuPaused: cpuPreference.paused,
   cpuSpeed: cpuPreference.speed,
-  submit: (command) => { set({ ...session.submit(command), replayReport: undefined }); settlePersistence(set); },
-  stepCpu: () => { set({ ...session.stepCpu(), replayReport: undefined }); settlePersistence(set); },
+  submit: (command) => {
+    const before = get().view;
+    const update = session.submit(command);
+    const batch = transitionBatch(before, update, 'human');
+    set({ ...update, replayReport: undefined, presentationBatches: batch ? appendPresentationBatch(get().presentationBatches, batch) : get().presentationBatches });
+    settlePersistence(set);
+  },
+  stepCpu: () => {
+    const before = get().view;
+    const update = session.stepCpu();
+    const batch = transitionBatch(before, update, 'cpu');
+    set({ ...update, replayReport: undefined, presentationBatches: batch ? appendPresentationBatch(get().presentationBatches, batch) : get().presentationBatches });
+    settlePersistence(set);
+  },
+  acknowledgePresentationBatch: (batchId) => set(({ presentationBatches }) => ({ presentationBatches: presentationBatches.filter((batch) => batch.batchId !== batchId) })),
   setCpuPaused: (cpuPaused) => { try { localStorage.setItem(cpuPreferenceKey, JSON.stringify({ paused: cpuPaused, speed: useGameStore.getState().cpuSpeed })); } catch { /* preference persistence is optional */ } set({ cpuPaused }); },
   setCpuSpeed: (cpuSpeed) => { try { localStorage.setItem(cpuPreferenceKey, JSON.stringify({ paused: useGameStore.getState().cpuPaused, speed: cpuSpeed })); } catch { /* preference persistence is optional */ } set({ cpuSpeed }); },
   restart: (setup = gameSetup) => {
@@ -51,7 +73,7 @@ export const useGameStore = create<GameStore>((set) => ({
       gameSetup = structuredClone(setup);
       session = new LocalGameSession(createWebRuleset(undefined, gameSetup));
     }
-    set({ ...session.restart(), replayReport: undefined });
+    set({ ...session.restart(), replayReport: undefined, presentationBatches: [] });
     settlePersistence(set);
   },
   loadCurrentReplay: () => { const exported = session.exportReplayDiagnostic(); if (exported.json) return exported.json; set({ replayReport: { status: 'failed', message: exported.error ?? 'Replay diagnostic 匯出失敗。' } }); return undefined; },

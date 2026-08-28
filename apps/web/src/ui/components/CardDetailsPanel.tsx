@@ -22,7 +22,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
         const lastTrigger = lastTriggerRef.current;
         const instanceId = lastTrigger?.dataset.cardInstanceId;
         const replacement = instanceId
-          ? Array.from(document.querySelectorAll<HTMLButtonElement>('[data-card-instance-id]')).find((element) => element.dataset.cardInstanceId === instanceId)
+          ? Array.from(document.querySelectorAll<HTMLButtonElement>('[data-card-instance-id]')).find((element) => !element.closest('.motion-ghost-layer') && element.dataset.cardInstanceId === instanceId)
           : undefined;
         const focusTarget = lastTrigger?.isConnected ? lastTrigger : replacement ?? getFocusFallback();
         focusTarget?.focus();
@@ -41,15 +41,27 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
     }
   }, [card, onClose, restoreFocus]);
 
-  const close = () => {
+  const close = (immediate = false) => {
     const dialog = dialogRef.current;
-    if (dialog?.open) dialog.close();
-    onClose();
-    restoreFocus();
+    const complete = () => {
+      if (dialog?.open) dialog.close();
+      onClose();
+      restoreFocus();
+    };
+    if (!dialog?.open || immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      complete();
+      return;
+    }
+    const animation = dialog.querySelector<HTMLElement>('.card-details')?.animate(
+      [{ opacity: 1, transform: 'translate3d(0, 0, 0)' }, { opacity: 0, transform: 'translate3d(0, .5rem, 0)' }],
+      { duration: 180, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' },
+    );
+    if (!animation) complete();
+    else void animation.finished.then(complete, complete);
   };
 
   const runAction = (action: CardAction) => {
-    close();
+    close(true);
     onAction(action);
   };
 
@@ -59,7 +71,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
     aria-labelledby="card-details-title"
     onCancel={(event) => {
       event.preventDefault();
-      close();
+      close(true);
     }}
   >
     {card ? <article className="card-details" data-testid="card-details">
@@ -78,7 +90,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
             <p className="card-details-type">{card.cardTypeLabel}</p>
             <h2 id="card-details-title">{card.displayName}</h2>
           </div>
-          <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={close}>×</button>
+          <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={() => close()}>×</button>
         </header>
         <div className="card-details-body">
           <p className="card-details-copy">{card.detailDisplayText}</p>
@@ -100,7 +112,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
           {card.action?.kind === 'action-menu'
             ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
             : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
-          <button type="button" onClick={close}>關閉</button>
+          <button type="button" onClick={() => close()}>關閉</button>
         </footer>
       </div>
     </article> : null}

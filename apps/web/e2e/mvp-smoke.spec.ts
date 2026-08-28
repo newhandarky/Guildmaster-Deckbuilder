@@ -506,7 +506,9 @@ test('counter consent survives reload, hides the counter value, and accepts thro
   await enterGame(page);
   await expect(dock).toContainText('星塵 AI 要求公開');
   await dock.getByRole('button', { name: '同意公開' }).click();
-  await expect(dock).toContainText('ALL_REQUIRED_ACTORS_ACCEPTED');
+  await expect(dock).toContainText('全體已同意');
+  await expect(dock).toContainText('已完成');
+  await expect(dock).not.toContainText('ALL_REQUIRED_ACTORS_ACCEPTED');
   await expect(page.getByText('版本 1')).toBeVisible();
 
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), localSaveKey);
@@ -527,7 +529,8 @@ test('decline confirmation is reversible with Escape and commits only after conf
   await expect(dock.getByRole('button', { name: '不同意', exact: true })).toBeFocused();
   await dock.getByRole('button', { name: '不同意', exact: true }).click();
   await dock.getByRole('button', { name: '確認不同意' }).click();
-  await expect(dock).toContainText('REQUIRED_ACTOR_DECLINED');
+  await expect(dock).toContainText('公開請求未通過');
+  await expect(dock).not.toContainText('REQUIRED_ACTOR_DECLINED');
   await expect(page.getByText('版本 1')).toBeVisible();
 });
 
@@ -540,7 +543,8 @@ test('requester can cancel but cannot answer their own counter consent', async (
   await expect(dock.getByRole('button', { name: '不同意' })).toHaveCount(0);
   await dock.getByRole('button', { name: '取消公開請求' }).click();
   await dock.getByRole('button', { name: '確認取消公開請求' }).click();
-  await expect(dock).toContainText('REQUESTER_CANCELLED');
+  await expect(dock).toContainText('公開請求已取消');
+  await expect(dock).not.toContainText('REQUESTER_CANCELLED');
   await expect(page.getByText('版本 1')).toBeVisible();
 });
 
@@ -554,7 +558,8 @@ test('explicit expiration uses confirmation without a wall-clock timer and remai
   await dock.getByRole('button', { name: '依規則結束等待' }).click();
   await expect(dock).toContainText('不會啟動或等待倒數計時');
   await dock.getByRole('button', { name: '確認依規則結束等待' }).click();
-  await expect(dock).toContainText('REQUEST_EXPIRED');
+  await expect(dock).toContainText('公開請求已結束');
+  await expect(dock).not.toContainText('REQUEST_EXPIRED');
   await expect(dock).toContainText('不使用倒數計時');
   await expect(page.getByText('版本 1')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

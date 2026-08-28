@@ -19,7 +19,7 @@ export function GameHeader({ round, phase, revision, isViewerActive, persistence
       <p className="eyebrow">{contentLabel} · 單機人機對戰</p>
       <h1>晨星公會</h1>
       <p>第 {round} 輪 · {phaseDisplayName(phase)}階段</p>
-      <PhaseProgress phase={phase} />
+      <PhaseProgress key={phase} phase={phase} />
     </div>
     <div className="status">
       <strong>{isViewerActive ? '你的回合' : 'AI 正在行動'}</strong>

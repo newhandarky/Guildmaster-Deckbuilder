@@ -32,6 +32,7 @@ import {
 } from '../ui/cards/card-visual-model.js';
 import { buildLifecycleInteractionModel } from '../ui/lifecycle/lifecycle-interaction-model.js';
 import { useGameStore } from '../store/game-store.js';
+import { usePresentationMotion } from '../ui/motion/use-presentation-motion.js';
 import { lifecycleCopyResolver, presentationResolver } from './presentation.js';
 import { webContentModeOptions, type WebGameSetup } from './ruleset.js';
 
@@ -44,8 +45,8 @@ type CardInspection = {
 
 export function App() {
   const {
-    view, definitions, bondDefinitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport, cpu, cpuPaused, cpuSpeed,
-    submit, stepCpu, setCpuPaused, setCpuSpeed, restart, loadCurrentReplay, runReplay, clearReplayReport,
+    view, definitions, bondDefinitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport, cpu, cpuPaused, cpuSpeed, presentationBatches,
+    submit, stepCpu, acknowledgePresentationBatch, setCpuPaused, setCpuSpeed, restart, loadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
   const [inspection, setInspection] = useState<CardInspection>();
@@ -57,6 +58,9 @@ export function App() {
   const lifecycleHeadingRef = useRef<HTMLHeadingElement>(null);
   const bondSetupHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousCompletableBondCountRef = useRef(0);
+  const commandGateRef = useRef(false);
+  const lastCommandRef = useRef<{ key: string; at: number }>();
+  const { busy: motionBusy, skip: skipMotion } = usePresentationMotion(presentationBatches, view.gameId, cpuSpeed, acknowledgePresentationBatch);
   const cardDefinitions = useMemo(
     () => Object.fromEntries(Object.entries(view.cards).map(([id, card]) => [id, card.definitionId])),
     [view.cards],
@@ -123,6 +127,13 @@ export function App() {
     setInspection(undefined);
   };
   const submitAndClear = (command: GameCommand) => {
+    const now = performance.now();
+    const commandKey = JSON.stringify(command);
+    if (commandGateRef.current || lastCommandRef.current?.key === commandKey && now - lastCommandRef.current.at < 450) return;
+    if (motionBusy || presentationBatches.length > 0) skipMotion();
+    commandGateRef.current = true;
+    lastCommandRef.current = { key: commandKey, at: now };
+    queueMicrotask(() => { commandGateRef.current = false; });
     clearTransientUi();
     submit(command);
   };
@@ -234,6 +245,8 @@ export function App() {
 
   return <GameTableShell
     ref={appRootRef}
+    motionBusy={motionBusy}
+    onSkipMotion={skipMotion}
     header={<GameHeader
       round={view.round}
       phase={view.phase}
@@ -272,7 +285,7 @@ export function App() {
       previewScope={{ gameId: view.gameId, revision: view.revision, actorId: view.viewerId }}
       onInspect={inspectCard}
     />}
-    party={<><PartyPanel
+    party={<PartyPanel
       player={view.self}
       partyLimit={view.partyLimit}
       definitions={definitions}
@@ -282,7 +295,8 @@ export function App() {
       legalEquipCommands={legalEquipCommands}
       onInspect={inspectCard}
       onCommand={submitAndClear}
-    /><BondPanel bonds={view.self.bonds} evaluations={view.bondEvaluations} definitions={displayedBondDefinitions} completableBondIds={completableBondIds} /></>}
+    />}
+    bondPanel={<BondPanel bonds={view.self.bonds} evaluations={view.bondEvaluations} definitions={displayedBondDefinitions} completableBondIds={completableBondIds} />}
     hand={<HandPanel
       cardIds={view.self.hand}
       definitions={definitions}

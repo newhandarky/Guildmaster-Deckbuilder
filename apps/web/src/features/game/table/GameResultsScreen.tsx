@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useRef, type ReactNode } from 'react';
 import type { SessionPersistenceStatus } from '../../../adapters/game-session.js';
 import { SessionPersistenceLabel } from './SessionPersistenceLabel.js';
+import { endConditionDisplayText } from './game-results-copy.js';
 
 type ScoreboardRow = {
   playerId: string;
@@ -20,16 +21,6 @@ type Props = {
   persistence: SessionPersistenceStatus;
   onRestart: () => void;
 };
-
-const endConditionCopy: Readonly<Record<string, string>> = {
-  'base:all-bonds-completed': '所有羈絆已完成',
-  'base:all-bosses-defeated': '所有魔王已被討伐',
-};
-
-export function endConditionDisplayText(conditionIds: readonly string[]): string {
-  const labels = [...new Set(conditionIds.map((conditionId) => endConditionCopy[conditionId] ?? '遠征目標已完成'))];
-  return labels.length ? labels.join('、') : '遠征目標已完成';
-}
 
 export const GameResultsScreen = forwardRef<HTMLElement, Props>(function GameResultsScreen(
   { conditionIds, viewerId, scoreboard, diagnostics, notices, persistence, onRestart },

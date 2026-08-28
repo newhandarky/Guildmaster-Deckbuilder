@@ -173,7 +173,7 @@ export class LocalGameSession {
 
   private submitEnvelope(envelope: CommandEnvelope, automation?: { accepted?: () => void; rejected?: () => void }): SessionUpdate {
     const duplicate = this.processed.get(envelope.commandId);
-    if (duplicate) return duplicate;
+    if (duplicate) return { ...duplicate, committedEvents: [] };
     const priorCursor = this.state.eventLogCursor;
     const pendingRootCommandId = this.pendingRootCommandId(this.state);
     const result = dispatch(this.state, this.ruleset, envelope);
@@ -187,8 +187,8 @@ export class LocalGameSession {
     const committedEvents = this.committedEvents(priorCursor, result.events);
     this.events.push(...committedEvents);
     this.recordAccepted(envelope, committedEvents);
-    const aiError = this.isFourPlayerMode() ? undefined : this.runAi();
-    const update = this.persistAndReturn(committedEvents, aiError);
+    const aiResult = this.isFourPlayerMode() ? { committedEvents: [] as DomainEvent[] } : this.runAi();
+    const update = this.persistAndReturn([...committedEvents, ...aiResult.committedEvents], aiResult.error);
     this.processed.set(envelope.commandId, update);
     return update;
   }
@@ -219,13 +219,14 @@ export class LocalGameSession {
     });
   }
 
-  private runAi(): EngineError | undefined {
+  private runAi(): { error?: EngineError; committedEvents: DomainEvent[] } {
+    const transactionEvents: DomainEvent[] = [];
     for (let turns = 0; turns < 80 && this.state.status !== 'finished' && this.state.status !== 'pendingOfficialRuling'; turns += 1) {
       const actor = this.nextAiActor();
-      if (!actor) return undefined;
+      if (!actor) return { committedEvents: transactionEvents };
       const view = projectPlayerView(this.state, this.ruleset, actor.id);
       const command = simpleAiStrategy.chooseCommand(view, getLegalCommands(this.state, this.ruleset, actor.id));
-      if (!command) return undefined;
+      if (!command) return { committedEvents: transactionEvents };
       const envelope = asEnvelope(view, actor.id, command, this.nextCommandId(actor.id));
       const priorCursor = this.state.eventLogCursor;
       const pendingRootCommandId = this.pendingRootCommandId(this.state);
@@ -233,13 +234,14 @@ export class LocalGameSession {
       this.state = result.state;
       if (result.error) {
         this.rollbackCommandHistoryIfNeeded(pendingRootCommandId);
-        return result.error;
+        return { error: result.error, committedEvents: transactionEvents };
       }
       const committedEvents = this.committedEvents(priorCursor, result.events);
       this.events.push(...committedEvents);
+      transactionEvents.push(...committedEvents);
       this.recordAccepted(envelope, committedEvents);
     }
-    return undefined;
+    return { committedEvents: transactionEvents };
   }
 
   private nextAiActor(): GameState['players'][number] | undefined {
@@ -291,7 +293,7 @@ export class LocalGameSession {
     );
   }
 
-  private makeUpdate(_newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
+  private makeUpdate(newEvents: DomainEvent[], error?: EngineError): SessionUpdate {
     const legalCommands = getLegalCommands(this.state, this.ruleset, this.humanId);
     const nextAiActor = this.nextAiActor();
     const pendingChoice = this.state.effectState.pendingChoice;
@@ -312,6 +314,7 @@ export class LocalGameSession {
       definitions: this.ruleset.registry.definitions,
       bondDefinitions: this.ruleset.registry.bonds,
       events: this.events.slice(-60),
+      committedEvents: structuredClone(newEvents),
       legalCommands,
       actionPreviews: getActionPreviewSet(this.state, this.ruleset, this.humanId),
       entrySummary: {

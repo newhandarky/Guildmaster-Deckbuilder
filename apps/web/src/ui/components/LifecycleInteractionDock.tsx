@@ -98,7 +98,7 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
       ? <p className="lifecycle-diagnostic" role="alert">已停止送出 lifecycle 指令，請保留目前對局並檢查診斷資訊。</p>
       : null}
     {model.kind === 'terminal-result'
-      ? <output className={model.tone === 'success' ? 'lifecycle-result-success' : 'lifecycle-result-neutral'}>{model.reasonCode}</output>
+      ? <output className={model.tone === 'success' ? 'lifecycle-result-success' : 'lifecycle-result-neutral'}>{model.tone === 'success' ? '已完成' : '已結束'}</output>
       : null}
     {confirmation ? <div className="lifecycle-confirmation" role="group" aria-label={`確認${confirmation.label}`}>
       <p>{confirmationCopy(confirmation)}</p>

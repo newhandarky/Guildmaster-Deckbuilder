@@ -536,6 +536,7 @@ describe('LocalGameSession transactional boundary', () => {
   it('reports a versioned JSON-only persistence lifecycle without changing game revisions', () => {
     const ruleset = createRuleset([baseDemoContentPack], [baseRulesModule]);
     const session = new LocalGameSession(ruleset);
+    expect(session.current().committedEvents).toEqual([]);
     expect(session.current().entrySummary).toEqual({
       schemaVersion: 3,
       contentMode: 'demo',
@@ -557,6 +558,8 @@ describe('LocalGameSession transactional boundary', () => {
     });
 
     const saved = session.submit({ type: 'END_PHASE', phase: 'action1' });
+    expect(saved.committedEvents.length).toBeGreaterThan(0);
+    expect(saved.committedEvents.every((event) => saved.events.some(({ eventId }) => eventId === event.eventId))).toBe(true);
     expect(saved.persistence).toEqual({
       schemaVersion: 2,
       state: 'saved',
@@ -566,6 +569,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(JSON.parse(JSON.stringify(saved.persistence))).toEqual(saved.persistence);
 
     const restored = new LocalGameSession(ruleset).current();
+    expect(restored.committedEvents).toEqual([]);
     expect(restored.persistence).toEqual({
       schemaVersion: 2,
       state: 'restored',

@@ -33,7 +33,7 @@ export function HandPanel({
 }: Props) {
   return <section className="hand-panel" data-testid="hand" aria-labelledby="hand-title">
     <h3 id="hand-title">手牌</h3>
-    <div className="card-row hand-card-row" aria-label="手牌卡片">
+    <div className="card-row hand-card-row" data-motion-zone="self:hand" aria-label="手牌卡片">
       {cardIds.map((cardId) => {
         const instance = cards[cardId];
         const definition = definitions[instance?.definitionId ?? ''];

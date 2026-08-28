@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endConditionDisplayText } from './GameResultsScreen.js';
+import { endConditionDisplayText } from './game-results-copy.js';
 
 describe('endConditionDisplayText', () => {
   it('maps known engine IDs to player-facing Traditional Chinese', () => {

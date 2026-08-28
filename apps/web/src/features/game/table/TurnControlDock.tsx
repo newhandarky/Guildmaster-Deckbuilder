@@ -53,7 +53,10 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
       {latestEventStatus}
     </div>
     <div className="controls">
-      <button data-testid="end-phase" className="primary" type="button" disabled={!canEndPhase} aria-describedby="interaction-hint legal-action-summary" onClick={onEndPhase}>
+      <button data-testid="end-phase" className="primary" type="button" disabled={!canEndPhase} aria-describedby="interaction-hint legal-action-summary" onClick={(event) => {
+        if (event.detail > 1) return;
+        onEndPhase();
+      }}>
         結束{phaseName}階段
       </button>
       {equipmentSelected ? <button type="button" onClick={onCancelEquipment}>取消配戴</button> : null}

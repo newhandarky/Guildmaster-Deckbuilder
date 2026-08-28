@@ -165,6 +165,26 @@ test('utility drawer overlays the table, preserves its width, and restores trigg
   await expect(events).toBeFocused();
 });
 
+test('utility drawer close animation cannot hide or steal focus from a newly opened section', async ({ page }) => {
+  await openGame(page);
+  const events = page.getByRole('button', { name: '事件', exact: true });
+  const cpu = page.getByRole('button', { name: 'CPU', exact: true });
+  await events.click();
+  await page.getByRole('button', { name: '關閉事件' }).click();
+  await cpu.click();
+  const drawer = page.getByTestId('utility-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(page.getByRole('button', { name: '關閉CPU' })).toBeFocused();
+  await page.waitForTimeout(220);
+  await expect(drawer).toHaveCSS('opacity', '1');
+  await expect(events).not.toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await cpu.click();
+  await expect(page.getByTestId('utility-drawer')).toBeVisible();
+  await expect(page.getByTestId('utility-drawer')).toHaveCSS('opacity', '1');
+});
+
 test('required lifecycle interaction closes an open utility drawer and stays actionable', async ({ page }) => {
   await openGame(page, '/?e2eScenario=lifecycle-choice');
   await page.getByRole('button', { name: '事件', exact: true }).click();
@@ -173,6 +193,30 @@ test('required lifecycle interaction closes an open utility drawer and stays act
   await expect(page.getByTestId('utility-drawer')).toHaveCount(0);
   await expect(page.getByTestId('lifecycle-dock').getByRole('button', { name: '繼續', exact: true })).toBeVisible();
 });
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 1536, height: 1098 },
+]) {
+  test(`lifecycle choices reflow without leaking internal ids at 200 percent on ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openGame(page, '/?e2eScenario=lifecycle-choice');
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await page.getByTestId('end-phase').evaluate((button: HTMLButtonElement) => button.click());
+
+    const dock = page.getByTestId('lifecycle-dock');
+    await expect(dock).toBeVisible();
+    await expect(dock).not.toContainText('base:');
+    const dockBox = await dock.boundingBox();
+    expect(dockBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((dockBox?.x ?? 0) + (dockBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width + 1);
+    expect(await dock.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    const copy = await dock.locator('.lifecycle-dock-copy').boundingBox();
+    expect(copy?.width ?? 0).toBeGreaterThan(180);
+    for (const button of await dock.getByRole('button').all()) await expect(button).toBeVisible();
+    await expectNoDocumentOverflow(page);
+  });
+}
 
 test('Replay diagnostics are collapsed by default and keyboard operable', async ({ page }) => {
   await openGame(page);

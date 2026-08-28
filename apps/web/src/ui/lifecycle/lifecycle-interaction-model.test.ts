@@ -66,7 +66,7 @@ describe('lifecycle interaction model', () => {
       title: '選擇路線',
       actions: [
         { label: '向前', command: choiceCommands[0] },
-        { label: '選項 2（unknown-route）', command: choiceCommands[1] },
+        { label: '選項 2', command: choiceCommands[1] },
       ],
     });
     expect(choiceCommands).toEqual(source);
@@ -84,7 +84,7 @@ describe('lifecycle interaction model', () => {
       kind: 'choice',
       actions: [
         { label: '起始牌 A', command: choiceCommands[0] },
-        { label: '選項 2（unknown-route）', command: choiceCommands[1] },
+        { label: '選項 2', command: choiceCommands[1] },
       ],
     });
   });
@@ -104,6 +104,13 @@ describe('lifecycle interaction model', () => {
     const skip = { ...rotate, optionId: 'skip' };
     const resolver = createLifecycleCopyResolver({ choices: [{ choiceId: rotate.choiceId, title: '是否更換公會小姐？', optionLabels: { rotate: '更換公會小姐', skip: '略過' } }] });
     expect(buildLifecycleInteractionModel(view(), [rotate, skip], [], resolver)).toMatchObject({ kind: 'choice', title: '是否更換公會小姐？', actions: [{ label: '更換公會小姐' }, { label: '略過' }] });
+  });
+
+  it('maps namespaced semantic options without exposing their internal ids', () => {
+    const command = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'remove', choiceId: 'base:monster/remove', optionId: 'base:monster/remove:skip' };
+    const model = buildLifecycleInteractionModel(view(), [command], [], defaultLifecycleCopyResolver);
+    expect(model).toMatchObject({ kind: 'choice', actions: [{ label: '略過', command }] });
+    expect(JSON.stringify(model)).not.toContain('選項 1（');
   });
 
   it('refuses to guess between multiple choice groups', () => {

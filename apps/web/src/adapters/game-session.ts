@@ -44,6 +44,8 @@ export type SessionUpdate = {
   definitions: Readonly<Record<string, CardDefinition>>;
   bondDefinitions: readonly { id: string; name: string; honor: number; requiredBosses: number }[];
   events: DomainEvent[];
+  /** Events committed by this transaction only. Never persisted as presentation state. */
+  committedEvents: DomainEvent[];
   legalCommands: GameCommand[];
   actionPreviews: ActionPreviewSet;
   entrySummary: SessionEntrySummary;

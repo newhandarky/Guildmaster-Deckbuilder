@@ -51,9 +51,11 @@ export function createLifecycleCopyResolver(catalog: LifecycleCopyCatalog = {}):
         title: copy?.title ?? '請選擇如何繼續',
         description: copy?.description ?? '這項規則必須先完成選擇，對局才會繼續。',
         optionLabel(optionId, index) {
+          const semanticSuffix = optionId.includes(':') ? optionId.slice(optionId.lastIndexOf(':') + 1) : optionId;
           return copy?.optionLabels?.[optionId]
             ?? commonOptionLabels[optionId]
-            ?? `選項 ${index + 1}（${optionId}）`;
+            ?? commonOptionLabels[semanticSuffix]
+            ?? `選項 ${index + 1}`;
         },
       };
     },
