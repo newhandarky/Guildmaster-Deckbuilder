@@ -99,7 +99,7 @@ function arrangePublicRow(
 
 describe('full provisional base rules contribution', () => {
   it('uses a new rules module identity for bond timing and non-starter turn-fact semantics', () => {
-    expect(baseProvisionalOriginalFullRulesModule.version).toBe('2.11.0');
+    expect(baseProvisionalOriginalFullRulesModule.version).toBe('2.12.0');
   });
 
   it('registers the complete provisional base card-rules set and all 30 bond conditions', () => {
@@ -1123,6 +1123,7 @@ describe('full provisional base rules contribution', () => {
     const second = getLegalCommands(restored, activeRuleset, 'p1').find((command) => command.type === 'RESOLVE_EFFECT_CHOICE' && command.optionId === selected[1])!;
     const completed = dispatch(restored, activeRuleset, envelope(restored, 'p1', second, `${definitionId}:second`));
     expect(completed.error).toBeUndefined(); expect(completed.state.players[0]!.turnPurchaseBonus).toBe(5); expect(completed.state.players[0]!.discardPile).toEqual(expect.arrayContaining(selected)); expect(completed.state.enemyTargets[normal.targetId]!.status).toBe('defeated');
+    if ((types as readonly string[]).includes('adventurer')) expect(completed.state.turnFacts?.adventurersRecruited).toBe(2);
 
     const empty = makeState('empty'); arrangePublicRow(empty.state, activeRuleset, rowId, deckId, predicate, false);
     const skipped = dispatch(empty.state, activeRuleset, envelope(empty.state, 'p1', { type: 'ATTACK_TARGET', targetId: empty.targetId }));
@@ -1157,6 +1158,7 @@ describe('full provisional base rules contribution', () => {
     expect(completed.error).toBeUndefined();
     expect(completed.state.players[0]!.discardPile).toContain(selected);
     expect(completed.state.enemyTargets[normal.targetId]!.status).toBe('defeated');
+    if ((types as readonly string[]).includes('adventurer')) expect(completed.state.turnFacts?.adventurersRecruited).toBe(1);
 
     const empty = makeState('empty');
     arrangePublicRow(empty.state, activeRuleset, rowId, deckId, predicate, false);

@@ -66,6 +66,7 @@ export const lifecycleCopyResolver = createLifecycleCopyResolver({
     { choiceId: 'base:monster/monster-11-remove-discard', title: '選擇要移除的棄牌', description: '可以從棄牌堆移除 1 張牌，或略過這個獎勵。' },
     { choiceId: 'base:boss/boss-03-remove-first', title: '選擇第一張要移除的棄牌', description: '可以從棄牌堆移除第一張牌，或略過。' },
     { choiceId: 'base:boss/boss-03-remove-second', title: '選擇第二張要移除的棄牌', description: '可以再從棄牌堆移除一張牌，或略過。' },
+    { choiceId: 'base:helper/helper-11-pass-card', title: '選擇要交給左側玩家的手牌', description: '所選卡牌會離開你的手牌、轉交給左側玩家並改由對方持有；不會移出遊戲。' },
     { choiceId: 'combat-departure:optional-replacements', title: '選擇離場替代效果', description: '選擇本次討伐要套用哪些可選離場替代；列出的冒險者會依其技能處理。' },
     { choiceId: 'custom:adventurer/support-09-rotate-helper', title: '是否更換公會小姐？', description: '可以將目前公會小姐放到牌庫底並換上下一張。', optionLabels: { rotate: '更換公會小姐', skip: '略過' } },
   ],

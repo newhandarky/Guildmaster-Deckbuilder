@@ -48,6 +48,8 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
   const confirmationDialogRef = useRef<HTMLDialogElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const startNewRef = useRef<HTMLButtonElement>(null);
+  const modePointerRef = useRef<{ pointerId: number; startY: number; dragged: boolean }>();
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   useEffect(() => {
     if (entryView === 'menu') menuHeadingRef.current?.focus();
@@ -64,6 +66,28 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
       dialog.close();
     }
   }, [pendingSetup]);
+
+  useEffect(() => {
+    if (entryView !== 'setup') {
+      setShowScrollHint(false);
+      return undefined;
+    }
+    const mobile = window.matchMedia('(max-width: 560px)');
+    const update = () => setShowScrollHint(
+      mobile.matches && document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 32,
+    );
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    mobile.addEventListener('change', update);
+    const frame = window.requestAnimationFrame(update);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      mobile.removeEventListener('change', update);
+    };
+  }, [entryView, helpersEnabled, selectedMode]);
 
   const cancelNewExpedition = () => {
     setPendingSetup(undefined);
@@ -174,7 +198,28 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                 {contentModeEntries.map(([mode, option]) => {
                   const presentation = contentModePresentation[mode];
                   const selected = selectedMode === mode;
-                  return <label key={mode} className={selected ? 'content-mode-option content-mode-option-selected' : 'content-mode-option'} data-tone={presentation.tone}>
+                  return <label
+                    key={mode}
+                    className={selected ? 'content-mode-option content-mode-option-selected' : 'content-mode-option'}
+                    data-tone={presentation.tone}
+                    onPointerDown={(event) => {
+                      if (event.pointerType === 'mouse') return;
+                      modePointerRef.current = { pointerId: event.pointerId, startY: event.clientY, dragged: false };
+                    }}
+                    onPointerMove={(event) => {
+                      const pointer = modePointerRef.current;
+                      if (!pointer || pointer.pointerId !== event.pointerId || pointer.dragged) return;
+                      if (Math.abs(event.clientY - pointer.startY) > 8) pointer.dragged = true;
+                    }}
+                    onPointerCancel={() => { modePointerRef.current = undefined; }}
+                    onClickCapture={(event) => {
+                      if (modePointerRef.current?.dragged) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }
+                      modePointerRef.current = undefined;
+                    }}
+                  >
                     <input
                       type="radio"
                       name="content-mode"
@@ -195,8 +240,11 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                 })}
               </fieldset>
 
+              <p className="content-mode-scroll-hint" data-visible={showScrollHint} aria-hidden="true">向下滑動查看更多</p>
+
               <div className="content-mode-detail" role="status">
                 <div><span className="expedition-section-label">目前選擇</span><strong>{selectedOption.label}</strong></div>
+                <p>{contentModePresentation[selectedMode].description}</p>
                 {selectedOption.warning ? <p className="content-mode-warning">{selectedOption.warning}</p> : null}
               </div>
 

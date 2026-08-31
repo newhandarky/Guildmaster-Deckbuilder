@@ -73,7 +73,10 @@ export function BondCompletionDock({
           const checked = selectedBondIds.includes(bondId);
           return <label key={bondId}>
             <input type="checkbox" checked={checked} onChange={() => onToggle(bondId)} />
-            <span>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</span>
+            <span className="bond-completion-option-copy">
+              <strong>{bond?.name ?? bondId} · {bond?.honor ?? 0} 榮譽</strong>
+              <small>成立條件：{bond?.conditionSummary ?? '本局規則條件已成立'}</small>
+            </span>
           </label>;
         })}
       </div>

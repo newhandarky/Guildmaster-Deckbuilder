@@ -1,4 +1,5 @@
 import type { DomainEvent } from '@guildmaster/game-protocol';
+import { eventDisplayMessage } from './event-copy.js';
 
 type Props = { event?: DomainEvent | undefined };
 
@@ -13,6 +14,6 @@ export function LatestEventStatus({ event }: Props) {
     aria-atomic="true"
   >
     <small>最新</small>
-    <span>{event.message}</span>
+    <span>{eventDisplayMessage(event)}</span>
   </output>;
 }

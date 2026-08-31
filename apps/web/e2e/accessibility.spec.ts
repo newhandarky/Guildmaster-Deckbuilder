@@ -93,6 +93,7 @@ test('pending lifecycle panel meets automated WCAG A/AA checks', async ({ page }
   await page.getByTestId('hand').getByRole('button').first().click();
   await expect(page.locator('.card-details-dialog')).toBeVisible();
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
+  await expect(page.locator('.card-details-dialog')).toBeHidden();
   await expectNoAccessibilityViolations(page);
 });
 

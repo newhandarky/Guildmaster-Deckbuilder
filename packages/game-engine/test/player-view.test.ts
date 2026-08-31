@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectPlayerView, restoreSnapshot, serializeSnapshot } from '../src/index.js';
+import { getPurchasePower, projectPlayerView, restoreSnapshot, serializeSnapshot } from '../src/index.js';
 import { makeGame, testRuleset } from './fixtures.js';
 
 describe('PlayerView visibility boundary', () => {
@@ -18,6 +18,13 @@ describe('PlayerView visibility boundary', () => {
   it('exposes the effective party limit through the rules boundary', () => {
     const state = makeGame();
     expect(projectPlayerView(state, testRuleset, 'p1').partyLimit).toBe(5);
+  });
+
+  it('projects current purchase power and effective combat for the viewer party', () => {
+    const state = makeGame();
+    const view = projectPlayerView(state, testRuleset, 'p1');
+    expect(view.availablePurchasePower).toBe(getPurchasePower(state, testRuleset, 'p1'));
+    expect(view.self.party[0]).toMatchObject({ adventurerId: state.players[0]!.party[0]!.adventurerId, effectiveCombat: expect.any(Number) });
   });
 
   it('projects each private bond evaluation without exposing it to opponents and preserves it through Snapshot', () => {

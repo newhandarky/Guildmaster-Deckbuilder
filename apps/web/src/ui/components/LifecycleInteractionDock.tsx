@@ -116,7 +116,7 @@ export const LifecycleInteractionDock = forwardRef<HTMLHeadingElement, Props>(fu
         type="button"
         disabled={submitting}
         onClick={() => run(action)}
-      >{action.label}</button>)}
+      ><strong>{action.label}</strong>{action.description ? <small>{action.description}</small> : null}</button>)}
     </div> : null}
   </aside>;
 });

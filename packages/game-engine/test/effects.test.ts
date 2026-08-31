@@ -136,6 +136,26 @@ describe('serializable effect primitives', () => {
     expect(state.players[0]!.discardPile).toContain(cardId); expect(state.zones['test:module-zone']!.cardIds).not.toContain(cardId);
   });
 
+  it('records effect-based adventurer recruitment in the active turn ledger', () => {
+    const state = makeGame();
+    const source = state.zones[baseZoneIds.adventurerRow]!;
+    const cardId = source.cardIds[0]!;
+    const before = state.turnFacts!.adventurersRecruited;
+    const effect: EffectDefinition = {
+      schemaVersion: 1,
+      effectId: 'test:effect/recruit-from-public-row',
+      body: {
+        kind: 'move-card', card: { kind: 'card-instance', cardInstanceId: cardId },
+        from: { kind: 'shared-zone', zoneId: baseZoneIds.adventurerRow },
+        to: discard, transferOwnership: true, recordAcquisition: 'adventurer-recruited',
+      },
+    };
+    const result = executeEffect(state, testRuleset, effect, { controllerId: 'p1' }, 'effect-recruitment');
+    expect(result).toMatchObject({ status: 'completed' });
+    expect(state.turnFacts!.adventurersRecruited).toBe(before + 1);
+    expect(result.events.some(({ type }) => type === 'ADVENTURER_RECRUITED_BY_EFFECT')).toBe(true);
+  });
+
   it('draws the available top cards from a shared ordered deck, transfers ownership, and rolls back later failure', () => {
     const state = makeGame();
     const source = state.zones[baseZoneIds.adventurerDeck]!;

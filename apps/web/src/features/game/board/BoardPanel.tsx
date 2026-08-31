@@ -43,7 +43,8 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
     instance: cards[helperCardId],
     definition: helperDefinition,
     presentation: presentation.resolve(helperDefinition?.id ?? cards[helperCardId]?.definitionId ?? ''),
-    interactionState: 'unavailable',
+    interactionState: 'default',
+    contextLabel: '協助者效果為被動規則，不需要點擊發動。',
   }) : undefined;
 
   const renderRow = (zoneId: string, title: string, ids: readonly string[], action: 'attack' | 'buy') => {
@@ -87,6 +88,7 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
           : primaryCommand?.type === 'BUY_CARD'
             ? currentActionPreviews.find((preview) => preview.kind === 'purchase' && preview.command.cardId === primaryCommand.cardId)
             : undefined;
+        const attachmentNames = target?.attachments.map((attachmentId) => displayNameFor(cards, definitions, presentation, attachmentId)) ?? [];
         const card = buildCardVisualModel({
           instance: cards[id],
           definition,
@@ -94,10 +96,27 @@ export function BoardPanel({ zones, targets, definitions, cards, presentation, l
           interactionState: cardAction ? 'legal' : 'unavailable',
           action: cardAction,
           actionPreview,
+          effectiveCombat: target?.effectiveCombat,
+          contextLabel: target
+            ? `${target.effectiveCombat === undefined ? '討伐需求尚未確定，請先完成規則互動；卡面數值僅為印刷戰力' : `目前討伐需求 ${target.effectiveCombat} 戰力`}${attachmentNames.length ? `；公開附件：${attachmentNames.join('、')}` : ''}`
+            : undefined,
         });
         const targetStatus = action === 'attack' ? combatTargetStatusMessage(target) : undefined;
         return <div className="board-card-stack" key={id}>
           <Card card={card} onInspect={onInspect} />
+          {target?.attachments.length ? <div className="enemy-attachment-list" aria-label={`${card.displayName} 的公開附件`}>
+            <strong>附件：</strong>
+            {target.attachments.map((attachmentId) => {
+              const attachmentDefinition = definitionFor(cards, definitions, attachmentId);
+              const attachmentDisplayName = displayNameFor(cards, definitions, presentation, attachmentId);
+              const attachmentCard = { ...buildCardVisualModel({
+                instance: cards[attachmentId],
+                definition: attachmentDefinition,
+                presentation: presentation.resolve(attachmentDefinition?.id ?? cards[attachmentId]?.definitionId ?? ''),
+              }), displayName: attachmentDisplayName };
+              return <button key={attachmentId} type="button" onClick={(event) => onInspect(attachmentCard, event.currentTarget)}>{attachmentDisplayName}（戰力 {attachmentDefinition?.combat ?? 0}）</button>;
+            })}
+          </div> : null}
           {targetStatus ? <p className="combat-target-status">{targetStatus}</p> : null}
         </div>;
       })}</div>

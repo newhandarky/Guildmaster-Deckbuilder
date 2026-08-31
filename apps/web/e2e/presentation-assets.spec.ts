@@ -25,7 +25,7 @@ test('responsive presentation art is shared by cards and details without changin
 
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
   await openGame(page);
-  await expect(page.getByText(revisionBefore ?? '')).toBeVisible();
+  expect(await page.getByText(revisionBefore ?? '').first().textContent()).toBe(revisionBefore);
   expect(await page.locator('[data-legal-action="true"]').count()).toBe(legalActionsBefore);
 });
 

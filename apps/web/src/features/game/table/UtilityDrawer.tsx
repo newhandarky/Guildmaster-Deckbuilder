@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 export type UtilityDrawerSection = {
-  id: 'events' | 'cpu' | 'more';
+  id: 'events' | 'zones' | 'cpu' | 'more';
   label: string;
   content: ReactNode;
 };
@@ -87,7 +87,10 @@ export function UtilityDrawer({ sections, autoOpenId, suspended = false }: Props
   useEffect(() => {
     if (!openId) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      // A card inspection opened from this drawer is a native modal above it.
+      // Do not cancel the browser's Escape -> dialog cancel default action.
+      if (event.key !== 'Escape' || event.defaultPrevented
+        || event.target instanceof Element && event.target.closest('dialog[open]')) return;
       event.preventDefault();
       close();
     };

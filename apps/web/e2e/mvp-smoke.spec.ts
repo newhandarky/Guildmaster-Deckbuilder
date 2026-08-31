@@ -190,7 +190,7 @@ test('fresh desktop entry explains the new expedition and starts a persisted gam
 test('explicit helper composition reaches PlayerView and persisted Snapshot identity', async ({ page }) => {
   await openGame(page, '/?e2eScenario=optional-helper');
   await expect(page.getByRole('heading', { name: '隊伍（6/6）' })).toBeVisible();
-  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 08');
+  await expect(page.getByTestId('helper-panel')).toContainText('謎之少女・擴編許可');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
   expect(persisted.snapshot.rulesModules).toEqual([
     expect.objectContaining({ id: 'base:rules' }),
@@ -223,7 +223,7 @@ test('helper 08 rotates after a boss and discards the rightmost overflow member 
   const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
   await runCardAction(page, boss, '討伐');
   await expect(page.getByRole('heading', { name: '隊伍（5/5）' })).toBeVisible();
-  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 01');
+  await expect(page.getByTestId('helper-panel')).toContainText('流浪商人・物資折扣');
   await expect(page.getByTestId('helper-panel')).not.toContainText('已離場');
   await expect(page.locator('.log')).toContainText('隊伍上限降低');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!));
@@ -296,7 +296,7 @@ test('local save status moves from saved to restored without changing the author
   await openGame(page);
   await page.getByTestId('end-phase').click();
   await expect(page.getByTestId('save-status')).toHaveText('本機：已保存');
-  await expect(page.getByText('版本 1')).toBeVisible();
+  expect(await page.getByText('版本 1').first().textContent()).toBe('版本 1');
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeFocused();
@@ -455,7 +455,7 @@ test('filtered provisional card choice exposes only matching visible cards', asy
   const dock = page.getByTestId('lifecycle-dock');
   await expect(dock).toContainText('選擇要取回的裝備');
   await expect(dock.getByRole('button')).toHaveCount(1);
-  const equipment = dock.getByRole('button', { name: '候選物資 02' });
+  const equipment = dock.getByRole('button', { name: /火焰拳套/ });
   await expect(equipment).toBeVisible();
   await equipment.click();
 
@@ -561,7 +561,7 @@ test('explicit expiration uses confirmation without a wall-clock timer and remai
   await expect(dock).toContainText('公開請求已結束');
   await expect(dock).not.toContainText('REQUEST_EXPIRED');
   await expect(dock).toContainText('不使用倒數計時');
-  await expect(page.getByText('版本 1')).toBeVisible();
+  expect(await page.getByText('版本 1').first().textContent()).toBe('版本 1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 

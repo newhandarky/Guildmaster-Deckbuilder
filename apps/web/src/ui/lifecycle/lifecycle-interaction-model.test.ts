@@ -89,6 +89,16 @@ describe('lifecycle interaction model', () => {
     });
   });
 
+  it('adds visible card effect copy to a lifecycle option without exposing its internal id', () => {
+    const model = buildLifecycleInteractionModel(
+      view(), choiceCommands, [], defaultLifecycleCopyResolver,
+      (_choiceId, optionId) => optionId === 'continue' ? '元素卷軸' : undefined,
+      (_choiceId, optionId) => optionId === 'continue' ? '使用時選擇一種元素效果。' : undefined,
+    );
+    expect(model.kind === 'choice' ? model.actions[0] : undefined).toMatchObject({ label: '元素卷軸', description: '使用時選擇一種元素效果。' });
+    expect(JSON.stringify(model)).not.toContain('base:resource');
+  });
+
   it('labels combat departure subsets with the affected public adventurer', () => {
     const decline = { type: 'RESOLVE_EFFECT_CHOICE' as const, executionId: 'combat-departure:x', choiceId: 'combat-departure:optional-replacements', optionId: 'departure-0' };
     const keep = { ...decline, optionId: 'departure-1' };

@@ -365,6 +365,13 @@ function runNodes(state: GameState, ruleset: Ruleset, nodes: readonly EffectNode
     const to = node.kind === 'move-card' ? node.to : node.kind === 'discard-card' ? { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' } as const : { kind: 'removed' } as const;
     const result = moveCard(state, { cardInstanceId: cardId, from: node.from, to, actorId: context.controllerId, context, registry: ruleset.registry, ...(node.kind === 'move-card' && node.position !== undefined ? { position: node.position } : {}), ...(node.permission !== undefined ? { permission: node.permission } : {}), ...(node.kind === 'move-card' && node.transferOwnership !== undefined ? { transferOwnership: node.transferOwnership } : {}), ...(node.kind === 'remove-from-game' && node.attachedEquipmentDisposition !== undefined ? { attachedEquipmentDisposition: node.attachedEquipmentDisposition } : {}) });
     if (!result.ok) return { status: 'failed', events, error: `${result.code}: ${result.message}` };
+    if (node.kind === 'move-card' && node.recordAcquisition === 'adventurer-recruited') {
+      const recipientId = to.kind === 'player-zone' ? playerId(to.player, context) : undefined;
+      const facts = state.turnFacts;
+      if (!recipientId || !facts || facts.playerId !== recipientId || getDefinition(ruleset.registry, state, cardId).type !== 'adventurer') return { status: 'failed', events, error: 'Recorded recruitment requires an adventurer and the active player turn ledger.' };
+      facts.adventurersRecruited += 1;
+      domainEvent(state, events, 'ADVENTURER_RECRUITED_BY_EFFECT', `${getPlayer(state, recipientId).name} 透過卡牌效果招募了 1 位冒險者。`);
+    }
     if (to.kind === 'player-zone' && to.zone === 'discardPile') {
       const holderId = playerId(to.player, context); const destination = holderId ? discardDestination(state, ruleset, holderId, cardId) : undefined;
       if (holderId && destination && destination.id !== holderId) { const holder = getPlayer(state, holderId); holder.discardPile.splice(holder.discardPile.indexOf(cardId), 1); destination.discardPile.push(cardId); state.cards[cardId]!.ownerId = destination.id; }
