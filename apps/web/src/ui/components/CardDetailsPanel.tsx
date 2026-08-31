@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CardAction, CardVisualViewModel } from '../cards/card-visual-model.js';
 import { CardIcon } from '../cards/card-icons.js';
 import { ActionPreviewPanel } from './ActionPreviewPanel.js';
@@ -15,10 +15,14 @@ type Props = {
 export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onAction }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement>();
+  const closingAnimationRef = useRef<Animation>();
+  const closingGenerationRef = useRef(0);
+  const [infoExpanded, setInfoExpanded] = useState(false);
   if (trigger) lastTriggerRef.current = trigger;
   const restoreFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
+        if (dialogRef.current?.open) return;
         const lastTrigger = lastTriggerRef.current;
         const instanceId = lastTrigger?.dataset.cardInstanceId;
         const replacement = instanceId
@@ -41,9 +45,23 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
     }
   }, [card, onClose, restoreFocus]);
 
+  useEffect(() => { setInfoExpanded(false); }, [card?.definitionId, card?.instanceId]);
+
+  useEffect(() => () => {
+    closingGenerationRef.current += 1;
+    closingAnimationRef.current?.cancel();
+    closingAnimationRef.current = undefined;
+  }, [card]);
+
   const close = (immediate = false) => {
+    const generation = ++closingGenerationRef.current;
+    closingAnimationRef.current?.cancel();
+    closingAnimationRef.current = undefined;
     const dialog = dialogRef.current;
     const complete = () => {
+      if (generation !== closingGenerationRef.current) return;
+      closingAnimationRef.current?.cancel();
+      closingAnimationRef.current = undefined;
       if (dialog?.open) dialog.close();
       onClose();
       restoreFocus();
@@ -57,7 +75,10 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
       { duration: 180, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' },
     );
     if (!animation) complete();
-    else void animation.finished.then(complete, complete);
+    else {
+      closingAnimationRef.current = animation;
+      void animation.finished.then(complete, () => {});
+    }
   };
 
   const runAction = (action: CardAction) => {
@@ -84,7 +105,7 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
           />
         </div>
       </div>
-      <div className="card-details-content">
+      <div className="card-details-content" data-info-expanded={infoExpanded}>
         <header className="card-details-header">
           <div>
             <p className="card-details-type">{card.cardTypeLabel}</p>
@@ -92,28 +113,45 @@ export function CardDetailsPanel({ card, trigger, getFocusFallback, onClose, onA
           </div>
           <button type="button" className="icon-button" aria-label="關閉卡牌詳情" onClick={() => close()}>×</button>
         </header>
-        <div className="card-details-body">
-          <p className="card-details-copy">{card.detailDisplayText}</p>
-          {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
-            {card.detailMetrics.map((metric) => <div key={metric.kind}>
-              <dt><CardIcon iconKey={metric.iconKey} /> {metric.label}</dt>
-              <dd>{metric.value}</dd>
-            </div>)}
-          </dl> : null}
-          {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
-          <div className="card-details-meta">
-            {card.publicTags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
-              {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
-            </div> : null}
-            <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
+        <div className="card-details-sheet">
+          <div className="card-details-summary">
+            <div className="card-details-summary-metrics" aria-label="卡牌重要數值">
+              {card.detailMetrics.map((metric) => <span key={metric.kind}><CardIcon iconKey={metric.iconKey} /> {metric.label} {metric.value}</span>)}
+              {card.publicTags.map((tag) => <span key={tag.label}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
+              {card.detailMetrics.length === 0 && card.publicTags.length === 0 ? <span>{card.stateLabel}</span> : null}
+            </div>
+            <button
+              type="button"
+              className="card-details-info-toggle"
+              aria-expanded={infoExpanded}
+              aria-controls="card-details-information"
+              onClick={() => setInfoExpanded((current) => !current)}
+            >{infoExpanded ? '隱藏資訊' : '顯示資訊'}</button>
           </div>
+          <div id="card-details-information" className="card-details-body">
+            <p className="card-details-copy">{card.detailDisplayText}</p>
+            {card.contextLabel ? <p className="card-details-context">{card.contextLabel}</p> : null}
+            {card.detailMetrics.length > 0 ? <dl className="card-details-metrics">
+              {card.detailMetrics.map((metric) => <div key={metric.kind}>
+                <dt><CardIcon iconKey={metric.iconKey} /> {metric.label}</dt>
+                <dd>{metric.value}</dd>
+              </div>)}
+            </dl> : null}
+            {card.actionPreview ? <ActionPreviewPanel preview={card.actionPreview} /> : null}
+            <div className="card-details-meta">
+              {card.publicTags.length > 0 ? <div className="card-tags" aria-label="卡牌標籤">
+                {card.publicTags.map((tag) => <span key={tag.label} className={tag.tone ? `card-tag-${tag.tone}` : undefined}>{tag.iconKey ? <CardIcon iconKey={tag.iconKey} /> : null}{tag.label}</span>)}
+              </div> : null}
+              <p className={`card-details-state state-${card.interactionState}`}>{card.stateDescription}</p>
+            </div>
+          </div>
+          <footer className="card-details-footer" data-has-action={Boolean(card.action)}>
+            {card.action?.kind === 'action-menu'
+              ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
+              : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
+            <button type="button" className="card-details-desktop-close" onClick={() => close()}>關閉</button>
+          </footer>
         </div>
-        <footer className="card-details-footer">
-          {card.action?.kind === 'action-menu'
-            ? card.action.actions.map((action, index) => <button className={index === 0 ? 'primary' : undefined} key={action.id} type="button" onClick={() => runAction(action)}>{action.label}</button>)
-            : card.action ? <button className="primary" type="button" onClick={() => runAction(card.action!)}>{card.action.label}</button> : null}
-          <button type="button" onClick={() => close()}>關閉</button>
-        </footer>
       </div>
     </article> : null}
   </dialog>;

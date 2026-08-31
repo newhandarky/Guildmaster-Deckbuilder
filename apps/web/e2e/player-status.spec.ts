@@ -1,5 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { openGame, openNewExpeditionSetup } from './game-entry.js';
+
+async function completeBondSetup(page: Page): Promise<void> {
+  const setup = page.getByRole('dialog', { name: '從七張私人羈絆保留五張' });
+  await expect(setup).toBeVisible();
+  const choices = setup.getByRole('checkbox');
+  for (let index = 0; index < 5; index += 1) await choices.nth(index).check();
+  await setup.getByRole('button', { name: '確認保留五張' }).click();
+  await expect(setup).toHaveCount(0);
+}
 
 test('compact opponent summaries expose only authorized counts, combat, and completed bonds', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -7,6 +16,7 @@ test('compact opponent summaries expose only authorized counts, combat, and comp
   await openNewExpeditionSetup(page);
   await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
+  await completeBondSetup(page);
 
   const seats = page.locator('.player-seat');
   await expect(seats).toHaveCount(3);
@@ -58,6 +68,7 @@ test('moving directly between seats switches the public details in four-player m
   await openNewExpeditionSetup(page);
   await page.getByRole('radio', { name: /基礎完整牌組/ }).check();
   await page.getByRole('button', { name: '開始新遠征' }).click();
+  await completeBondSetup(page);
   await expect(page.getByTestId('game-app')).toBeVisible();
 
   const seats = page.locator('.player-seat');
@@ -131,6 +142,7 @@ test.describe('touch fallback', () => {
   test('tap toggles the opponent panel without hover and keeps it inside the viewport', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openGame(page);
+    await page.getByTestId('mobile-battle-status').getByRole('button', { name: '展開戰況' }).tap();
     const seat = page.locator('.player-seat').first();
     const details = page.locator('.opponent-details');
 

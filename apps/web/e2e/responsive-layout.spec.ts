@@ -41,6 +41,54 @@ test('card rows own compact overflow without widening the page', async ({ page }
   await expectNoDocumentOverflow(page);
 });
 
+for (const width of [1280, 1366, 1440]) {
+  test(`a full party uses available desktop width before applying card overlap at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openGame(page, '/?e2eScenario=optional-helper');
+    const slots = await page.getByTestId('guild-area').locator('.party-slot').all();
+    expect(slots.length).toBeGreaterThanOrEqual(5);
+    const boxes = (await Promise.all(slots.slice(0, 5).map((slot) => slot.boundingBox()))).filter((box) => box !== null);
+    for (let index = 1; index < boxes.length; index += 1) {
+      expect(boxes[index]!.x).toBeGreaterThanOrEqual(boxes[index - 1]!.x + boxes[index - 1]!.width - 1);
+    }
+
+    const guild = page.getByTestId('guild-area');
+    const command = guild.getByTestId('table-command-area');
+    const [guildBox, commandBox, partyBox, handBox] = await Promise.all([
+      guild.boundingBox(), command.boundingBox(), guild.locator('.guild-party-column').boundingBox(), guild.locator('.guild-hand-column').boundingBox(),
+    ]);
+    expect(commandBox!.y).toBeGreaterThanOrEqual(Math.max(partyBox!.y + partyBox!.height, handBox!.y + handBox!.height));
+    expect(commandBox!.x).toBeGreaterThanOrEqual(guildBox!.x);
+    expect(commandBox!.x + commandBox!.width).toBeLessThanOrEqual(guildBox!.x + guildBox!.width);
+    expect(commandBox!.y + commandBox!.height).toBeLessThanOrEqual(guildBox!.y + guildBox!.height);
+    await expect(command).toHaveCSS('grid-row-start', 'auto');
+  });
+}
+
+test('party spacing responds to both card count and genuinely constrained width', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openGame(page, '/?e2eScenario=optional-helper');
+  // Isolate the layout rule using a clone, without changing authoritative gameplay state.
+  const measurements = await page.locator('.party-panel').evaluate((source) => {
+    const panel = source.cloneNode(true) as HTMLElement;
+    panel.style.width = '280px';
+    document.body.append(panel);
+    const row = panel.querySelector<HTMLElement>('.party-card-row')!;
+    const gap = () => {
+      const slots = row.querySelectorAll('.party-slot');
+      return slots[1]!.getBoundingClientRect().left - slots[0]!.getBoundingClientRect().right;
+    };
+    const fullPartyGap = gap();
+    Array.from(row.children).slice(2).forEach((slot) => slot.remove());
+    row.style.setProperty('--party-card-count', '2');
+    const twoCardGap = gap();
+    panel.remove();
+    return { fullPartyGap, twoCardGap };
+  });
+  expect(measurements.fullPartyGap).toBeLessThan(0);
+  expect(measurements.twoCardGap).toBeGreaterThanOrEqual(0);
+});
+
 for (const viewport of [
   { name: 'minimum phone', width: 320, height: 568, enlarged: false },
   { name: 'phone', width: 390, height: 844, enlarged: false },
@@ -247,7 +295,9 @@ test('card details stay centered and adapt from stacked portrait to split landsc
   expect(portraitBox?.height).toBeCloseTo(828, 0);
   expect(portraitBox?.x).toBeCloseTo(8, 0);
   expect(portraitBox?.y).toBeCloseTo(8, 0);
-  expect((portraitVisual?.y ?? 0) + (portraitVisual?.height ?? 0)).toBeLessThanOrEqual((portraitContent?.y ?? 0) + 1);
+  expect(portraitVisual?.height).toBeGreaterThan((portraitBox?.height ?? 0) * .9);
+  expect(portraitContent?.height).toBeCloseTo(portraitVisual?.height ?? 0, 0);
+  await expect(dialog.getByRole('button', { name: '顯示資訊' })).toBeVisible();
   await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
 
   await page.setViewportSize({ width: 844, height: 390 });
@@ -296,6 +346,86 @@ test('encounter and tavern areas stay simultaneously visible without tab semanti
   expect(await page.evaluate(() => localStorage.getItem('guildmaster-mvp-save-v2'))).toBe(snapshotBefore);
 });
 
+test('mobile helper and boss share one encounter row without adding a new section', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page, '/?e2eScenario=optional-helper');
+
+  const encounter = page.getByTestId('encounter-area');
+  const helperBox = await page.getByTestId('helper-panel').boundingBox();
+  const bossBox = await page.locator('[data-zone-id="base:boss-row"]').boundingBox();
+  const monsterBox = await page.locator('[data-zone-id="base:monster-row"]').boundingBox();
+  expect(helperBox?.y).toBeCloseTo(bossBox?.y ?? 0, 0);
+  expect(monsterBox?.y ?? 0).toBeGreaterThan((helperBox?.y ?? 0) + (helperBox?.height ?? 0) - 1);
+  await expect(encounter.getByRole('heading', { name: '公共遭遇區' })).toBeVisible();
+  await expect(encounter).not.toContainText('關鍵遭遇');
+  await expectNoDocumentOverflow(page);
+});
+
+test('mobile battle status is compact by default and reveals existing player information on demand', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page);
+
+  const status = page.getByTestId('mobile-battle-status');
+  const toggle = status.getByRole('button', { name: '展開戰況' });
+  const collapsedBox = await status.boundingBox();
+  await expect(page.locator('.game-header')).toBeHidden();
+  await expect(status).toContainText('第 1 輪');
+  await expect(status).toContainText('可用購買力 5');
+  await expect(status.locator('.player-summary')).toBeHidden();
+  expect(collapsedBox?.height ?? 999).toBeLessThan(150);
+
+  await toggle.click();
+  await expect(status.getByRole('button', { name: '收合戰況' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(status.locator('.phase-progress')).toBeVisible();
+  await expect(status.locator('.player-summary')).toBeVisible();
+  expect((await status.boundingBox())?.height ?? 0).toBeGreaterThan(collapsedBox?.height ?? 0);
+});
+
+test('mobile expedition selection scrolls from a card and ignores a drag release as a selection', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.goto('/');
+  await openNewExpeditionSetup(page);
+
+  const panel = page.locator('.expedition-entry-panel');
+  const options = page.locator('.content-mode-option');
+  const target = options.nth(2);
+  await expect(panel).toHaveCSS('overflow-y', 'visible');
+  const before = await page.evaluate(() => window.scrollY);
+  await options.first().hover();
+  await page.mouse.wheel(0, 320);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+  await expect(page.getByRole('radio', { name: /原創示範牌組/ })).toBeChecked();
+
+  await target.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', clientY: 260 });
+  await target.dispatchEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientY: 220 });
+  await target.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientY: 220 });
+  await target.dispatchEvent('click');
+  await expect(page.getByRole('radio', { name: /基礎完整牌組/ })).not.toBeChecked();
+  await target.click();
+  await expect(page.getByRole('radio', { name: /基礎完整牌組/ })).toBeChecked();
+  await expect(page.locator('.content-mode-detail')).toContainText('完整基礎卡牌、羈絆與協助者規則');
+});
+
+test('portrait card details keep artwork primary and expose an accessible information sheet', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page);
+  await page.getByTestId('hand').getByRole('button').first().click();
+
+  const dialog = page.getByRole('dialog');
+  const body = dialog.locator('.card-details-body');
+  const visualBox = await dialog.locator('.card-details-visual').boundingBox();
+  const dialogBox = await dialog.boundingBox();
+  const toggle = dialog.getByRole('button', { name: '顯示資訊' });
+  expect(visualBox?.height).toBeGreaterThan((dialogBox?.height ?? 0) * .9);
+  await expect(body).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(body).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '隱藏資訊' })).toHaveAttribute('aria-expanded', 'true');
+  expect((await dialog.locator('.card-details-sheet').boundingBox())?.height ?? 999).toBeLessThanOrEqual(844 * .42 + 1);
+  await page.getByRole('button', { name: '關閉卡牌詳情' }).click();
+});
+
 for (const viewport of [
   { width: 320, height: 568 },
   { width: 375, height: 667 },
@@ -314,6 +444,12 @@ for (const viewport of [
     const footer = dialog.locator('.card-details-footer');
     const visual = dialog.locator('.card-details-visual');
     const content = dialog.locator('.card-details-content');
+    const artworkFirst = viewport.width < 768 && viewport.height > 500;
+    if (artworkFirst) {
+      await expect(body).toBeHidden();
+      await dialog.getByRole('button', { name: '顯示資訊' }).click();
+      await expect(body).toBeVisible();
+    }
     const [dialogBox, headerBox, bodyBox, footerBox, visualBox, contentBox] = await Promise.all([
       dialog.boundingBox(),
       header.boundingBox(),
@@ -325,14 +461,19 @@ for (const viewport of [
 
     expect(headerBox?.y).toBeGreaterThanOrEqual(dialogBox?.y ?? 0);
     expect((headerBox?.y ?? 0) + (headerBox?.height ?? 0)).toBeLessThanOrEqual((bodyBox?.y ?? 0) + 1);
-    expect((bodyBox?.y ?? 0) + (bodyBox?.height ?? 0)).toBeLessThanOrEqual((footerBox?.y ?? 0) + 1);
-    expect((footerBox?.y ?? 0) + (footerBox?.height ?? 0)).toBeLessThanOrEqual((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0) + 1);
+    if (footerBox) {
+      expect((bodyBox?.y ?? 0) + (bodyBox?.height ?? 0)).toBeLessThanOrEqual(footerBox.y + 1);
+      expect(footerBox.y + footerBox.height).toBeLessThanOrEqual((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0) + 1);
+    } else {
+      expect((bodyBox?.y ?? 0) + (bodyBox?.height ?? 0)).toBeLessThanOrEqual((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0) + 1);
+    }
     await expect(body).toHaveCSS('overflow-y', 'auto');
     await expect(visual.locator('.game-card__nameplate')).toHaveCount(0);
     await expect(visual.locator('.game-card__rules')).toHaveCount(0);
 
-    if (viewport.width < 768 && viewport.height > 500) {
-      expect((visualBox?.y ?? 0) + (visualBox?.height ?? 0)).toBeLessThanOrEqual((contentBox?.y ?? 0) + 1);
+    if (artworkFirst) {
+      expect(visualBox?.height).toBeGreaterThan((dialogBox?.height ?? 0) * .9);
+      expect(contentBox?.height).toBeCloseTo(visualBox?.height ?? 0, 0);
     } else {
       expect((visualBox?.x ?? 0) + (visualBox?.width ?? 0)).toBeLessThanOrEqual((contentBox?.x ?? 0) + 1);
     }

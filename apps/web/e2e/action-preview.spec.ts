@@ -42,7 +42,7 @@ test('desktop card details show current, cost, and remaining purchase power', as
 test('Batch A helper discount, rotation, rest hand size, save, and replay stay authoritative', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openGame(page, '/?e2eScenario=helper-batch-a');
-  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 01');
+  await expect(page.getByTestId('helper-panel')).toContainText('流浪商人・物資折扣');
   await expect(page.locator('body')).not.toContainText('base:helper/helper-07');
   const endPhase = page.getByTestId('end-phase');
   await endPhase.click();
@@ -69,7 +69,7 @@ test('Batch A helper discount, rotation, rest hand size, save, and replay stay a
   const boss = page.locator('[data-zone-id="base:boss-row"] [data-legal-action="true"]').first();
   await boss.click();
   await page.getByTestId('card-details').getByRole('button', { name: '討伐', exact: true }).click();
-  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 07');
+  await expect(page.getByTestId('helper-panel')).toContainText('謎之少女・靈感補充');
   await endPhase.click();
   await endPhase.click();
   await endPhase.click();
@@ -82,7 +82,7 @@ test('Batch A helper discount, rotation, rest hand size, save, and replay stay a
   await page.reload();
   await page.getByRole('button', { name: '繼續最近進度' }).click();
   await expect(page.getByTestId('human-card-count')).toContainText('手牌 6');
-  await expect(page.getByTestId('helper-panel')).toContainText('候選協助者 07');
+  await expect(page.getByTestId('helper-panel')).toContainText('謎之少女・靈感補充');
 });
 
 test('lifecycle-dependent preview withholds unresolved combat values', async ({ page }) => {
@@ -107,6 +107,7 @@ test('combat preview remains scrollable and actionable on the existing narrow la
   await monsterRow.locator('[data-legal-action="true"]').first().click();
 
   const details = page.getByTestId('card-details');
+  await details.getByRole('button', { name: '顯示資訊' }).click();
   await expect(details.getByTestId('action-preview')).toBeVisible();
   await details.getByRole('button', { name: '討伐', exact: true }).scrollIntoViewIfNeeded();
   await expect(details.getByRole('button', { name: '討伐', exact: true })).toBeVisible();

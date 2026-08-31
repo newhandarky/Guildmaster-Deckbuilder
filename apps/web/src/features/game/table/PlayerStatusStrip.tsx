@@ -12,6 +12,8 @@ type SelfSummary = {
   drawPileCount: number;
   discardCount: number;
   turnPurchaseBonus: number;
+  availablePurchasePower: number;
+  turnPurchaseSpent: number;
   turnCombatBonus: number;
   completedBondCount: number;
   bondCount: number;
@@ -95,7 +97,7 @@ export function PlayerStatusStrip({ self, phase, opponents, cards, definitions, 
       <h2>你的公會</h2>
       <span data-testid="human-card-count"><span data-motion-zone="self:hand">手牌 {self.handCount}</span> · <span data-motion-zone="self:draw">牌庫 {self.drawPileCount}</span> · <span data-motion-zone="self:discard">棄牌 {self.discardCount}</span></span>
       <strong data-testid="phase-status">{phase === 'purchase' ? '購買階段' : '準備行動'}</strong>
-      <span>道具加成：購買 +{self.turnPurchaseBonus}／戰力 +{self.turnCombatBonus}</span>
+      <span>可用購買力 {self.availablePurchasePower} · 已花費 {self.turnPurchaseSpent} · 效果加成 +{self.turnPurchaseBonus}／戰力 +{self.turnCombatBonus}</span>
       <span>羈絆 {self.completedBondCount}/{self.bondCount}</span>
     </div>
     {sortedOpponents.map((opponent, index) => {

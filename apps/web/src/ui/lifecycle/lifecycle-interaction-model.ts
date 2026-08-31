@@ -16,6 +16,7 @@ export type LifecycleInteractionAction = {
   id: string;
   kind: 'choice' | 'accept' | 'decline' | 'cancel' | 'expire';
   label: string;
+  description?: string | undefined;
   command: GameCommand;
   emphasis: 'primary' | 'secondary' | 'danger';
   requiresConfirmation: boolean;
@@ -106,6 +107,7 @@ function choiceModel(
   commands: readonly ChoiceCommand[],
   resolver: LifecycleCopyResolver,
   optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
+  optionDescription?: (choiceId: string, optionId: string, index: number) => string | undefined,
 ): LifecycleInteractionModel | undefined {
   if (commands.length === 0) return undefined;
   const groups = new Map<string, ChoiceCommand[]>();
@@ -141,6 +143,7 @@ function choiceModel(
             return cardIds.length ? `套用離場替代：${cardIds.map((cardId) => optionLabel?.(command.choiceId, cardId, index) ?? cardId).join('、')}` : '不套用離場替代';
           })()
         : optionLabel?.(command.choiceId, command.optionId, index) ?? copy.optionLabel(command.optionId, index),
+      ...(optionDescription?.(command.choiceId, command.optionId, index) ? { description: optionDescription(command.choiceId, command.optionId, index) } : {}),
       command,
       emphasis: index === 0 ? 'primary' : 'secondary',
       requiresConfirmation: false,
@@ -252,6 +255,7 @@ export function buildLifecycleInteractionModel(
   events: readonly DomainEvent[],
   resolver: LifecycleCopyResolver,
   optionLabel?: (choiceId: string, optionId: string, index: number) => string | undefined,
+  optionDescription?: (choiceId: string, optionId: string, index: number) => string | undefined,
 ): LifecycleInteractionModel {
   const choiceCommands = legalCommands.filter((command): command is ChoiceCommand => command.type === 'RESOLVE_EFFECT_CHOICE');
   const orderCommands = legalCommands.filter((command): command is OrderCommand => command.type === 'RESOLVE_EFFECT_ORDER');
@@ -281,7 +285,7 @@ export function buildLifecycleInteractionModel(
   }
   if (choiceCommands.length > 0 && orderCommands.length > 0) return { kind: 'waiting', key: 'decision:diagnostic', reason: 'diagnostic', title: '目前互動狀態不一致', description: '一般選擇與牌庫排序不可同時操作；介面已停止送出指令。' };
   return orderModel(view, orderCommands, resolver, optionLabel)
-    ?? choiceModel(view, choiceCommands, resolver, optionLabel)
+    ?? choiceModel(view, choiceCommands, resolver, optionLabel, optionDescription)
     ?? terminalResult(view, events)
     ?? { kind: 'none', key: 'none' };
 }

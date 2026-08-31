@@ -86,6 +86,7 @@ type BuildCardVisualModelInput = {
   contextLabel?: string | undefined;
   action?: CardAction | undefined;
   actionPreview?: ActionPreviewItem | undefined;
+  effectiveCombat?: number | undefined;
 };
 
 const typeTemplates: Readonly<Record<string, CardTemplate>> = {
@@ -138,11 +139,20 @@ function metricsFor(definition: CardDefinition | undefined): CardMetric[] {
   return metrics;
 }
 
+function metricsWithEffectiveCombat(definition: CardDefinition | undefined, effectiveCombat: number | undefined): CardMetric[] {
+  const metrics = metricsFor(definition);
+  if (effectiveCombat === undefined || definition?.combat === undefined) return metrics;
+  return metrics.map((metric) => metric.kind === 'combat'
+    ? { ...metric, label: effectiveCombat === definition.combat ? '戰力' : `目前戰力（印刷 ${definition.combat}）`, value: effectiveCombat }
+    : metric);
+}
+
 function cornersFor(
   definition: CardDefinition | undefined,
   cardTypeLabel: string,
   appearance: CardAppearance,
   profession: ProfessionKey | undefined,
+  effectiveCombat?: number,
 ): CardCornerSlot[] {
   const corners: CardCornerSlot[] = [{
     slot: 'type',
@@ -151,7 +161,13 @@ function cornersFor(
   }];
   if (!definition) return corners;
   if (definition.honor !== undefined) corners.push({ slot: 'honor', iconKey: 'metric-honor-star', value: definition.honor, accessibleLabel: `榮譽 ${definition.honor}` });
-  if (definition.combat !== undefined) corners.push({ slot: 'combat', iconKey: 'metric-combat', value: definition.combat, accessibleLabel: `印刷戰力 ${definition.combat}` });
+  if (definition.combat !== undefined) {
+    const combat = effectiveCombat ?? definition.combat;
+    corners.push({
+      slot: 'combat', iconKey: 'metric-combat', value: combat,
+      accessibleLabel: effectiveCombat === undefined ? `印刷戰力 ${definition.combat}` : combat === definition.combat ? `目前戰力 ${combat}` : `目前戰力 ${combat}，印刷戰力 ${definition.combat}`,
+    });
+  }
   if (definition.cost !== undefined) corners.push({ slot: 'purchase', iconKey: 'metric-purchase', value: definition.cost, accessibleLabel: `費用 ${definition.cost}` });
   else if (definition.purchasePower !== undefined) corners.push({ slot: 'purchase', iconKey: 'metric-purchase', value: definition.purchasePower, accessibleLabel: `購買力 ${definition.purchasePower}` });
   return corners;
@@ -175,10 +191,11 @@ export function buildCardVisualModel({
   contextLabel,
   action,
   actionPreview,
+  effectiveCombat,
 }: BuildCardVisualModelInput): CardVisualViewModel {
   const definitionId = definition?.id ?? instance?.definitionId ?? presentation?.definitionId ?? 'unknown';
   const fallback = fallbackPresentation(definitionId);
-  const detailMetrics = metricsFor(definition);
+  const detailMetrics = metricsWithEffectiveCombat(definition, effectiveCombat);
   const cardType = definition?.type ?? 'unknown';
   const cardTypeLabel = Object.hasOwn(typeLabels, cardType)
     ? typeLabels[cardType] ?? '特殊卡牌'
@@ -199,7 +216,7 @@ export function buildCardVisualModel({
     art: presentation?.portraitAsset ?? fallback.art,
     shortDisplayText: presentation?.shortDisplayText ?? fallback.shortDisplayText,
     detailDisplayText: presentation?.detailDisplayText ?? fallback.detailDisplayText,
-    corners: cornersFor(definition, cardTypeLabel, appearance, profession),
+    corners: cornersFor(definition, cardTypeLabel, appearance, profession, effectiveCombat),
     detailMetrics,
     publicTags: publicTagsFor(definition?.tags ?? []),
     debugTags: [...(definition?.tags ?? [])],

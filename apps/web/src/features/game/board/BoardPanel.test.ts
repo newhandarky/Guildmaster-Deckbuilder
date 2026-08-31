@@ -41,6 +41,7 @@ describe('public table simultaneous layout', () => {
       { id: 'test:monster', name: 'Monster', type: 'monster', copies: 1, combat: 3, source: 'test' },
       { id: 'test:adventurer', name: 'Adventurer', type: 'adventurer', copies: 1, cost: 2, source: 'test' },
       { id: 'test:item', name: 'Item', type: 'item', copies: 1, cost: 1, source: 'test' },
+      { id: 'test:attachment', name: 'Attached Beast', type: 'monster', copies: 1, combat: 2, source: 'test' },
     ];
     const definitions = Object.fromEntries(definitionList.map((definition) => [definition.id, definition]));
     const cards: Record<string, CardInstance> = {
@@ -48,6 +49,7 @@ describe('public table simultaneous layout', () => {
       monster: { id: 'monster', definitionId: 'test:monster' },
       adventurer: { id: 'adventurer', definitionId: 'test:adventurer' },
       item: { id: 'item', definitionId: 'test:item' },
+      attachment: { id: 'attachment', definitionId: 'test:attachment' },
     };
     const zones: Record<string, ZoneState> = {
       'base:boss-row': { zoneId: 'base:boss-row', kind: 'faceUpRow', visibility: 'public', cardIds: ['boss'] },
@@ -56,7 +58,7 @@ describe('public table simultaneous layout', () => {
       'base:item-row': { zoneId: 'base:item-row', kind: 'faceUpRow', visibility: 'public', cardIds: ['item'] },
     };
     const targets: Record<string, PublicEnemyTargetState> = {
-      boss: { targetId: 'target-boss', cardInstanceId: 'boss', kind: 'boss', status: 'available', attachments: [], moduleState: {} },
+      boss: { targetId: 'target-boss', cardInstanceId: 'boss', kind: 'boss', status: 'available', attachments: ['attachment'], effectiveCombat: 7, moduleState: {} },
       monster: { targetId: 'target-monster', cardInstanceId: 'monster', kind: 'monster', status: 'available', attachments: [], moduleState: {} },
     };
     const legalCommands = [
@@ -89,6 +91,12 @@ describe('public table simultaneous layout', () => {
     expect(markup).toContain('動作：討伐');
     expect(markup).toContain('動作：招募');
     expect(markup).toContain('動作：購買');
+    expect(markup).toContain('附件：');
+    expect(markup).toContain('Attached Beast（戰力 2）');
+    expect(markup).toContain('目前戰力 7，印刷戰力 5');
+    expect(markup).toContain('目前討伐需求 7 戰力');
+    expect(markup).toContain('討伐需求尚未確定');
+    expect(markup).not.toContain('目前討伐需求 3 戰力');
   });
 
   it('keeps card-effect activation independent from attacking the selected target', () => {

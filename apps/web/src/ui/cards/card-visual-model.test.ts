@@ -61,6 +61,16 @@ describe('card visual model', () => {
     ]);
   });
 
+  it('shows authoritative effective party combat while retaining the printed value in the label', () => {
+    const model = buildCardVisualModel({ instance, definition: definition(), presentation, effectiveCombat: 5 });
+    expect(model.corners.find(({ slot }) => slot === 'combat')).toEqual({
+      slot: 'combat', iconKey: 'metric-combat', value: 5, accessibleLabel: '目前戰力 5，印刷戰力 3',
+    });
+    expect(model.detailMetrics.find(({ kind }) => kind === 'combat')).toEqual({
+      kind: 'combat', iconKey: 'metric-combat', label: '目前戰力（印刷 3）', value: 5,
+    });
+  });
+
   it.each([
     ['adventurer', 'adventurer'],
     ['boss', 'boss'],

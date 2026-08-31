@@ -101,6 +101,7 @@ const publicRowCardsReward = (choiceId: string, zoneId: string, maximumCost: num
     from: { kind: 'shared-zone', zoneId },
     to: { kind: 'player-zone', player: { kind: 'controller' }, zone: 'discardPile' },
     transferOwnership: true,
+    ...(definitionTypes?.includes('adventurer') ? { recordAcquisition: 'adventurer-recruited' as const } : {}),
   };
   return {
     kind: 'choose-card',
@@ -231,7 +232,7 @@ const baseBondConditionRules: readonly BondConditionRule[] = [
  */
 export const baseProvisionalOriginalFullRulesModule: RulesModule = {
   id: baseProvisionalOriginalFullRulesModuleId,
-  version: '2.11.0',
+  version: '2.12.0',
   config: {
     effectBatch: 'card-rules-a',
     enabledDefinitionIds: [

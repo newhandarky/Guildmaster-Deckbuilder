@@ -77,11 +77,16 @@ export type GameState = {
 
 export type PlayerView = {
   viewerId: string; gameId: string; status: GameStatus; phase: Phase; round: number; revision: number; activePlayerId: string;
-  self: Omit<PlayerState, 'drawPile'> & { drawPileCount: number }; partyLimit: number;
+  self: Omit<PlayerState, 'drawPile' | 'party'> & { drawPileCount: number; party: PublicOpponentPartyMember[] }; partyLimit: number;
+  /** Current spendable total after hand power, effects, modifiers, and purchases already made. */
+  availablePurchasePower?: number;
   bondEvaluations: readonly { bondId: string; satisfied: boolean; appliedRules: readonly { moduleId: string; ruleId: string }[] }[];
   opponents: OpponentPlayerView[];
   bondSetup?: { schemaVersion: 1; offerId: string; currentActorId: string; offeredBondIds?: readonly string[]; completedPlayerIds: readonly string[] };
   decisionPrompt?: PlayerDecisionPrompt;
   pendingCounterConsent?: { requestId: string; policy: import('./counter-consent.js').CounterConsentPolicyRef; counterOwnerId: string; requesterId: string; requiredActorIds: readonly string[]; acceptedActorIds: readonly string[]; status: 'pending' };
-  zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, PublicEnemyTargetState>; cards: Record<string, CardInstance>; endState?: EndState;
+  zones: Record<ZoneId, ZoneState>; enemyTargets: Record<string, PublicEnemyTargetState>; cards: Record<string, CardInstance>;
+  /** Count is public; identities may originate from hidden deck operations. */
+  removedCardCount?: number;
+  endState?: EndState;
 };

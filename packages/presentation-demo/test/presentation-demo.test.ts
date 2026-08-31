@@ -37,10 +37,16 @@ describe('demo presentation package', () => {
     expect(validatePresentationPack(provisionalOriginalFullPresentationPack)).toEqual({ valid: true, errors: [] });
     const covered = new Set([...provisionalFoundationPresentationPack.entries, ...provisionalOriginalFullPresentationPack.entries].map(({ definitionId }) => definitionId));
     expect(covered.size).toBe(120);
-    expect(provisionalOriginalFullPresentationPack.entries.every(({ displayName, detailDisplayText }) => displayName.startsWith('候選') && detailDisplayText.length > 8)).toBe(true);
+    expect(provisionalOriginalFullPresentationPack.entries.every(({ detailDisplayText }) => detailDisplayText.length > 8)).toBe(true);
+    expect(provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:resource/') || definitionId.startsWith('base:bond/')).every(({ displayName }) => !displayName.startsWith('候選'))).toBe(true);
     expect(provisionalOriginalFullPresentationPack.entries.every(({ detailDisplayText }) =>
       !['Provisional', 'Legal Commands', 'Rules Module', 'card-07', 'JSON-only'].some((term) => detailDisplayText.includes(term))
     )).toBe(true);
+    const adventurer22 = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-22');
+    const adventurer25 = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:adventurer/adventurer-25');
+    expect(adventurer22?.detailDisplayText).toContain('魔物或魔王作為附件');
+    expect(adventurer22?.detailDisplayText).not.toContain('自身印刷戰力');
+    expect(adventurer25?.detailDisplayText).toContain('作為裝備配戴給其他冒險者');
   });
   it('provides one non-placeholder condition summary for every full provisional bond', () => {
     const bonds = provisionalOriginalFullPresentationPack.entries.filter(({ definitionId }) => definitionId.startsWith('base:bond/'));
@@ -194,6 +200,14 @@ describe('demo presentation package', () => {
     });
   });
 
+  it('describes boss 04 monster-deck attachment and its removal instead of claiming equipment rewards', () => {
+    const entry = provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-04')!;
+    expect(entry.shortDisplayText).toContain('魔物牌庫');
+    expect(entry.detailDisplayText).toContain('魔物移出遊戲');
+    expect(entry.detailDisplayText).toContain('不會與魔王一同取得');
+    expect(entry.detailDisplayText).not.toContain('物資牌庫');
+  });
+
   it('shows boss 02 participant, equipment, shortage, and reward ordering boundaries', () => {
     expect(provisionalOriginalFullPresentationPack.entries.find(({ definitionId }) => definitionId === 'base:boss/boss-02')).toMatchObject({
       shortDisplayText: expect.stringContaining('依參戰人數補抽'),
@@ -242,17 +256,20 @@ describe('demo presentation package', () => {
     );
   });
 
-  it('provides neutral copy for the five enabled Batch A helpers', () => {
+  it('provides player-facing names and enabled effect copy for all helpers', () => {
     expect(validatePresentationPack(provisionalHelpersPresentationPack)).toEqual({ valid: true, errors: [] });
     expect(provisionalHelpersPresentationPack.entries).toHaveLength(12);
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-08')))
-      .toMatchObject({ displayName: '候選協助者 08', shortDisplayText: expect.stringContaining('隊伍上限 +1') });
+      .toMatchObject({ displayName: '謎之少女・擴編許可', shortDisplayText: expect.stringContaining('隊伍上限 +1') });
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-01'))?.shortDisplayText).toContain('物資費用 −1');
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-06'))?.shortDisplayText).toContain('冒險者費用 −1');
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-07'))?.shortDisplayText).toContain('抽 6 張');
     expect(provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-09'))?.shortDisplayText).toContain('裝備費用 −1');
-    expect(provisionalHelpersPresentationPack.entries.filter(({ definitionId }) => !['01', '06', '07', '08', '09'].some((suffix) => definitionId.endsWith(`helper-${suffix}`)))
-      .every(({ shortDisplayText }) => shortDisplayText.includes('效果尚未啟用'))).toBe(true);
+    const helper02 = provisionalHelpersPresentationPack.entries.find(({ definitionId }) => definitionId.endsWith('helper-02'))!;
+    expect(helper02.shortDisplayText).toContain('1 張道具');
+    expect(helper02.detailDisplayText).toContain('裝備不在選擇範圍內');
+    expect(helper02.detailDisplayText).not.toContain('道具或裝備');
+    expect(provisionalHelpersPresentationPack.entries.every(({ displayName, shortDisplayText }) => !displayName.startsWith('候選') && !shortDisplayText.includes('尚未啟用'))).toBe(true);
   });
 
   it('keeps the manifest JSON-only', () => {

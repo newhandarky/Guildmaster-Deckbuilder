@@ -13,6 +13,21 @@ const entry = (definitionId: string, displayName: string, assetKey: string) => (
   detailDisplayText: '目前使用中性文字與替代插畫；核准插畫會隨素材更新逐步加入。',
 });
 
+const provisionalResourceNames = [
+  '特大治癒藥水', '火焰拳套', '邪魅法典', '驅邪聖水', '維修道具包', '貓咪娃娃', '透視眼鏡',
+  '櫻花果子', '詛咒之槍', '大號梳毛梳', '寫滿的行程表', '真龍斧連枷', '賢者之石', '絲綢緞帶',
+  '魔法除塵撢', '鬼哭太刀', '金色水晶球', '名貴的首飾', '靈能法杖', '充能魔劍', '精緻的耳環',
+  '調教手銬', '元素卷軸', '聖龍護符', '騎士之盾', '專用茶杯', '牛皮紙樂譜', '特製高級紅酒',
+] as const;
+const resourceName = (id: string) => provisionalResourceNames[Number(id) - 1] ?? `物資 ${id}`;
+
+const provisionalBondNames = [
+  '提振士氣', '獨挑大樑', '魅惑時間', '卸甲逃跑', '設備改造', '順手牽羊', '援護射擊', '颯爽登場',
+  '恐懼凝視', '野性狂化', '急速施法', '肉身強化', '全力以赴', '情熱舞蹈', '天馬行空', '精明交涉',
+  '預知未來', '出其不意', '魔力爆發', '勇氣吶喊', '靈光一閃', '精神陶亂', '冒冒失失', '全場鎮壓',
+  '母性感化', '魔性誘惑', '悠悠哉哉', '鎮魂演奏', '神聖祈禱', '洗腦操縱',
+] as const;
+
 /** Demo-specific display data; mechanics remain owned by the Content Pack. */
 export const demoPresentationPack: PresentationPack = {
   manifest: {
@@ -47,96 +62,96 @@ export const demoPresentationPack: PresentationPack = {
 export const provisionalFoundationPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-foundation-neutral',
-    version: '9.1.0',
+    version: '9.2.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
   entries: [
     {
       definitionId: 'base:resource/resource-01',
-      displayName: '候選物資 01',
+      displayName: resourceName('01'),
       portraitAssetKey: 'base:portrait/resource-01',
-      portraitAltText: '候選物資 01 的卡牌插畫',
+      portraitAltText: `${resourceName('01')}的卡牌插畫`,
       shortDisplayText: '使用：從棄牌堆取回 1 張冒險者。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張冒險者加入手牌。',
     },
     {
       definitionId: 'base:resource/resource-02',
-      displayName: '候選物資 02',
+      displayName: resourceName('02'),
       portraitAssetKey: 'base:portrait/resource-02',
-      portraitAltText: '候選物資 02 的卡牌插畫',
+      portraitAltText: `${resourceName('02')}的卡牌插畫`,
       shortDisplayText: '印刷戰力 1；完整四人模式由近戰配戴時額外 +1。',
       detailDisplayText: '火焰拳套的印刷戰力為 1；由近戰冒險者配戴時額外增加戰力 1，合計提供 2。',
     },
     {
       definitionId: 'base:resource/resource-04',
-      displayName: '候選物資 04',
+      displayName: resourceName('04'),
       portraitAssetKey: 'base:portrait/resource-04',
-      portraitAltText: '候選物資 04 的卡牌插畫',
+      portraitAltText: `${resourceName('04')}的卡牌插畫`,
       shortDisplayText: '使用：棄 1 張魔王，然後抽 3 張牌。',
       detailDisplayText: '行動階段使用後，從手牌選擇並棄置 1 張魔王，再抽 3 張牌。',
     },
     {
       definitionId: 'base:resource/resource-05',
-      displayName: '候選物資 05',
+      displayName: resourceName('05'),
       portraitAssetKey: 'base:portrait/resource-05',
-      portraitAltText: '候選物資 05 的卡牌插畫',
+      portraitAltText: `${resourceName('05')}的卡牌插畫`,
       shortDisplayText: '使用：從棄牌堆取回 1 張裝備。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張裝備加入手牌。',
     },
     {
       definitionId: 'base:resource/resource-08',
-      displayName: '候選物資 08',
+      displayName: resourceName('08'),
       portraitAssetKey: 'base:portrait/resource-08',
-      portraitAltText: '候選物資 08 的卡牌插畫',
+      portraitAltText: `${resourceName('08')}的卡牌插畫`,
       shortDisplayText: '使用：抽 2 張牌。',
       detailDisplayText: '行動階段使用後抽 2 張牌。',
     },
     {
       definitionId: 'base:resource/resource-10',
-      displayName: '候選物資 10',
+      displayName: resourceName('10'),
       portraitAssetKey: 'base:portrait/resource-10',
-      portraitAltText: '候選物資 10 的卡牌插畫',
+      portraitAltText: `${resourceName('10')}的卡牌插畫`,
       shortDisplayText: '使用：棄 1 張手牌，然後抽 2 張牌。',
       detailDisplayText: '行動階段使用後選擇並棄置 1 張手牌，再抽 2 張牌。',
     },
     {
       definitionId: 'base:resource/resource-13',
-      displayName: '候選物資 13',
+      displayName: resourceName('13'),
       portraitAssetKey: 'base:portrait/resource-13',
-      portraitAltText: '候選物資 13 的卡牌插畫',
+      portraitAltText: `${resourceName('13')}的卡牌插畫`,
       shortDisplayText: '使用：從棄牌堆取回 1 張非同名道具卡。',
       detailDisplayText: '行動階段使用後，選擇自己棄牌堆中的 1 張道具卡加入手牌；賢者之石不能被選擇。',
     },
     {
       definitionId: 'base:resource/resource-15',
-      displayName: '候選物資 15',
+      displayName: resourceName('15'),
       portraitAssetKey: 'base:portrait/resource-15',
-      portraitAltText: '候選物資 15 的卡牌插畫',
+      portraitAltText: `${resourceName('15')}的卡牌插畫`,
       shortDisplayText: '使用：從手牌、隊伍或棄牌堆移除 1 張牌。',
       detailDisplayText: '行動階段使用後，從自己的手牌、隊伍或棄牌堆選擇 1 張牌移出遊戲；若移除配戴裝備的隊員，其裝備置入棄牌堆。',
     },
     {
       definitionId: 'base:resource/resource-17',
-      displayName: '候選物資 17',
+      displayName: resourceName('17'),
       portraitAssetKey: 'base:portrait/resource-17',
-      portraitAltText: '候選物資 17 的卡牌插畫',
+      portraitAltText: `${resourceName('17')}的卡牌插畫`,
       shortDisplayText: '使用：抽 3 張牌，然後棄 1 張手牌。',
       detailDisplayText: '行動階段使用後抽 3 張牌，再選擇並棄置 1 張手牌。',
     },
     {
       definitionId: 'base:resource/resource-18',
-      displayName: '候選物資 18',
+      displayName: resourceName('18'),
       portraitAssetKey: 'base:portrait/resource-18',
-      portraitAltText: '候選物資 18 的卡牌插畫',
+      portraitAltText: `${resourceName('18')}的卡牌插畫`,
       shortDisplayText: '配戴者仍在隊伍時，每次擊敗目標後抽 1 張牌。',
       detailDisplayText: '本次行動玩家擊敗目標後，若此裝備仍掛在自己的隊伍中，該裝備實例會觸發並抽 1 張牌；多個實例各自觸發。',
     },
     {
       definitionId: 'base:resource/resource-27',
-      displayName: '候選物資 27',
+      displayName: resourceName('27'),
       portraitAssetKey: 'base:portrait/resource-27',
-      portraitAltText: '候選物資 27 的卡牌插畫',
+      portraitAltText: `${resourceName('27')}的卡牌插畫`,
       shortDisplayText: '使用：依目前隊伍中的職業種類數抽牌。',
       detailDisplayText: '行動階段使用後，計算目前隊伍中不同的冒險者職業種類，並抽取等量卡牌；同職業只計算一次。',
     },
@@ -208,7 +223,7 @@ const enabledAdditionalAdventurerCopy: Readonly<Record<string, string>> = {
   '18': '討伐階段結束時，若本回合擊敗目標，獲得購買力 2。',
   '19': '因戰鬥將棄至棄牌堆時，可改為棄置所配戴的敵人卡並留在隊伍。',
   '21': '因戰鬥將棄至棄牌堆時，可改置於自己的牌庫頂。',
-  '22': '可作為裝備配戴給其他冒險者，提供自身印刷戰力。',
+  '22': '可以將魔物或魔王作為附件配戴在此冒險者上；此冒險者增加該附件的印刷購買力作為戰力。',
   '23': '討伐階段開始時擲骰，指定 1 隻魔物；本回合其戰力降低骰值的一半（向上取整）。',
   '25': '可作為裝備配戴給其他冒險者；配戴者戰力 +2。',
   '26': '進入隊伍時，從敵人區取得 1 張魔物作為手牌資源。',
@@ -258,8 +273,8 @@ const enabledBossCopy: Readonly<Record<string, { shortDisplayText: string; detai
     detailDisplayText: '隊伍戰力足夠時，即使手牌沒有冒險者仍可發起討伐。實際參戰的最短隊伍前綴與裝備會先依戰鬥規則離場；接著必須從手牌選擇並棄置 1 張帶有職業的冒險者。零候選時巫妖留在公共區域、沒有任何報酬，已離場隊伍不回復。支付成功後取得 5 點購買力，再分兩次選擇從自己的棄牌堆移除 0、1 或 2 張牌。',
   },
   '04': {
-    shortDisplayText: '進場時配戴 1 張物資牌庫頂卡並增加其戰力；擊敗後購買力 +5 並抽 4 張牌。',
-    detailDisplayText: '進場時從公共物資牌庫取得頂牌作為公開附件，此魔王增加該附件的印刷戰力。擊敗後先取得 5 點購買力，再抽 4 張牌；附件會與魔王一同處理。',
+    shortDisplayText: '進場時配戴 1 張魔物牌庫頂卡並增加其戰力；擊敗後移除附件、購買力 +5 並抽 4 張牌。',
+    detailDisplayText: '進場時從公共魔物牌庫取得頂牌作為公開附件，此魔王增加該魔物的印刷戰力。擊敗後所配戴的魔物移出遊戲，不會與魔王一同取得；獲得 5 點購買力並抽 4 張牌。',
   },
   '05': {
     shortDisplayText: '本次討伐所有裝備失效；擊敗後購買力 +5，並取得商店最多 2 張費用 3 以下的牌。',
@@ -323,7 +338,7 @@ const provisionalBondConditionSummaries = [
   '隊伍中有 3 種以上不同職業的非起始冒險者。',
 ] as const;
 export const provisionalOriginalFullPresentationPack: PresentationPack = {
-  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.8.0', theme: 'neutral-text', locale: 'zh-TW' },
+  manifest: { id: 'presentation:provisional-original-full-neutral', version: '2.9.0', theme: 'neutral-text', locale: 'zh-TW' },
   entries: [
     ...Array.from({ length: 5 }, (_, index) => {
       const id = String(index + 1).padStart(2, '0');
@@ -373,9 +388,9 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
     ...Array.from({ length: 28 }, (_, index) => String(index + 1).padStart(2, '0')).filter((id) => !fullExistingResourceEntries.has(id)).map((id) => {
       const professionEquipment = enabledProfessionEquipmentCopy[id];
       return {
-        ...fullNeutralEntry(`base:resource/resource-${id}`, `候選物資 ${id}`, [2,3,7,9,11,12,14,16,18,19,20,21,24,25].includes(Number(id)) ? 'equipment' : 'item'),
+        ...fullNeutralEntry(`base:resource/resource-${id}`, resourceName(id), [2,3,7,9,11,12,14,16,18,19,20,21,24,25].includes(Number(id)) ? 'equipment' : 'item'),
         portraitAssetKey: `base:portrait/resource-${id}`,
-        portraitAltText: `候選物資 ${id} 的卡牌插畫`,
+        portraitAltText: `${resourceName(id)}的卡牌插畫`,
         ...(id === '12' ? {
           shortDisplayText: '配戴者因戰鬥進入棄牌堆時，此裝備改為移出遊戲。',
           detailDisplayText: '配戴者實際作為討伐參戰者進入棄牌堆時，冒險者照常棄置，但真龍斧連枷會強制永久移出本局；隊伍超額、休息或卡牌效果造成的離場不觸發。',
@@ -408,9 +423,9 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
       const id = String(index + 1).padStart(2, '0');
       return {
         definitionId: `base:bond/bond-${id}`,
-        displayName: `候選羈絆 ${id}`,
+        displayName: provisionalBondNames[index] ?? `羈絆 ${id}`,
         portraitAssetKey: 'placeholder:provisional-bond',
-        portraitAltText: `候選羈絆 ${id} 的中性替代插畫`,
+        portraitAltText: `${provisionalBondNames[index] ?? `羈絆 ${id}`}的中性替代插畫`,
         shortDisplayText: condition,
         detailDisplayText: `${condition} 達成條件後，玩家可以選擇完成或暫不完成。`,
       };
@@ -422,26 +437,33 @@ export const provisionalOriginalFullPresentationPack: PresentationPack = {
 export const provisionalHelpersPresentationPack: PresentationPack = {
   manifest: {
     id: 'presentation:provisional-helpers-neutral',
-    version: '1.1.0',
+    version: '1.2.0',
     theme: 'neutral-text',
     locale: 'zh-TW',
   },
   entries: Array.from({ length: 12 }, (_, index) => {
     const sequence = String(index + 1).padStart(2, '0');
-    const copy = {
-      '01': ['所有物資費用 −1，最低為 0。', '此協助者在場時，所有道具與裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
-      '06': ['所有冒險者費用 −1，最低為 0。', '此協助者在場時，所有冒險者的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
-      '07': ['休息結算時抽 6 張牌。', '此協助者在場時，主動玩家完成休息結算會抽取 6 張牌；離場或未啟用時恢復抽 5 張。'],
-      '08': ['所有玩家隊伍上限 +1；離場時棄置最右側的超額隊員。', '此協助者在場時，所有玩家的隊伍上限為 6。離場後若隊伍超過 5 人，立即將最右側隊員及其裝備放入該玩家棄牌堆。'],
-      '09': ['所有裝備費用 −1，最低為 0。', '此協助者在場時，所有裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
-    }[sequence];
+    const copy = ({
+      '01': ['流浪商人・物資折扣', '所有物資費用 −1，最低為 0。', '此協助者在場時，所有道具與裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+      '02': ['流浪商人・回收服務', '休息時可將棄牌堆 1 張道具放到牌庫頂。', '休息階段結算時，可選擇自己棄牌堆中的 1 張道具放到牌庫頂；裝備不在選擇範圍內，也可以略過。'],
+      '03': ['公會櫃台・敵情整理', '購買階段開始時，翻牌直到非敵人牌；敵人加入手牌，該牌留在牌庫頂。', '購買階段開始時依序揭示自己的牌庫。揭示到的魔物與魔王加入手牌；第一張非敵人牌留在牌庫頂，接著停止。這項效果已啟用。'],
+      '04': ['公會櫃台・討伐獎金', '本回合擊敗敵人後，購買力依隊伍人數增加。', '進入購買階段時，若本回合曾擊敗魔物或魔王，依目前隊伍中的冒險者人數增加購買力。'],
+      '05': ['酒吧老闆・舊友召回', '回合開始時可從棄牌堆取回 1 位冒險者。', '回合開始時可選擇自己棄牌堆中的 1 張冒險者加入手牌；每次觸發只能取回 1 張，也可以略過。'],
+      '06': ['酒吧老闆・招募折扣', '所有冒險者費用 −1，最低為 0。', '此協助者在場時，所有冒險者的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+      '07': ['謎之少女・靈感補充', '休息結算時抽 6 張牌。', '此協助者在場時，主動玩家完成休息結算會抽取 6 張牌；離場或未啟用時恢復抽 5 張。'],
+      '08': ['謎之少女・擴編許可', '所有玩家隊伍上限 +1；離場時棄置最右側的超額隊員。', '此協助者在場時，所有玩家的隊伍上限為 6。離場後若隊伍超過 5 人，立即將最右側隊員及其裝備放入該玩家棄牌堆。'],
+      '09': ['武器舖主・裝備折扣', '所有裝備費用 −1，最低為 0。', '此協助者在場時，所有裝備的購買費用減少 1，最低為 0。卡面仍顯示原費用。'],
+      '10': ['武器舖主・裝備整備', '休息時可將棄牌堆 1 張裝備放到牌庫頂。', '休息階段結算時，可選擇自己棄牌堆中的 1 張裝備放到牌庫頂；也可以略過。'],
+      '11': ['情報商・秘密交易', '回合開始時將 1 張手牌交給左側玩家。', '回合開始時依規則選擇自己手牌中的 1 張牌，交給左手邊玩家；選擇完成前會暫停其他遊戲操作。'],
+      '12': ['情報商・公開徵選', '進場與離場時進行四人公開選牌。', '此協助者進場或離場時，會依四人模式規則從冒險者或物資牌庫建立公開選牌並依序處理。'],
+    } as const)[sequence as '01'];
     return {
       definitionId: `base:helper/helper-${sequence}`,
-      displayName: `候選協助者 ${sequence}`,
+      displayName: copy[0],
       portraitAssetKey: `base:portrait/helper-${sequence}`,
-      portraitAltText: `候選協助者 ${sequence} 的替代插畫`,
-      shortDisplayText: copy?.[0] ?? '目前僅測試揭示與輪替，卡牌效果尚未啟用。',
-      detailDisplayText: copy?.[1] ?? '此協助者會參與本局抽選、揭示、離場與輪替；目前尚未啟用其個別卡牌效果。',
+      portraitAltText: `${copy[0]}的替代插畫`,
+      shortDisplayText: copy[1],
+      detailDisplayText: copy[2],
     };
   }),
 };

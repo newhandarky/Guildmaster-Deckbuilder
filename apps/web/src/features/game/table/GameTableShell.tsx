@@ -11,12 +11,13 @@ type Props = {
   interaction: ReactNode;
   utilities: ReactNode;
   details: ReactNode;
+  motionFeedback?: ReactNode;
   motionBusy?: boolean;
   onSkipMotion?: () => void;
 };
 
 export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableShell(
-  { header, notices, playerStatus, publicTable, party, bondPanel, hand, interaction, utilities, details, motionBusy = false, onSkipMotion },
+  { header, notices, playerStatus, publicTable, party, bondPanel, hand, interaction, utilities, details, motionFeedback, motionBusy = false, onSkipMotion },
   ref,
 ) {
   return <main ref={ref} className="app-shell game-app-shell" data-testid="game-app" data-motion-busy={motionBusy} tabIndex={-1}>
@@ -32,14 +33,15 @@ export const GameTableShell = forwardRef<HTMLElement, Props>(function GameTableS
           <div className="guild-party-column">{party}</div>
           {bondPanel}
           <div className="guild-hand-column">{hand}</div>
+          <div className="table-command-area" data-testid="table-command-area">
+            {interaction}
+            {utilities}
+          </div>
         </div>
-      </div>
-      <div className="table-command-area" data-testid="table-command-area">
-        {interaction}
-        {utilities}
       </div>
     </div>
       {motionBusy && onSkipMotion ? <button className="motion-skip-control" type="button" onClick={onSkipMotion}>略過動畫</button> : null}
       {details}
+      {motionFeedback}
   </main>;
 });

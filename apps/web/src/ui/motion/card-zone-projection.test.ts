@@ -14,7 +14,7 @@ function view(overrides: Partial<PlayerView> = {}): PlayerView {
 describe('public card zone projection', () => {
   it('reports a visible card move without exposing hidden opponent hands', () => {
     const before = view();
-    const after = view({ revision: 2, self: { ...before.self, hand: [], party: [{ adventurerId: 'a' }] } });
+    const after = view({ revision: 2, self: { ...before.self, hand: [], party: [{ adventurerId: 'a', effectiveCombat: 1 }] } });
     expect(diffPublicCardZones(before, after)).toEqual([{ cardId: 'a', from: 'self:hand', to: 'self:party', kind: 'move' }]);
     expect([...projectPublicCardZones(after).keys()]).toEqual(['a']);
   });

@@ -7,6 +7,7 @@ import { BondSetupPanel } from '../features/game/bonds/BondSetupPanel.js';
 import { ExpeditionEntryScreen } from '../features/game/entry/ExpeditionEntryScreen.js';
 import { PartyPanel } from '../features/game/party/PartyPanel.js';
 import { ActivityPanel } from '../features/game/table/ActivityPanel.js';
+import { DiceResultToast } from '../features/game/table/DiceResultToast.js';
 import { CardStateLegend } from '../features/game/table/CardStateLegend.js';
 import { GameHeader } from '../features/game/table/GameHeader.js';
 import { GameNotices } from '../features/game/table/GameNotices.js';
@@ -14,7 +15,9 @@ import { GameResultsScreen } from '../features/game/table/GameResultsScreen.js';
 import { GameTableShell } from '../features/game/table/GameTableShell.js';
 import { HandPanel } from '../features/game/table/HandPanel.js';
 import { LatestEventStatus } from '../features/game/table/LatestEventStatus.js';
+import { MobileBattleStatus } from '../features/game/table/MobileBattleStatus.js';
 import { PlayerStatusStrip } from '../features/game/table/PlayerStatusStrip.js';
+import { PlayerZonesPanel } from '../features/game/table/PlayerZonesPanel.js';
 import { ReplayDiagnosticsPanel } from '../features/game/table/ReplayDiagnosticsPanel.js';
 import { RestartControl } from '../features/game/table/RestartControl.js';
 import { TurnControlDock } from '../features/game/table/TurnControlDock.js';
@@ -82,8 +85,13 @@ export function App() {
   }), [bondDefinitions]);
   const lifecycleInteraction = useMemo(
     () => buildLifecycleInteractionModel(view, legalCommands, events, lifecycleCopyResolver, (_choiceId, optionId) => {
-      const definitionId = view.cards[optionId]?.definitionId;
+      const promptOption = view.decisionPrompt?.options.find(({ id }) => id === optionId);
+      const definitionId = promptOption?.definitionId ?? view.cards[promptOption?.cardId ?? optionId]?.definitionId;
       return definitionId ? presentationResolver.resolve(definitionId).displayName : undefined;
+    }, (_choiceId, optionId) => {
+      const promptOption = view.decisionPrompt?.options.find(({ id }) => id === optionId);
+      const definitionId = promptOption?.definitionId ?? view.cards[promptOption?.cardId ?? optionId]?.definitionId;
+      return definitionId ? presentationResolver.resolve(definitionId).shortDisplayText : undefined;
     }),
     [events, legalCommands, view],
   );
@@ -173,6 +181,7 @@ export function App() {
       return;
     }
     submitAndClear(action.command);
+    focusGame();
   };
   const cpuNeedsStep = cpu.status === 'ready' && Boolean(cpu.nextActorId);
   const replayDiagnostics = <ReplayDiagnosticsPanel
@@ -191,6 +200,7 @@ export function App() {
     : <p>目前模式沒有 CPU 控制工具。</p>;
   const utilitySections: readonly UtilityDrawerSection[] = [
     { id: 'events', label: '事件', content: <ActivityPanel events={events} /> },
+    { id: 'zones', label: '牌區', content: <PlayerZonesPanel drawPileCount={view.self.drawPileCount} discardPile={view.self.discardPile} removedCardCount={view.removedCardCount ?? 0} cards={view.cards} definitions={definitions} presentation={presentationResolver} onInspect={inspectCard} /> },
     { id: 'cpu', label: 'CPU', content: cpuTools },
     { id: 'more', label: '更多', content: <div className="more-tools">
       <TestBuildInfo contentMode={entrySummary.contentMode} helpersEnabled={entrySummary.advancedRules.helpers} />
@@ -199,6 +209,10 @@ export function App() {
       {replayDiagnostics}
     </div> },
   ];
+  const activeActorLabel = view.activePlayerId === view.viewerId
+    ? '你的回合'
+    : `${view.opponents.find(({ id }) => id === view.activePlayerId)?.name ?? 'CPU'}行動中`;
+  const latestDiceEvent = [...events].reverse().find(({ type, payload }) => type === 'DIE_ROLLED' && payload?.kind === 'dice-roll');
 
   useLifecycleFocus(hasEnteredGame && lifecyclePending, lifecycleInteraction.key, lifecycleHeadingRef, interactionFallbackRef);
   useEffect(() => {
@@ -256,24 +270,37 @@ export function App() {
       contentLabel={webContentModeOptions[entrySummary.contentMode].label}
     />}
     notices={<GameNotices status={view.status} persistence={persistence} error={error} />}
-    playerStatus={<PlayerStatusStrip
-      self={{
-        handCount: view.self.hand.length,
-        drawPileCount: view.self.drawPileCount,
-        discardCount: view.self.discardPile.length,
-        turnPurchaseBonus: view.self.turnPurchaseBonus,
-        turnCombatBonus: view.self.turnCombatBonus,
-        completedBondCount: view.self.bonds.filter(({ completed }) => completed).length,
-        bondCount: view.self.bonds.length,
-      }}
+    playerStatus={<MobileBattleStatus
+      gameId={view.gameId}
+      round={view.round}
       phase={view.phase}
-      opponents={view.opponents}
-      cards={view.cards}
-      definitions={definitions}
-      presentation={presentationResolver}
-      bondDefinitions={displayedBondDefinitions}
-      suspendDetails={lifecyclePending}
-    />}
+      activeActorLabel={activeActorLabel}
+      purchaseBonus={view.self.turnPurchaseBonus}
+      availablePurchasePower={view.availablePurchasePower ?? 0}
+      combatBonus={view.self.turnCombatBonus}
+      persistence={persistence}
+    >
+      <PlayerStatusStrip
+        self={{
+          handCount: view.self.hand.length,
+          drawPileCount: view.self.drawPileCount,
+          discardCount: view.self.discardPile.length,
+          turnPurchaseBonus: view.self.turnPurchaseBonus,
+          availablePurchasePower: view.availablePurchasePower ?? 0,
+          turnPurchaseSpent: view.self.turnPurchaseSpent,
+          turnCombatBonus: view.self.turnCombatBonus,
+          completedBondCount: view.self.bonds.filter(({ completed }) => completed).length,
+          bondCount: view.self.bonds.length,
+        }}
+        phase={view.phase}
+        opponents={view.opponents}
+        cards={view.cards}
+        definitions={definitions}
+        presentation={presentationResolver}
+        bondDefinitions={displayedBondDefinitions}
+        suspendDetails={lifecyclePending}
+      />
+    </MobileBattleStatus>}
     publicTable={<BoardPanel
       zones={view.zones}
       targets={view.enemyTargets}
@@ -347,6 +374,8 @@ export function App() {
         canEndPhase={Boolean(endPhaseCommand)}
         equipmentSelected={Boolean(equipmentCardId)}
         purchaseBonus={view.self.turnPurchaseBonus}
+        availablePurchasePower={view.availablePurchasePower ?? 0}
+        purchasePowerSpent={view.self.turnPurchaseSpent}
         combatBonus={view.self.turnCombatBonus}
         latestEventStatus={<LatestEventStatus event={events.at(-1)} />}
         onEndPhase={() => {
@@ -365,5 +394,6 @@ export function App() {
       onClose={() => setInspection(undefined)}
       onAction={runCardAction}
     />}
+    motionFeedback={<DiceResultToast key={view.gameId} event={latestDiceEvent} />}
   />;
 }

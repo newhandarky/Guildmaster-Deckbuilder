@@ -7,6 +7,8 @@ type Props = {
   canEndPhase: boolean;
   equipmentSelected: boolean;
   purchaseBonus: number;
+  availablePurchasePower: number;
+  purchasePowerSpent: number;
   combatBonus: number;
   latestEventStatus?: ReactNode;
   onEndPhase: () => void;
@@ -21,6 +23,8 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
     canEndPhase,
     equipmentSelected,
     purchaseBonus,
+    availablePurchasePower,
+    purchasePowerSpent,
     combatBonus,
     latestEventStatus,
     onEndPhase,
@@ -35,7 +39,9 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
   >
     <div className="turn-vitals" aria-label="當前階段與數值">
       <strong>{phaseName}階段</strong>
-      <span>購買 +{purchaseBonus}</span>
+      <span data-testid="available-purchase-power">可用購買力 {availablePurchasePower}</span>
+      {purchaseBonus > 0 ? <span>效果加成 +{purchaseBonus}</span> : null}
+      {purchasePowerSpent > 0 ? <span>本回合已花費 {purchasePowerSpent}</span> : null}
       <span>戰力 +{combatBonus}</span>
     </div>
     <div className="turn-control-copy">
@@ -50,6 +56,7 @@ export const TurnControlDock = forwardRef<HTMLParagraphElement, Props>(function 
         tabIndex={-1}
       >{interactionHint}</p>
       <p id="legal-action-summary" className="legal-action-summary" data-testid="legal-action-summary">{actionSummary}</p>
+      {phaseName === '購買' ? <p className="purchase-power-rule-note">提供購買力的手牌會保留到休息階段；購買後會從上方的可用購買力扣除。</p> : null}
       {latestEventStatus}
     </div>
     <div className="controls">

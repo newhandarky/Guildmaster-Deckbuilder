@@ -49,7 +49,13 @@ export function HandPanel({
             exactCommand,
           )
           : undefined;
-        const attachmentAction = equipmentSelectionAction(cardId, equipmentCommands);
+        const rawAttachmentAction = equipmentSelectionAction(cardId, equipmentCommands);
+        const attachmentAction = rawAttachmentAction ? {
+          ...rawAttachmentAction,
+          label: definition?.type === 'monster' || definition?.type === 'boss'
+            ? '配戴給能收服敵人的隊員'
+            : definition?.type === 'adventurer' ? '作為裝備配戴' : rawAttachmentAction.label,
+        } : undefined;
         const action = cardActionMenu(`actions:${cardId}`, [
           ...(directAction ? [directAction] : []),
           ...(attachmentAction ? [attachmentAction] : []),
