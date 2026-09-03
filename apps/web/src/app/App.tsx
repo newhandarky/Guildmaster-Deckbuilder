@@ -49,7 +49,7 @@ type CardInspection = {
 export function App() {
   const {
     view, definitions, bondDefinitions, events, legalCommands, actionPreviews, entrySummary, persistence, error, scoreboard, replayReport, cpu, cpuPaused, cpuSpeed, presentationBatches,
-    submit, stepCpu, acknowledgePresentationBatch, setCpuPaused, setCpuSpeed, restart, loadCurrentReplay, runReplay, clearReplayReport,
+    submit, stepCpu, acknowledgePresentationBatch, setCpuPaused, setCpuSpeed, restart, loadCurrentReplay, downloadCurrentReplay, runReplay, clearReplayReport,
   } = useGameStore();
   const [equipmentCardId, setEquipmentCardId] = useState<string>();
   const [inspection, setInspection] = useState<CardInspection>();
@@ -185,13 +185,17 @@ export function App() {
   };
   const cpuNeedsStep = cpu.status === 'ready' && Boolean(cpu.nextActorId);
   const replayDiagnostics = <ReplayDiagnosticsPanel
+    key={view.gameId}
     report={replayReport}
     loadCurrentReplay={loadCurrentReplay}
+    downloadCurrentReplay={downloadCurrentReplay}
     runReplay={runReplay}
     clearReport={clearReplayReport}
+    sessionConfigLabel={`CPU ${{ beginner: '入門', standard: '標準', challenge: '挑戰' }[entrySummary.cpuDifficulty ?? 'challenge']}${entrySummary.bossDeckSize ? ` · 魔王 ${entrySummary.bossDeckSize} 隻` : ''}`}
   />;
   const cpuTools = entrySummary.contentMode === 'provisional-original-full' || entrySummary.contentMode === 'custom-adventurers-full'
-    ? <section className="cpu-controls" aria-label="CPU 控制">
+      ? <section className="cpu-controls" aria-label="CPU 控制">
+        <p>CPU 強度：<strong>{{ beginner: '入門', standard: '標準', challenge: '挑戰' }[cpu.difficulty ?? 'challenge']}</strong></p>
         <div className="controls"><button type="button" onClick={() => setCpuPaused(!cpuPaused)}>{cpuPaused ? '繼續 CPU' : '暫停 CPU'}</button><button type="button" disabled={!cpuNeedsStep || !cpuPaused} onClick={stepCpu}>CPU 單步</button>
           <label>速度 <select value={cpuSpeed} onChange={(event) => setCpuSpeed(event.currentTarget.value as typeof cpuSpeed)}><option value="slow">慢</option><option value="normal">一般</option><option value="fast">快</option><option value="instant">即時</option></select></label></div>
         {cpu.diagnostic ? <p className="error" role="alert">CPU 已安全暫停：{cpu.diagnostic}</p> : null}

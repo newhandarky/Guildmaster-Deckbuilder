@@ -1,4 +1,4 @@
-import { stableJsonDigest, type CardDefinition, type ContentPack, type CpuActionFeature, type GameCommand, type PlayerView } from '@guildmaster/game-protocol';
+import { stableJsonDigest, type CardDefinition, type ContentPack, type CpuActionFeature, type CpuDifficulty, type GameCommand, type PlayerView } from '@guildmaster/game-protocol';
 
 export type CpuReasonCode =
   | 'KEEP_HIGHEST_BOND_VALUE' | 'ATTACK_BEST_NET_VALUE' | 'PLAY_FOR_PARTY_POWER'
@@ -14,15 +14,23 @@ export type CpuScoringWeights = {
   immediatePower: number; purchaseCost: number; partyCombatLoss: number; equipmentLoss: number; equipmentRemoval: number; overflowLoss: number;
 };
 export type CpuProfile = {
-  schemaVersion: 1; profileId: 'base:cpu-balanced'; version: '1.6.0';
+  schemaVersion: 1; profileId: string; version: string;
   commandPriority: readonly GameCommand['type'][]; weights: CpuScoringWeights;
+  strategy: {
+    bossReserveAfterMonsterDefeats: number | null;
+    bossLookahead: 'none' | 'unlock-only' | 'full';
+    bossPurchase: 'none' | 'unlock-only' | 'combat-gain';
+    marketRefresh: 'simple' | 'balanced' | 'boss-adaptive';
+    alternateEvery: number;
+    alternateMinRatio: number;
+  };
   maxActionsPerTurn: 128; maxAutonomousSteps: 512; repeatedVisibleStateLimit: 3;
 };
 export type CpuScoreTerm = { feature: keyof CpuScoringWeights; value: number; weight: number; contribution: number };
 export type CpuDecisionContext = {
   view: PlayerView; legalCommands: readonly GameCommand[]; actionFeatures: readonly CpuActionFeature[];
   definitions: Readonly<Record<string, CardDefinition>>; bonds?: NonNullable<ContentPack['bonds']>;
-  rulesetFingerprint: string; profile: CpuProfile;
+  rulesetFingerprint: string; profile: CpuProfile; decisionOrdinal?: number;
 };
 export type CpuDecisionResult =
   | { status: 'ready'; command: GameCommand; reasonCode: CpuReasonCode; score: number; scoreBreakdown: readonly CpuScoreTerm[]; contextFingerprint: string }
@@ -32,8 +40,34 @@ export const baseBalancedCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
   schemaVersion: 1, profileId: 'base:cpu-balanced', version: '1.6.0',
   commandPriority: ['SELECT_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESOLVE_EFFECT_ORDER', 'RESPOND_COUNTER_CONSENT', 'COMPLETE_BONDS', 'ATTACK_TARGET', 'ACTIVATE_CARD_EFFECT', 'PLAY_ADVENTURER', 'EQUIP_ITEM', 'ATTACH_CARD', 'USE_ITEM', 'BUY_CARD', 'REFRESH_MARKET', 'END_PHASE', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT'],
   weights: { honor: 100, bondHonor: 100, bossProgress: 80, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 20, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -12, equipmentLoss: -10, equipmentRemoval: -8, overflowLoss: -1 },
+  strategy: { bossReserveAfterMonsterDefeats: 5, bossLookahead: 'full', bossPurchase: 'combat-gain', marketRefresh: 'boss-adaptive', alternateEvery: 0, alternateMinRatio: 1 },
   maxActionsPerTurn: 128, maxAutonomousSteps: 512, repeatedVisibleStateLimit: 3,
 });
+
+export const standardCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
+  ...baseBalancedCpuProfile,
+  profileId: 'web:cpu-standard', version: '1.0.0',
+  weights: { honor: 90, bondHonor: 100, bossProgress: 60, monsterDefeat: 30, permanentPurchasePower: 18, partyCombat: 12, draw: 10, removal: 18, immediatePower: 8, purchaseCost: -6, partyCombatLoss: -10, equipmentLoss: -8, equipmentRemoval: -8, overflowLoss: -1 },
+  strategy: { bossReserveAfterMonsterDefeats: 7, bossLookahead: 'unlock-only', bossPurchase: 'unlock-only', marketRefresh: 'balanced', alternateEvery: 0, alternateMinRatio: 1 },
+});
+
+export const beginnerCpuProfile: CpuProfile = Object.freeze<CpuProfile>({
+  ...baseBalancedCpuProfile,
+  profileId: 'web:cpu-beginner', version: '1.0.0',
+  weights: { honor: 70, bondHonor: 100, bossProgress: 35, monsterDefeat: 28, permanentPurchasePower: 22, partyCombat: 10, draw: 14, removal: 12, immediatePower: 12, purchaseCost: -3, partyCombatLoss: -6, equipmentLoss: -5, equipmentRemoval: -4, overflowLoss: 0 },
+  strategy: { bossReserveAfterMonsterDefeats: null, bossLookahead: 'none', bossPurchase: 'none', marketRefresh: 'simple', alternateEvery: 3, alternateMinRatio: 0.65 },
+});
+
+export const cpuProfileForDifficulty = (difficulty: CpuDifficulty): CpuProfile => difficulty === 'beginner'
+  ? beginnerCpuProfile
+  : difficulty === 'standard' ? standardCpuProfile : baseBalancedCpuProfile;
+
+export function cpuDifficultyForProfile(profileId: string, profileVersion: string): CpuDifficulty | undefined {
+  if (profileId === beginnerCpuProfile.profileId && profileVersion === beginnerCpuProfile.version) return 'beginner';
+  if (profileId === standardCpuProfile.profileId && profileVersion === standardCpuProfile.version) return 'standard';
+  if (profileId === baseBalancedCpuProfile.profileId && profileVersion === baseBalancedCpuProfile.version) return 'challenge';
+  return undefined;
+}
 
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -42,7 +76,14 @@ function stable(value: unknown): string {
 }
 export const canonicalCommand = (command: GameCommand): string => stable(command);
 export function cpuContextFingerprint(context: CpuDecisionContext): string {
-  return stableJsonDigest({ view: context.view, legalCommands: context.legalCommands, actionFeatures: context.actionFeatures, rulesetFingerprint: context.rulesetFingerprint, profile: { id: context.profile.profileId, version: context.profile.version } });
+  return stableJsonDigest({
+    view: context.view,
+    legalCommands: context.legalCommands,
+    actionFeatures: context.actionFeatures,
+    rulesetFingerprint: context.rulesetFingerprint,
+    profile: { id: context.profile.profileId, version: context.profile.version },
+    ...(context.profile.strategy.alternateEvery > 0 ? { decisionOrdinal: context.decisionOrdinal ?? 0 } : {}),
+  });
 }
 
 function reason(command: GameCommand): CpuReasonCode {
@@ -84,7 +125,8 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
   const legalBossAttack = context.legalCommands.some((command) => command.type === 'ATTACK_TARGET' && context.view.enemyTargets[command.targetId]?.kind === 'boss');
   const bossCombatReady = context.actionFeatures.some((feature) => feature.targetCombatProgress.some(({ targetId, attackReadyBefore }) => attackReadyBefore && context.view.enemyTargets[targetId]?.kind === 'boss'));
   const needsBossPower = availableBoss && !legalBossAttack && !bossCombatReady;
-  const reservePartyForBoss = needsBossPower && (context.view.self?.history?.defeatedMonsters ?? 0) >= 5;
+  const reserveThreshold = context.profile.strategy.bossReserveAfterMonsterDefeats;
+  const reservePartyForBoss = needsBossPower && reserveThreshold !== null && (context.view.self?.history?.defeatedMonsters ?? 0) >= reserveThreshold;
   const strategicCommands = (reservePartyForBoss && !legalBossAttack
     ? context.legalCommands.filter((command) => command.type !== 'ATTACK_TARGET')
     : context.legalCommands).filter((command) => !(command.type === 'ATTACK_TARGET' && command.combatAssistCardId && context.legalCommands.some((candidate) => candidate.type === 'ATTACK_TARGET' && candidate.targetId === command.targetId && !candidate.combatAssistCardId)));
@@ -120,7 +162,7 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
   let best = ranked[0]!;
   let strategicRotation = false;
   let advancesBossCombat = false;
-  if (needsBossPower) {
+  if (needsBossPower && context.profile.strategy.bossLookahead !== 'none') {
     const progress = ranked.map((entry) => {
       const feature = context.actionFeatures.find((candidate) => canonicalCommand(candidate.command) === canonicalCommand(entry.command));
       const bosses = feature?.targetCombatProgress.filter(({ targetId }) => context.view.enemyTargets[targetId]?.kind === 'boss') ?? [];
@@ -130,23 +172,31 @@ export function decideCpuAction(context: CpuDecisionContext): CpuDecisionResult 
         reduction: bosses.reduce((largest, target) => Math.max(largest, target.shortfallBefore - target.shortfallAfter), 0),
       };
     });
-    const immediate = progress.filter(({ unlocks, reduction }) => unlocks || reduction > 0).sort((left, right) => Number(right.unlocks) - Number(left.unlocks) || right.reduction - left.reduction || right.entry.score - left.entry.score || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
+    const immediate = progress.filter(({ unlocks, reduction }) => unlocks || (context.profile.strategy.bossLookahead === 'full' && reduction > 0)).sort((left, right) => Number(right.unlocks) - Number(left.unlocks) || right.reduction - left.reduction || right.entry.score - left.entry.score || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
     if (immediate) { best = immediate.entry; strategicRotation = true; advancesBossCombat = true; }
   }
-  if (!advancesBossCombat && needsBossPower && context.view.phase === 'purchase') {
+  if (!advancesBossCombat && needsBossPower && context.view.phase === 'purchase' && context.profile.strategy.bossPurchase !== 'none') {
     const combatBuy = ranked.filter(({ command }) => command.type === 'BUY_CARD').map((entry) => ({
       entry,
       combat: context.actionFeatures.find((feature) => canonicalCommand(feature.command) === canonicalCommand(entry.command))?.partyCombatGain ?? 0,
-    })).filter(({ combat }) => combat > 0).sort((left, right) => right.combat - left.combat || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
+      unlocksBoss: context.actionFeatures.find((feature) => canonicalCommand(feature.command) === canonicalCommand(entry.command))?.targetCombatProgress.some(({ targetId, attackReadyBefore, attackReadyAfter }) => context.view.enemyTargets[targetId]?.kind === 'boss' && !attackReadyBefore && attackReadyAfter) ?? false,
+    })).filter(({ combat, unlocksBoss }) => combat > 0 && (context.profile.strategy.bossPurchase !== 'unlock-only' || unlocksBoss)).sort((left, right) => right.combat - left.combat || canonicalCommand(left.entry.command).localeCompare(canonicalCommand(right.entry.command)))[0];
     if (combatBuy) best = combatBuy.entry;
     else {
-      const lateGame = (context.view.self?.history?.defeatedMonsters ?? 0) >= 10;
+      const lateGame = context.profile.strategy.marketRefresh === 'boss-adaptive' && (context.view.self?.history?.defeatedMonsters ?? 0) >= 10;
       const preferredRefreshRow = lateGame || context.view.round % 2 === 0 ? 'item' : 'adventurer';
       const refresh = ranked.find(({ command }) => command.type === 'REFRESH_MARKET' && command.row === preferredRefreshRow)
         ?? ranked.find(({ command }) => command.type === 'REFRESH_MARKET');
       best = refresh ?? ranked.find(({ command }) => command.type === 'END_PHASE') ?? best;
       strategicRotation = Boolean(refresh);
     }
+  }
+  const alternateEvery = context.profile.strategy.alternateEvery;
+  if (!strategicRotation && alternateEvery > 0 && (context.decisionOrdinal ?? 0) > 0 && (context.decisionOrdinal ?? 0) % alternateEvery === 0 && best.score > 0) {
+    const mandatory = new Set<GameCommand['type']>(['SELECT_BONDS', 'COMPLETE_BONDS', 'RESOLVE_EFFECT_CHOICE', 'RESOLVE_EFFECT_ORDER', 'RESPOND_COUNTER_CONSENT', 'CANCEL_COUNTER_CONSENT', 'EXPIRE_COUNTER_CONSENT']);
+    const discretionary = ranked.filter(({ command, score }) => command.type !== 'END_PHASE' && !mandatory.has(command.type) && Number.isFinite(score) && score > 0).slice(0, 3);
+    const alternate = discretionary[1];
+    if (alternate && alternate.score >= best.score * context.profile.strategy.alternateMinRatio) best = alternate;
   }
   if (best.score <= 0 && !strategicRotation) best = ranked.find(({ command }) => command.type === 'END_PHASE') ?? best;
   if (!Number.isFinite(best.score) && best.command.type !== 'END_PHASE') return { status: 'blocked', reasonCode: 'MISSING_ACTION_FEATURE', diagnostic: `Missing public action feature for ${best.command.type}.` };
@@ -168,7 +218,7 @@ export class CpuTurnRunner {
     const repeats = (this.visibleStates.get(visibleKey) ?? 0) + 1;
     if (repeats > this.profile.repeatedVisibleStateLimit) return { status: 'blocked', reasonCode: 'REPEATED_VISIBLE_STATE', diagnostic: `Visible state repeated more than ${this.profile.repeatedVisibleStateLimit} times.` };
     this.visibleStates.set(visibleKey, repeats);
-    const decision = decideCpuAction(context);
+    const decision = decideCpuAction({ ...context, decisionOrdinal: this.autonomousSteps + 1 });
     if (decision.status === 'ready') { this.autonomousSteps += 1; this.turnActions.set(turnKey, turnCount + 1); }
     return decision;
   }

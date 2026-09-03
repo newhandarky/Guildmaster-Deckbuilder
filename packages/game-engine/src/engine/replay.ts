@@ -54,7 +54,7 @@ export function validateReplayBundleAgainstRuleset(bundle: unknown, ruleset: Rul
   if (!parsed.success) {
     const record = typeof bundle === 'object' && bundle !== null ? bundle as Record<string, unknown> : undefined;
     const unknownVersion = Boolean(record && ('schemaVersion' in record || 'protocolVersion' in record)
-      && (![1, 2].includes(Number(record.schemaVersion)) || record.protocolVersion !== 1));
+      && (![1, 2, 3].includes(Number(record.schemaVersion)) || record.protocolVersion !== 1));
     return { diagnostic: diagnostic(unknownVersion ? 'UNKNOWN_REPLAY_VERSION' : 'MALFORMED_BUNDLE', parsed.error.issues[0]?.message ?? 'Replay bundle is malformed.') };
   }
   const expected = replayRegistryFingerprint(ruleset);

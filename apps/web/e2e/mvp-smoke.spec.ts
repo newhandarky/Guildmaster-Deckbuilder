@@ -326,7 +326,7 @@ test('restored entry requires confirmation before replacing the saved expedition
   const confirmationDialogElement = page.locator('.expedition-new-confirmation');
   const confirm = confirmationDialog.getByRole('button', { name: '確認開啟新遠征' });
   await expect.poll(() => confirmationDialog.evaluate((dialog: HTMLDialogElement) => dialog.matches(':modal'))).toBe(true);
-  await expect(entry.getByText(/會被「基礎數值測試 · 協助者關閉」新對局覆蓋/)).toBeVisible();
+  await expect(entry.getByText(/會被「基礎數值測試 · CPU 標準（建議） · 協助者關閉」新對局覆蓋/)).toBeVisible();
   await expect(confirm).toBeFocused();
   const modeRadio = entry.getByRole('radio', { name: /基礎完整牌組/ });
   const helperCheckbox = entry.getByRole('checkbox', { name: /協助者進階規則/ });
@@ -685,7 +685,7 @@ test('replay runner reports the first assertion divergence without changing the 
   await expect(page.getByRole('heading', { name: '榮譽排名' })).toBeVisible();
 });
 
-test('deterministic full-game journey defeats, recruits, rests, restores v4 save, and continues legally', async ({ page }) => {
+test('deterministic full-game journey defeats, recruits, rests, restores v5 save, and continues legally', async ({ page }) => {
   await openGame(page);
   const endPhase = page.getByTestId('end-phase');
 
@@ -716,7 +716,7 @@ test('deterministic full-game journey defeats, recruits, rests, restores v4 save
   await expect(playableAdventurer).toBeVisible();
   await runCardAction(page, playableAdventurer, '加入隊伍');
   await expect(page.locator('.log')).toContainText('加入了一名冒險者');
-  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(4);
+  await expect(page.evaluate(() => JSON.parse(localStorage.getItem('guildmaster-mvp-save-v2')!).schemaVersion)).resolves.toBe(5);
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '繼續晨星遠征' })).toBeVisible();
@@ -835,7 +835,7 @@ test('deterministic all-bonds journey triggers the registered bond end condition
   await page.getByRole('button', { name: '完成所選羈絆' }).click();
   await expect(page.getByTestId('final-round-notice')).toBeVisible();
   await finishTriggeredFinalRound(page);
-  await expect(page.getByTestId('end-condition')).toHaveText('結束原因：所有羈絆已完成');
+  await expect(page.getByTestId('end-condition')).toContainText('所有羈絆已完成');
   await expect(page.getByTestId('game-app')).not.toContainText('base:all-bonds-completed');
   await expect(page.getByTestId('game-app')).not.toContainText('文字版 MVP');
 

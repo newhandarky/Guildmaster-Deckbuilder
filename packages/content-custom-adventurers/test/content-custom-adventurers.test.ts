@@ -9,6 +9,25 @@ import {
 } from '../src/index.js';
 
 describe('custom adventurer content', () => {
+  it('uses all five approved custom balance values', () => {
+    const valuesById = Object.fromEntries(customCardRows.map(([
+      id,
+      ,
+      ,
+      cost,
+      combat,
+      honor,
+    ]) => [id, { cost, combat, honor }]));
+
+    expect(valuesById).toMatchObject({
+      'custom:adventurer/melee-08': { cost: 4, combat: 2, honor: 2 },
+      'custom:adventurer/mage-08': { cost: 4, combat: 1, honor: 1 },
+      'custom:adventurer/tank-08': { cost: 4, combat: 2, honor: 2 },
+      'custom:adventurer/ranged-04': { cost: 4, combat: 3, honor: 2 },
+      'custom:adventurer/tank-09': { cost: 4, combat: 1, honor: 1 },
+    });
+  });
+
   it('keeps the base roster at two copies but builds the custom-mode roster with one copy each', () => {
     expect(customAdventurerContentPack.manifest).toMatchObject({
       id: 'custom:adventurers-full',

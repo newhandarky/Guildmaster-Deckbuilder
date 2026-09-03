@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CpuDifficulty } from '@guildmaster/game-protocol';
 import type { SessionEntrySummary, SessionPersistenceStatus } from '../../../adapters/game-session.js';
-import { webContentModeOptions, webModeEffectSummary, type WebContentMode, type WebGameSetup } from '../../../app/ruleset.js';
+import { bossSetupBoundsForMode, formalCustomBossDeckSize, webContentModeOptions, webModeEffectSummary, type WebContentMode, type WebGameSetup } from '../../../app/ruleset.js';
 import { phaseDisplayName } from '../table/phase-copy.js';
 
 type Props = {
@@ -25,6 +26,35 @@ const contentModeEntries = Object.entries(webContentModeOptions) as [
   (typeof webContentModeOptions)[WebContentMode],
 ][];
 
+const cpuDifficultyCopy: Record<CpuDifficulty, { label: string; description: string }> = {
+  beginner: { label: '入門', description: '較寬容，適合第一次遊玩。' },
+  standard: { label: '標準（建議）', description: '兼顧當回合收益與長期遠征規劃。' },
+  challenge: { label: '挑戰', description: '積極準備魔王討伐並降低隊伍與裝備浪費。' },
+};
+
+export function CpuDifficultyPicker({ value, onChange }: { value: CpuDifficulty; onChange: (difficulty: CpuDifficulty) => void }) {
+  return <fieldset className="advanced-rules-picker cpu-difficulty-picker">
+    <legend>CPU 強度</legend>
+    {(Object.entries(cpuDifficultyCopy) as [CpuDifficulty, (typeof cpuDifficultyCopy)[CpuDifficulty]][]).map(([difficulty, copy]) => <label key={difficulty} className={value === difficulty ? 'advanced-rule-option advanced-rule-option-selected' : 'advanced-rule-option'}>
+      <input type="radio" name="cpu-difficulty" value={difficulty} checked={value === difficulty} onChange={() => onChange(difficulty)} />
+      <span><strong>{copy.label}</strong><small>{copy.description}</small></span>
+    </label>)}
+  </fieldset>;
+}
+
+export function BossCountPicker({ value, maximum, onChange }: { value: number; maximum: number; onChange: (count: number) => void }) {
+  return <fieldset className="advanced-rules-picker boss-count-picker">
+    <legend>本局魔王數量</legend>
+    <label htmlFor="boss-deck-size">增加本局需要面對的魔王</label>
+    <select id="boss-deck-size" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))}>
+      {Array.from({ length: maximum - formalCustomBossDeckSize + 1 }, (_, index) => formalCustomBossDeckSize + index).map((count) => <option key={count} value={count}>{count} 隻{count === formalCustomBossDeckSize ? '（正式規則）' : count === maximum ? '（全部魔王）' : ''}</option>)}
+    </select>
+    <div className="boss-count-summary" role="status"><span>正式規則：{formalCustomBossDeckSize} 隻</span><strong>本局：{value} 隻</strong></div>
+    {value > formalCustomBossDeckSize ? <p className="content-mode-warning">自訂規則：對局時間與可取得總榮譽可能增加；完成 5 張羈絆仍可能提前進入最終輪。</p> : null}
+    {value === maximum ? <p>本局使用全部魔王。</p> : null}
+  </fieldset>;
+}
+
 const contentModePresentation: Readonly<Record<WebContentMode, {
   badge: string;
   description: string;
@@ -42,6 +72,8 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
   const [pendingSetup, setPendingSetup] = useState<WebGameSetup>();
   const [selectedMode, setSelectedMode] = useState<WebContentMode>(summary.contentMode);
   const [helpersEnabled, setHelpersEnabled] = useState(summary.advancedRules.helpers);
+  const [cpuDifficulty, setCpuDifficulty] = useState<CpuDifficulty>(summary.cpuDifficulty ?? 'standard');
+  const [bossDeckSize, setBossDeckSize] = useState(summary.bossDeckSize ?? formalCustomBossDeckSize);
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const setupHeadingRef = useRef<HTMLHeadingElement>(null);
   const setupLaunchRef = useRef<HTMLButtonElement>(null);
@@ -106,7 +138,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
   };
 
   const startSelectedExpedition = () => {
-    const setup = { contentMode: selectedMode, advancedRules: { helpers: helpersEnabled } } satisfies WebGameSetup;
+    const setup: WebGameSetup = { schemaVersion: 1, contentMode: selectedMode, cpuDifficulty, advancedRules: { helpers: helpersEnabled }, ...(selectedMode === 'custom-adventurers-full' ? { customRules: { bossDeckSize } } : {}) };
     if (summary.canContinue) setPendingSetup(setup);
     else onStartNew(setup);
   };
@@ -156,6 +188,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                       <p className="expedition-section-label">最近進度</p>
                       <h2>第 {summary.round} 輪 · {phaseDisplayName(summary.phase)}階段</h2>
                       <p>{webContentModeOptions[summary.contentMode].label}</p>
+                      <p>CPU：{cpuDifficultyCopy[summary.cpuDifficulty ?? 'challenge'].label}{summary.bossDeckSize ? ` · 魔王 ${summary.bossDeckSize} 隻` : ''}</p>
                     </div>
                     <span className="expedition-status-seal">{statusCopy[summary.status]}</span>
                     <button className="entry-menu-button entry-menu-button-primary" type="button" onClick={onContinue}>
@@ -180,6 +213,8 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                   <div><dt>狀態</dt><dd>{statusCopy[summary.status]}</dd></div>
                   <div><dt>內容</dt><dd>{webContentModeOptions[summary.contentMode].label}</dd></div>
                   <div><dt>進階規則</dt><dd>{summary.advancedRules.helpers ? '協助者' : '未啟用'}</dd></div>
+                  <div><dt>CPU 強度</dt><dd>{cpuDifficultyCopy[summary.cpuDifficulty ?? 'challenge'].label}</dd></div>
+                  {summary.bossDeckSize ? <div><dt>本局魔王</dt><dd>{summary.bossDeckSize} 隻</dd></div> : null}
                   <div><dt>Replay</dt><dd>{summary.replayHistoryComplete ? '完整紀錄' : '舊版存檔 · 紀錄不完整'}</dd></div>
                   <div><dt>修訂</dt><dd>{summary.revision}</dd></div>
                 </dl>
@@ -227,6 +262,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                       checked={selected}
                       onChange={() => {
                         setSelectedMode(mode);
+                        if (mode !== 'custom-adventurers-full') setBossDeckSize(formalCustomBossDeckSize);
                         if (mode !== 'provisional-playtest') setHelpersEnabled(mode === 'provisional-original-full' || mode === 'custom-adventurers-full');
                       }}
                     />
@@ -247,6 +283,10 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
                 <p>{contentModePresentation[selectedMode].description}</p>
                 {selectedOption.warning ? <p className="content-mode-warning">{selectedOption.warning}</p> : null}
               </div>
+
+              <CpuDifficultyPicker value={cpuDifficulty} onChange={setCpuDifficulty} />
+
+              {selectedMode === 'custom-adventurers-full' ? <BossCountPicker value={bossDeckSize} maximum={bossSetupBoundsForMode(selectedMode)!.maximum} onChange={setBossDeckSize} /> : null}
 
               {selectedMode === 'provisional-original-full' || selectedMode === 'custom-adventurers-full'
                 ? <p className="notice expedition-rule-notice">完整四人模式固定啟用協助者規則。</p>
@@ -283,7 +323,7 @@ export function ExpeditionEntryScreen({ summary, persistence, onContinue, onStar
     >
       {pendingSetup ? <>
         <h3 id="new-expedition-confirmation-heading">確定開啟新遠征？</h3>
-        <p id="new-expedition-confirmation-copy">目前的本機進度會被「{webContentModeOptions[pendingSetup.contentMode].label} · 協助者{pendingSetup.advancedRules.helpers ? '啟用' : '關閉'}」新對局覆蓋，這個動作無法復原。</p>
+        <p id="new-expedition-confirmation-copy">目前的本機進度會被「{webContentModeOptions[pendingSetup.contentMode].label} · CPU {cpuDifficultyCopy[pendingSetup.cpuDifficulty].label} · 協助者{pendingSetup.advancedRules.helpers ? '啟用' : '關閉'}{pendingSetup.customRules ? ` · 魔王 ${pendingSetup.customRules.bossDeckSize} 隻` : ''}」新對局覆蓋，這個動作無法復原。</p>
         <div className="controls">
           <button ref={confirmRef} className="danger" type="button" onClick={() => onStartNew(pendingSetup)}>確認開啟新遠征</button>
           <button type="button" onClick={cancelNewExpedition}>保留目前進度</button>

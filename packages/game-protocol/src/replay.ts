@@ -4,7 +4,7 @@ import { DomainEventSchema, SnapshotEnvelopeSchema, type VersionedSnapshot } fro
 import type { PlayerKind } from './state.js';
 import { isFiniteJsonValue } from './encounter.js';
 
-export const replaySchemaVersion = 2;
+export const replaySchemaVersion = 3;
 export const replayProtocolVersion = 1;
 
 const id = z.string().trim().min(1);
@@ -16,6 +16,8 @@ const moduleFingerprint = z.object({ id, version: id, configFingerprint: z.strin
 export type ReplayRulesModuleFingerprint = { id: string; version: string; configFingerprint: string; compositionFingerprint?: string };
 export type ReplayRegistryFingerprint = { engineVersion: string; rulesetVersion: string; contentPacks: readonly { id: string; version: string; hash: string }[]; rulesModules: readonly ReplayRulesModuleFingerprint[] };
 export type ReplayInitialConfig = { gameId: string; seed: number; players: readonly { id: string; name: string; kind: PlayerKind }[]; startingPlayerId: string };
+export type CpuDifficulty = 'beginner' | 'standard' | 'challenge';
+export type ReplaySessionConfig = { schemaVersion: 1; cpuDifficulty: CpuDifficulty; bossDeckSize?: number };
 export type ReplayDivergence = { path: string; expected: unknown; actual: unknown };
 export type ReplayDiagnostic = {
   reasonCode: 'MALFORMED_BUNDLE' | 'UNKNOWN_REPLAY_VERSION' | 'REGISTRY_MISMATCH' | 'CREATE_GAME_FAILED' | 'COMMAND_REJECTED' | 'EXPECTED_EVENTS_MISMATCH' | 'EXPECTED_FINAL_SNAPSHOT_MISMATCH';
@@ -42,6 +44,7 @@ export type ReplayAutomation = { profileId: string; profileVersion: string; runn
 export type ReplayBundle = ReplayBundleBase & (
   | { schemaVersion: 1; automation?: { profileId: string; profileVersion: string; decisions: readonly { revision: number; actorId: string; command: CommandEnvelope['command']; reasonCode: string; score: number }[] } | undefined }
   | { schemaVersion: 2; automation: ReplayAutomation }
+  | { schemaVersion: 3; sessionConfig: ReplaySessionConfig; automation: ReplayAutomation }
 );
 export type ReplayResult =
   | { status: 'completed'; finalSnapshot: VersionedSnapshot; events: readonly DomainEvent[] }
@@ -50,6 +53,7 @@ export type ReplayResult =
 const legacyAutomation = z.object({ profileId: id, profileVersion: id, decisions: z.array(z.object({ revision: z.number().int().nonnegative(), actorId: id, command: GameCommandSchema, reasonCode: id, score: z.number().finite() }).strict()) }).strict();
 const automationDecision = z.object({ commandId: id, revision: z.number().int().nonnegative(), actorId: id, command: GameCommandSchema, reasonCode: id, score: z.number().finite(), scoreBreakdown: z.array(z.object({ feature: id, value: z.number().finite(), weight: z.number().finite(), contribution: z.number().finite() }).strict()), contextFingerprint: id, legalCommandsFingerprint: id, actionFeaturesFingerprint: id }).strict();
 const automation = z.object({ profileId: id, profileVersion: id, runner: z.object({ autonomousSteps: z.number().int().nonnegative(), turnActions: z.array(z.tuple([id, z.number().int().nonnegative()])), visibleStates: z.array(z.tuple([id, z.number().int().nonnegative()])) }).strict(), decisions: z.array(automationDecision) }).strict();
+const sessionConfig = z.object({ schemaVersion: z.literal(1), cpuDifficulty: z.enum(['beginner', 'standard', 'challenge']), bossDeckSize: z.number().int().positive().optional() }).strict();
 export const ReplayAutomationSchema = automation;
 const replayBaseSchema = z.object({
   protocolVersion: z.literal(replayProtocolVersion),
@@ -61,7 +65,8 @@ const replayBaseSchema = z.object({
 }).strict();
 export const ReplayBundleSchema = z.discriminatedUnion('schemaVersion', [
   replayBaseSchema.extend({ schemaVersion: z.literal(1), automation: legacyAutomation.optional() }).strict(),
-  replayBaseSchema.extend({ schemaVersion: z.literal(replaySchemaVersion), automation }).strict(),
+  replayBaseSchema.extend({ schemaVersion: z.literal(2), automation }).strict(),
+  replayBaseSchema.extend({ schemaVersion: z.literal(replaySchemaVersion), sessionConfig, automation }).strict(),
 ]).superRefine((value, context) => {
   if (new Set(value.commands.map((command) => command.commandId)).size !== value.commands.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['commands'], message: 'Replay command IDs must be unique.' });
   if (new Set(value.initialConfig.players.map((candidate) => candidate.id)).size !== value.initialConfig.players.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['initialConfig', 'players'], message: 'Replay players must have unique IDs.' });
@@ -69,14 +74,14 @@ export const ReplayBundleSchema = z.discriminatedUnion('schemaVersion', [
   if (new Set(value.registry.contentPacks.map((candidate) => candidate.id)).size !== value.registry.contentPacks.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['registry', 'contentPacks'], message: 'Replay content packs must have unique IDs.' });
   if (new Set(value.registry.rulesModules.map((candidate) => candidate.id)).size !== value.registry.rulesModules.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['registry', 'rulesModules'], message: 'Replay Rules Modules must have unique IDs.' });
   if (value.automation?.decisions.some((decision) => !value.initialConfig.players.some(({ id: playerId, kind }) => playerId === decision.actorId && kind === 'ai'))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'decisions'], message: 'Automation decisions must belong to configured AI players.' });
-  if (value.schemaVersion === 2) {
+  if (value.schemaVersion === 2 || value.schemaVersion === 3) {
       const decisions = value.automation.decisions;
       if (new Set(decisions.map(({ commandId }) => commandId)).size !== decisions.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'decisions'], message: 'Replay automation command IDs must be unique.' });
       const aiCommands = value.commands.filter((command) => value.initialConfig.players.some(({ id: playerId, kind }) => playerId === command.actorId && kind === 'ai'));
       if (aiCommands.length !== decisions.length || aiCommands.some((command, index) => {
         const decision = decisions[index];
         return !decision || decision.commandId !== command.commandId || decision.actorId !== command.actorId || decision.revision !== command.expectedRevision || stableJsonFingerprint(decision.command) !== stableJsonFingerprint(command.command);
-      })) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'decisions'], message: 'Replay v2 automation decisions must exactly bind the ordered AI command log.' });
+      })) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'decisions'], message: `Replay v${value.schemaVersion} automation decisions must exactly bind the ordered AI command log.` });
       if (value.automation.runner.turnActions.some(([, count]) => count > 128) || value.automation.runner.autonomousSteps > 512) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'runner'], message: 'Replay automation runner exceeds the supported guard limits.' });
       if (new Set(value.automation.runner.turnActions.map(([key]) => key)).size !== value.automation.runner.turnActions.length || new Set(value.automation.runner.visibleStates.map(([key]) => key)).size !== value.automation.runner.visibleStates.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['automation', 'runner'], message: 'Replay automation runner keys must be unique.' });
   }
