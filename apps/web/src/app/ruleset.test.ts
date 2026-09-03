@@ -100,7 +100,9 @@ describe('web content modes', () => {
     expect(ruleset.registry.packs.map(({ id }) => id)).toEqual(['base:provisional-foundation', 'base:provisional-helpers']);
     expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers']);
     expect(webGameSetupFromSnapshot(ruleset.registry.packs.map(({ id }) => id), ruleset.modules.map(({ id }) => id))).toEqual({
+      schemaVersion: 1,
       contentMode: 'provisional-playtest',
+      cpuDifficulty: 'challenge',
       advancedRules: { helpers: true },
     });
     expect(() => webGameSetupFromSnapshot(['base:provisional-foundation'], ['base:rules', 'base:helpers'])).toThrow(/inconsistent/);
@@ -129,7 +131,7 @@ describe('web content modes', () => {
     expect(ruleset.registry.bonds).toHaveLength(30);
     expect(ruleset.modules.map(({ id }) => id)).toEqual(['base:rules', 'base:helpers', 'base:provisional-original-full-rules']);
     expect(webContentModeFromPackIds(['base:provisional-original-full'])).toBe('provisional-original-full');
-    expect(webGameSetupFromSnapshot(['base:provisional-original-full', 'base:provisional-original-full-helpers'], ['base:rules', 'base:provisional-original-full-rules', 'base:helpers'])).toEqual({ contentMode: 'provisional-original-full', advancedRules: { helpers: true } });
+    expect(webGameSetupFromSnapshot(['base:provisional-original-full', 'base:provisional-original-full-helpers'], ['base:rules', 'base:provisional-original-full-rules', 'base:helpers'])).toEqual({ schemaVersion: 1, contentMode: 'provisional-original-full', cpuDifficulty: 'challenge', advancedRules: { helpers: true } });
   });
 
   it('creates a four-player custom-adventurer ruleset with an exact replacement roster and restorable identity', () => {
@@ -150,8 +152,11 @@ describe('web content modes', () => {
     ]);
     expect(webContentModeFromPackIds(packIds)).toBe('custom-adventurers-full');
     expect(webGameSetupFromSnapshot(packIds, moduleIds)).toEqual({
+      schemaVersion: 1,
       contentMode: 'custom-adventurers-full',
+      cpuDifficulty: 'challenge',
       advancedRules: { helpers: true },
+      customRules: { bossDeckSize: 6 },
     });
 
     const adventurerDefinitions = Object.values(ruleset.registry.definitions)
@@ -184,6 +189,24 @@ describe('web content modes', () => {
       ...state.zones['base:adventurer-row']!.cardIds,
     ]).toHaveLength(40);
     expect(restoreSnapshot(serializeSnapshot(state), ruleset)).toEqual(state);
+  });
+
+  it('adds an authoritative custom boss setup module only above the formal six-boss rule', () => {
+    const setup = { schemaVersion: 1 as const, contentMode: 'custom-adventurers-full' as const, cpuDifficulty: 'standard' as const, advancedRules: { helpers: true }, customRules: { bossDeckSize: 11 } };
+    const ruleset = createWebRuleset(undefined, setup);
+    expect(ruleset.modules.find(({ id }) => id === 'web:custom-boss-setup')?.config).toEqual({ schemaVersion: 1, bossDeckSize: 11 });
+    const state = createGame({ gameId: 'all-bosses', seed: 42, players: [
+      { id: 'human-1', name: '你', kind: 'human' }, { id: 'ai-1', name: 'CPU 1', kind: 'ai' },
+      { id: 'ai-2', name: 'CPU 2', kind: 'ai' }, { id: 'ai-3', name: 'CPU 3', kind: 'ai' },
+    ], startingPlayerId: 'human-1' }, ruleset);
+    expect(state.zones['base:boss-deck']!.cardIds).toHaveLength(10);
+    expect(state.zones['base:boss-row']!.cardIds).toHaveLength(1);
+    expect(state.zones['base:helper-deck']!.cardIds.length + state.zones['base:helper-active']!.cardIds.length).toBe(11);
+    expect(webGameSetupFromSnapshot(state.contentPacks.map(({ id }) => id), state.rulesModules, { schemaVersion: 1, cpuDifficulty: 'standard', bossDeckSize: 11 })).toEqual(setup);
+    expect(() => createWebRuleset(undefined, { ...setup, customRules: { bossDeckSize: 5 } })).toThrow(/介於 6 與 11/);
+    expect(() => createWebRuleset(undefined, { ...setup, customRules: { bossDeckSize: 12 } })).toThrow(/介於 6 與 11/);
+    expect(() => createWebRuleset(undefined, { ...setup, contentMode: 'demo' })).toThrow(/只有自訂/);
+    expect(createWebRuleset(undefined, { ...setup, customRules: { bossDeckSize: 6 } }).modules.some(({ id }) => id === 'web:custom-boss-setup')).toBe(false);
   });
 
   it('keeps helper-off provisional registry identity and definition count unchanged', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CpuActionFeature, GameCommand, PlayerView } from '@guildmaster/game-protocol';
-import { CpuTurnRunner, baseBalancedCpuProfile, decideCpuAction } from '../src/index.js';
+import { CpuTurnRunner, baseBalancedCpuProfile, beginnerCpuProfile, cpuDifficultyForProfile, cpuProfileForDifficulty, decideCpuAction, standardCpuProfile } from '../src/index.js';
 
 const view = (revision = 1) => ({ viewerId: 'cpu-1', gameId: 'g', status: 'playing', phase: 'purchase', round: 1, revision, activePlayerId: 'cpu-1' } as unknown as PlayerView);
 const feature = (command: GameCommand, values: Partial<CpuActionFeature> = {}): CpuActionFeature => ({ schemaVersion: 2, command, honorGain: 0, bondHonorGain: 0, bossProgress: 0, monsterDefeat: 0, permanentPurchasePower: 0, partyCombatGain: 0, cardsDrawn: 0, removalValue: 0, immediatePurchasePower: 0, immediateCombatPower: 0, purchaseCost: 0, partyCombatLoss: 0, equipmentLoss: 0, equipmentRemoval: 0, overflowLoss: 0, targetCombatProgress: [], ...values });
@@ -271,5 +271,23 @@ describe('deterministic CPU strategy', () => {
     expect(runner.step(input).status).toBe('ready');
     expect(runner.step(input).status).toBe('ready');
     expect(runner.step(input)).toMatchObject({ status: 'blocked', reasonCode: 'REPEATED_VISIBLE_STATE' });
+  });
+
+  it('maps all public difficulties to stable profiles while keeping legacy balanced as challenge', () => {
+    expect(cpuProfileForDifficulty('beginner')).toBe(beginnerCpuProfile);
+    expect(cpuProfileForDifficulty('standard')).toBe(standardCpuProfile);
+    expect(cpuProfileForDifficulty('challenge')).toBe(baseBalancedCpuProfile);
+    expect(cpuDifficultyForProfile(baseBalancedCpuProfile.profileId, baseBalancedCpuProfile.version)).toBe('challenge');
+    expect(cpuDifficultyForProfile('unknown', '1')).toBeUndefined();
+  });
+
+  it('uses a deterministic eligible second-best action every third beginner decision without weakening mandatory choices', () => {
+    const best = { type: 'PLAY_ADVENTURER' as const, cardId: 'best' };
+    const second = { type: 'PLAY_ADVENTURER' as const, cardId: 'second' };
+    const end = { type: 'END_PHASE' as const, phase: 'action1' as const };
+    const input = { ...context([best, second, end], [feature(best, { partyCombatGain: 10 }), feature(second, { partyCombatGain: 7 })]), profile: beginnerCpuProfile, view: { ...view(), phase: 'action1' } as PlayerView };
+    expect(decideCpuAction({ ...input, decisionOrdinal: 1 })).toMatchObject({ status: 'ready', command: best });
+    expect(decideCpuAction({ ...input, decisionOrdinal: 3 })).toMatchObject({ status: 'ready', command: second });
+    expect(decideCpuAction({ ...input, profile: standardCpuProfile, decisionOrdinal: 3 })).toMatchObject({ status: 'ready', command: best });
   });
 });

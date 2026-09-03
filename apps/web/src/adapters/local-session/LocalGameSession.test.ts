@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseDemoContentPack, baseProvisionalFoundationContentPack, baseProvisionalOriginalFullContentPack } from '@guildmaster/content-base';
-import { CpuTurnRunner, baseBalancedCpuProfile } from '@guildmaster/game-ai';
+import { CpuTurnRunner, baseBalancedCpuProfile, cpuProfileForDifficulty } from '@guildmaster/game-ai';
 import { baseRulesModule, createGame, createRuleset, dispatch, evaluateCombat, evaluateCombatPartyCapacity, getCpuActionFeatures, getLegalCommands, projectPlayerView, replayGame, replayRegistryFingerprint, restoreSnapshot, serializeSnapshot, type Ruleset, type RulesModule } from '@guildmaster/game-engine';
 import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guildmaster/content-base-helpers';
 import type { EffectDefinition, LifecycleHook } from '@guildmaster/game-protocol';
@@ -314,6 +314,51 @@ describe('LocalGameSession transactional boundary', () => {
     expect(restored.persistence.recoveryReason).toBeUndefined();
   });
 
+  it('persists the selected CPU difficulty in local save v5 and Replay v3', () => {
+    const ruleset = createWebRuleset(undefined, 'provisional-original-full');
+    const session = new LocalGameSession(ruleset, 'human-1', { schemaVersion: 1, cpuDifficulty: 'beginner' });
+    session.submit(session.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as {
+      schemaVersion: number; sessionConfig: unknown;
+      replayBundle: { schemaVersion: number; sessionConfig: unknown; automation: { profileId: string } };
+    };
+    expect(persisted).toMatchObject({
+      schemaVersion: 5,
+      sessionConfig: { schemaVersion: 1, cpuDifficulty: 'beginner' },
+      replayBundle: { schemaVersion: 3, sessionConfig: { schemaVersion: 1, cpuDifficulty: 'beginner' }, automation: { profileId: 'web:cpu-beginner' } },
+    });
+    expect(new LocalGameSession(ruleset).current()).toMatchObject({ persistence: { state: 'restored' }, cpu: { difficulty: 'beginner', profileId: 'web:cpu-beginner' } });
+  });
+
+  it('normalizes a legacy custom-mode save to the formal boss count before writing Replay v3', () => {
+    const ruleset = createWebRuleset(undefined, 'custom-adventurers-full');
+    const initialConfig = {
+      gameId: 'local-1', seed: 20260726,
+      players: [
+        { id: 'human-1', name: '你', kind: 'human' as const },
+        { id: 'ai-1', name: 'CPU 一號', kind: 'ai' as const },
+        { id: 'ai-2', name: 'CPU 二號', kind: 'ai' as const },
+        { id: 'ai-3', name: 'CPU 三號', kind: 'ai' as const },
+      ],
+      startingPlayerId: 'human-1',
+    };
+    const snapshot = serializeSnapshot(createGame(initialConfig, ruleset));
+    const automation = { profileId: baseBalancedCpuProfile.profileId, profileVersion: baseBalancedCpuProfile.version, runner: { autonomousSteps: 0, turnActions: [], visibleStates: [] }, decisions: [] };
+    const replayBundle = { schemaVersion: 2 as const, protocolVersion: 1 as const, registry: replayRegistryFingerprint(ruleset), initialConfig, commands: [], expectedEvents: [], expectedFinalSnapshot: snapshot, automation };
+    localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 4, snapshot, events: [], replayBundle, cpuAutomation: automation }));
+
+    const migrated = new LocalGameSession(ruleset);
+    expect(migrated.current()).toMatchObject({ persistence: { state: 'restored' }, entrySummary: { cpuDifficulty: 'challenge', bossDeckSize: 6 } });
+    migrated.submit(migrated.current().legalCommands.find(({ type }) => type === 'SELECT_BONDS')!);
+    const persisted = JSON.parse(localStorage.getItem(storageKey)!) as { schemaVersion: number; sessionConfig: unknown; replayBundle: { schemaVersion: number; sessionConfig: unknown } };
+    expect(persisted).toMatchObject({
+      schemaVersion: 5,
+      sessionConfig: { schemaVersion: 1, cpuDifficulty: 'challenge', bossDeckSize: 6 },
+      replayBundle: { schemaVersion: 3, sessionConfig: { schemaVersion: 1, cpuDifficulty: 'challenge', bossDeckSize: 6 } },
+    });
+    expect(new LocalGameSession(ruleset).current().persistence).toMatchObject({ state: 'restored', replayHistoryComplete: true });
+  });
+
   it('does not reuse a command ID after rejection, suspended root, and reload', () => {
     const humanChoice: EffectDefinition['body'] = { kind: 'choice', choiceId: 'human-phase-choice', decisionKind: 'choose-effect-option', actor: { kind: 'controller' }, options: [{ id: 'continue', effect: modify(0) }] };
     const ruleset = createRuleset([baseProvisionalOriginalFullContentPack], [baseRulesModule, module([hook('phase-end', humanChoice)])], { allowProvisionalPlaytest: true });
@@ -357,8 +402,8 @@ describe('LocalGameSession transactional boundary', () => {
       cpuAutomation: { profileVersion: string };
       replayBundle: { automation: { profileVersion: string } };
     };
-    persisted.cpuAutomation.profileVersion = '1.0.0';
-    persisted.replayBundle.automation.profileVersion = '1.0.0';
+    persisted.cpuAutomation.profileVersion = '0.0.0';
+    persisted.replayBundle.automation.profileVersion = '0.0.0';
     localStorage.setItem(storageKey, JSON.stringify(persisted));
 
     expect(new LocalGameSession(ruleset).current().persistence).toMatchObject({
@@ -441,7 +486,7 @@ describe('LocalGameSession transactional boundary', () => {
     expect(update.scoreboard!.filter(({ rank }) => rank === 1).length).toBeGreaterThan(0);
     const replaySource = session.exportReplayDiagnostic().json!;
     const replay = JSON.parse(replaySource) as { schemaVersion: number; automation: { runner: unknown; decisions: { commandId: string; contextFingerprint: string }[] } };
-    expect(replay).toMatchObject({ schemaVersion: 2, automation: { runner: expect.any(Object), decisions: expect.any(Array) } });
+    expect(replay).toMatchObject({ schemaVersion: 3, sessionConfig: { schemaVersion: 1, cpuDifficulty: 'standard' }, automation: { runner: expect.any(Object), decisions: expect.any(Array) } });
     const replayReport = session.runReplayDiagnosticJson(replaySource);
     if (replayReport.status !== 'completed') throw new Error(JSON.stringify(replayReport));
     const tampered = structuredClone(replay);
@@ -457,7 +502,11 @@ describe('LocalGameSession transactional boundary', () => {
     if (requestedMode !== 'provisional-original-full' && requestedMode !== 'custom-adventurers-full') {
       throw new Error(`Unsupported HEADLESS_CONTENT_MODE: ${requestedMode}.`);
     }
-    const ruleset = createWebRuleset(undefined, requestedMode);
+    const requestedDifficulty = import.meta.env.HEADLESS_CPU_DIFFICULTY ?? 'challenge';
+    if (!['beginner', 'standard', 'challenge'].includes(requestedDifficulty)) throw new Error(`Unsupported HEADLESS_CPU_DIFFICULTY: ${requestedDifficulty}.`);
+    const profile = cpuProfileForDifficulty(requestedDifficulty as 'beginner' | 'standard' | 'challenge');
+    const requestedBossDeckSize = Number(import.meta.env.HEADLESS_BOSS_DECK_SIZE ?? 6);
+    const ruleset = createWebRuleset(undefined, { schemaVersion: 1, contentMode: requestedMode, cpuDifficulty: requestedDifficulty as 'beginner' | 'standard' | 'challenge', advancedRules: { helpers: true }, ...(requestedMode === 'custom-adventurers-full' ? { customRules: { bossDeckSize: requestedBossDeckSize } } : {}) });
     const registryFingerprint = JSON.stringify(replayRegistryFingerprint(ruleset));
     const players = [
       { id: 'p1', name: 'P1', kind: 'ai' as const },
@@ -473,7 +522,7 @@ describe('LocalGameSession transactional boundary', () => {
     for (const seed of Array.from({ length: seedCount }, (_, index) => seedStart + index)) {
       console.info(`[headless:${requestedMode}] seed ${seed} started`);
       let state = createGame({ gameId: `headless-${requestedMode}-${seed}`, seed, players, startingPlayerId: 'p1' }, ruleset);
-      const runner = new CpuTurnRunner(baseBalancedCpuProfile);
+      const runner = new CpuTurnRunner(profile);
       const trace: unknown[] = [];
       const progress: unknown[] = [];
       const fail = (message: string): never => { throw new Error(`${message}\nHeadless diagnostics: ${JSON.stringify({ progress, trace })}`); };
@@ -495,7 +544,7 @@ describe('LocalGameSession transactional boundary', () => {
           definitions: ruleset.registry.definitions,
           bonds: ruleset.registry.bonds,
           rulesetFingerprint: registryFingerprint,
-          profile: baseBalancedCpuProfile,
+          profile,
         });
         const readyDecision = decision.status === 'ready'
           ? decision
@@ -541,6 +590,7 @@ describe('LocalGameSession transactional boundary', () => {
       schemaVersion: 3,
       contentMode: 'demo',
       advancedRules: { helpers: false },
+      cpuDifficulty: 'standard',
       contentPackId: 'base:demo',
       canContinue: false,
       gameId: session.current().view.gameId,
@@ -581,6 +631,7 @@ describe('LocalGameSession transactional boundary', () => {
       schemaVersion: 3,
       contentMode: 'demo',
       advancedRules: { helpers: false },
+      cpuDifficulty: 'standard',
       contentPackId: 'base:demo',
       canContinue: true,
       gameId: restored.view.gameId,

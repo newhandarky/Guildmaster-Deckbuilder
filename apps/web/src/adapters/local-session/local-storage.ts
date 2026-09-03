@@ -1,4 +1,4 @@
-import { DomainEventSchema, ReplayAutomationSchema, ReplayBundleSchema, SnapshotEnvelopeSchema, type DomainEvent, type ReplayAutomationDecision, type ReplayBundle, type VersionedSnapshot } from '@guildmaster/game-protocol';
+import { DomainEventSchema, ReplayAutomationSchema, ReplayBundleSchema, SnapshotEnvelopeSchema, type DomainEvent, type ReplayAutomationDecision, type ReplayBundle, type ReplaySessionConfig, type VersionedSnapshot } from '@guildmaster/game-protocol';
 import { indexedDbSessionRepository, serializedIndexedDbSessionPersistence } from './indexed-db.js';
 
 const storageKey = 'guildmaster-mvp-save-v2';
@@ -9,7 +9,7 @@ const usesIndexedDb = (import.meta.env.PROD || (globalThis as { __GUILDMASTER_FO
 let hydratedIndexedDbResult: LoadLocalGameResult | undefined;
 
 export type CpuAutomationState = { profileId: string; profileVersion: string; runner: { autonomousSteps: number; turnActions: [string, number][]; visibleStates: [string, number][] }; decisions: ReplayAutomationDecision[] };
-export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean; cpuAutomation?: CpuAutomationState };
+export type LoadedLocalGame = { snapshot: VersionedSnapshot; events: DomainEvent[]; replayBundle?: ReplayBundle; replayHistoryComplete: boolean; cpuAutomation?: CpuAutomationState; sessionConfig: ReplaySessionConfig };
 export type LoadLocalGameResult =
   | { status: 'empty' }
   | { status: 'loaded'; game: LoadedLocalGame }
@@ -17,20 +17,21 @@ export type LoadLocalGameResult =
   | { status: 'unavailable' };
 
 type LocalSaveEnvelope = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   snapshot: VersionedSnapshot;
   events: readonly DomainEvent[];
   replayBundle?: ReplayBundle;
   cpuAutomation?: CpuAutomationState;
+  sessionConfig: ReplaySessionConfig;
 };
 export type PersistenceReceipt = { durable: true } | { durable: false; completion: Promise<void> };
 
-function createEnvelope(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): LocalSaveEnvelope {
-  return { schemaVersion: 4, snapshot, events: events.slice(-60), ...(replayBundle ? { replayBundle } : {}), ...(cpuAutomation ? { cpuAutomation } : {}) };
+function createEnvelope(snapshot: VersionedSnapshot, events: readonly DomainEvent[], sessionConfig: ReplaySessionConfig, replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): LocalSaveEnvelope {
+  return { schemaVersion: 5, snapshot, events: events.slice(-60), sessionConfig, ...(replayBundle ? { replayBundle } : {}), ...(cpuAutomation ? { cpuAutomation } : {}) };
 }
 
-export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): PersistenceReceipt {
-  const envelope = createEnvelope(snapshot, events, replayBundle, cpuAutomation);
+export function saveLocalGame(snapshot: VersionedSnapshot, events: readonly DomainEvent[], sessionConfig: ReplaySessionConfig, replayBundle?: ReplayBundle, cpuAutomation?: CpuAutomationState): PersistenceReceipt {
+  const envelope = createEnvelope(snapshot, events, sessionConfig, replayBundle, cpuAutomation);
   if (usesIndexedDb) {
     hydratedIndexedDbResult = parseLocalSave(envelope);
     const completion = serializedIndexedDbSessionPersistence.write(envelope).then(() => {
@@ -83,7 +84,7 @@ export function loadLocalGame(): LoadLocalGameResult {
     const events: unknown = JSON.parse(legacyEvents ?? '[]');
     if (!snapshot.success || isFullFourPlayerSnapshot(snapshot.data) || !Array.isArray(events) || !events.every(isDomainEvent)) throw new Error('Malformed or unauditable legacy save.');
     // v1 predates the local-save envelope. Preserve its Snapshot, never fabricate commands.
-    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events, replayHistoryComplete: false } };
+    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events, replayHistoryComplete: false, sessionConfig: { schemaVersion: 1, cpuDifficulty: 'challenge' } } };
   } catch {
     const cleared = clearLocalGame();
     if (!cleared.durable) void cleared.completion.catch(() => undefined);
@@ -127,26 +128,32 @@ function parseLocalSave(value: unknown): LoadLocalGameResult {
   if (!value || typeof value !== 'object' || !('snapshot' in value) || !('events' in value)) return { status: 'invalid-cleared' };
   const record = value as Record<string, unknown>;
   if (!Array.isArray(record.events) || !record.events.every(isDomainEvent)) return { status: 'invalid-cleared' };
-  if (record.schemaVersion === 4 || record.schemaVersion === 3) {
+  if (record.schemaVersion === 5 || record.schemaVersion === 4 || record.schemaVersion === 3) {
     const snapshot = SnapshotEnvelopeSchema.safeParse(record.snapshot);
     const events = record.events.map((event) => DomainEventSchema.safeParse(event));
     if (!snapshot.success || events.some((event) => !event.success)) return { status: 'invalid-cleared' };
     const replay = ReplayBundleSchema.safeParse(record.replayBundle);
-    const automation = record.schemaVersion === 4 ? ReplayAutomationSchema.safeParse(record.cpuAutomation) : undefined;
+    const automation = record.schemaVersion === 5 || record.schemaVersion === 4 ? ReplayAutomationSchema.safeParse(record.cpuAutomation) : undefined;
+    const replaySessionConfig = replay.success && replay.data.schemaVersion === 3 ? replay.data.sessionConfig : undefined;
+    const rawSessionConfig = record.schemaVersion === 5 ? record.sessionConfig : replaySessionConfig ?? { schemaVersion: 1, cpuDifficulty: 'challenge' };
+    const sessionConfig = rawSessionConfig && typeof rawSessionConfig === 'object' && (rawSessionConfig as ReplaySessionConfig).schemaVersion === 1 && ['beginner', 'standard', 'challenge'].includes((rawSessionConfig as ReplaySessionConfig).cpuDifficulty)
+      ? structuredClone(rawSessionConfig as ReplaySessionConfig) : undefined;
     const isFullFourPlayer = isFullFourPlayerSnapshot(snapshot.data);
-    if (record.schemaVersion === 4 && record.replayBundle !== undefined && !replay.success) return { status: 'invalid-cleared' };
-    if (record.schemaVersion === 4 && record.cpuAutomation !== undefined && !automation?.success) return { status: 'invalid-cleared' };
-    if (isFullFourPlayer && (record.schemaVersion !== 4 || !replay.success || replay.data.schemaVersion !== 2 || !replay.data.expectedEvents || !replay.data.expectedFinalSnapshot || !automation?.success)) return { status: 'invalid-cleared' };
+    if (!sessionConfig) return { status: 'invalid-cleared' };
+    if (replaySessionConfig && JSON.stringify(replaySessionConfig) !== JSON.stringify(sessionConfig)) return { status: 'invalid-cleared' };
+    if ((record.schemaVersion === 5 || record.schemaVersion === 4) && record.replayBundle !== undefined && !replay.success) return { status: 'invalid-cleared' };
+    if ((record.schemaVersion === 5 || record.schemaVersion === 4) && record.cpuAutomation !== undefined && !automation?.success) return { status: 'invalid-cleared' };
+    if (isFullFourPlayer && ((record.schemaVersion !== 5 && record.schemaVersion !== 4) || !replay.success || (replay.data.schemaVersion !== 2 && replay.data.schemaVersion !== 3) || !replay.data.expectedEvents || !replay.data.expectedFinalSnapshot || !automation?.success)) return { status: 'invalid-cleared' };
     const cpuAutomation = automation?.success ? automation.data as CpuAutomationState : undefined;
     const parsedEvents = events.map((event) => event.data!) as DomainEvent[];
     return { status: 'loaded', game: replay.success
-      ? { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayBundle: replay.data as ReplayBundle, replayHistoryComplete: Boolean(replay.data.expectedEvents && replay.data.expectedFinalSnapshot), ...(cpuAutomation ? { cpuAutomation } : {}) }
-      : { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayHistoryComplete: false, ...(cpuAutomation ? { cpuAutomation } : {}) } };
+      ? { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayBundle: replay.data as ReplayBundle, replayHistoryComplete: Boolean(replay.data.expectedEvents && replay.data.expectedFinalSnapshot), sessionConfig, ...(cpuAutomation ? { cpuAutomation } : {}) }
+      : { snapshot: snapshot.data as VersionedSnapshot, events: parsedEvents, replayHistoryComplete: false, sessionConfig, ...(cpuAutomation ? { cpuAutomation } : {}) } };
   }
   if (record.schemaVersion === 2) {
     const snapshot = SnapshotEnvelopeSchema.safeParse(record.snapshot);
     if (!snapshot.success || isFullFourPlayerSnapshot(snapshot.data)) return { status: 'invalid-cleared' };
-    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false } };
+    return { status: 'loaded', game: { snapshot: snapshot.data as VersionedSnapshot, events: record.events as DomainEvent[], replayHistoryComplete: false, sessionConfig: { schemaVersion: 1, cpuDifficulty: 'challenge' } } };
   }
   return { status: 'invalid-cleared' };
 }

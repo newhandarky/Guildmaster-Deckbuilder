@@ -4,8 +4,8 @@ import { baseHelpersRulesModule, baseProvisionalHelpersContentPack } from '@guil
 import { baseProvisionalOriginalFullRulesModule } from '@guildmaster/content-base-rules';
 import { customAdventurerCapabilityMatrix, customAdventurerContentPack, customAdventurerContentPackId } from '@guildmaster/content-custom-adventurers';
 import { customAdventurerHelperRulesModule, customAdventurerHelperRulesModuleId, customAdventurerRulesModule } from '@guildmaster/content-custom-adventurers-rules';
-import { baseRulesModule, createRuleset, type RulesModule } from '@guildmaster/game-engine';
-import type { ContentPack, EffectDefinition } from '@guildmaster/game-protocol';
+import { baseRulesModule, createContentRegistry, createRuleset, type RulesModule } from '@guildmaster/game-engine';
+import type { ContentPack, CpuDifficulty, EffectDefinition, ReplaySessionConfig } from '@guildmaster/game-protocol';
 import { webContentModeFromPackIds, type WebContentMode } from './content-mode.js';
 import { getE2EScenarioPack, type E2EScenario } from './e2e-scenarios.js';
 
@@ -86,8 +86,30 @@ const consentModule: RulesModule = {
   }],
 };
 
-export type WebGameSetup = { contentMode: WebContentMode; advancedRules: { helpers: boolean } };
-export const defaultWebGameSetup: WebGameSetup = { contentMode: 'demo', advancedRules: { helpers: false } };
+export type WebGameSetup = { schemaVersion: 1; contentMode: WebContentMode; cpuDifficulty: CpuDifficulty; advancedRules: { helpers: boolean }; customRules?: { bossDeckSize: number } };
+export const formalCustomBossDeckSize = 6;
+const customModeRegistry = createContentRegistry(
+  [baseProvisionalOriginalFullContentPack, customAdventurerContentPack],
+  { allowProvisionalPlaytest: true },
+);
+const enabledBosses = Object.values(customModeRegistry.definitions).filter(({ type, copies, tags }) => type === 'boss' && copies > 0 && !tags?.includes('playtest:effects-disabled'));
+const enabledHelperCopies = baseProvisionalHelpersContentPack.definitions.filter(({ copies, tags }) => copies > 0 && tags?.includes('playtest:effect-enabled')).reduce((sum, { copies }) => sum + copies, 0);
+export const customBossDeckMaximum = enabledBosses.reduce((sum, { copies }) => sum + copies, 0);
+export const defaultWebGameSetup: WebGameSetup = { schemaVersion: 1, contentMode: 'demo', cpuDifficulty: 'standard', advancedRules: { helpers: false } };
+
+export function bossSetupBoundsForMode(contentMode: WebContentMode): { formal: number; maximum: number } | undefined {
+  return contentMode === 'custom-adventurers-full' ? { formal: formalCustomBossDeckSize, maximum: customBossDeckMaximum } : undefined;
+}
+
+function customBossSetupModule(bossDeckSize: number): RulesModule {
+  return {
+    id: 'web:custom-boss-setup', version: '1.0.0', config: { schemaVersion: 1, bossDeckSize },
+    composition: { schemaVersion: 1, kind: 'optional', priority: 40, dependencies: [{ moduleId: customAdventurerRulesModule.id, version: customAdventurerRulesModule.version }] },
+    getBossSetupCount: () => bossDeckSize,
+    getPartyLimit: (_state, _player, limit) => limit,
+    onSupplyDepleted: () => 'handled',
+  };
+}
 
 const enabledFoundationEffects = baseProvisionalFoundationContentPack.definitions
   .filter(({ tags }) => tags?.includes('playtest:effect-enabled')).length;
@@ -158,21 +180,42 @@ export const webContentModeOptions: Readonly<Record<WebContentMode, {
   },
 };
 
-export function webGameSetupFromSnapshot(packIds: readonly string[], moduleIds: readonly string[]): WebGameSetup {
+type SavedModuleIdentity = string | { id: string; config?: Record<string, unknown> };
+export function webGameSetupFromSnapshot(packIds: readonly string[], modules: readonly SavedModuleIdentity[], sessionConfig?: ReplaySessionConfig): WebGameSetup {
   const contentMode = webContentModeFromPackIds(packIds);
+  const moduleIds = modules.map((module) => typeof module === 'string' ? module : module.id);
   const helperPack = packIds.includes(baseProvisionalHelpersContentPack.manifest.id)
     || packIds.includes(baseProvisionalOriginalFullHelpersContentPack.manifest.id)
     || packIds.includes(customAdventurersFullHelpersContentPack.manifest.id);
   const helperModule = moduleIds.includes(baseHelpersRulesModule.id);
   if (helperPack !== helperModule) throw new Error('Saved helper setup has an inconsistent Content Pack or Rules Module identity.');
-  return { contentMode, advancedRules: { helpers: helperModule } };
+  const customBossModule = modules.find((module) => typeof module !== 'string' && module.id === 'web:custom-boss-setup');
+  const configuredBosses = typeof customBossModule === 'object' ? customBossModule.config?.bossDeckSize : undefined;
+  const bossDeckSize = contentMode === 'custom-adventurers-full'
+    ? Number(configuredBosses ?? sessionConfig?.bossDeckSize ?? formalCustomBossDeckSize)
+    : undefined;
+  return {
+    schemaVersion: 1, contentMode, cpuDifficulty: sessionConfig?.cpuDifficulty ?? 'challenge', advancedRules: { helpers: helperModule },
+    ...(bossDeckSize === undefined ? {} : { customRules: { bossDeckSize } }),
+  };
 }
 
-function normalizeSetup(setup: WebGameSetup | WebContentMode): WebGameSetup {
-  const normalized = typeof setup === 'string' ? { contentMode: setup, advancedRules: { helpers: false } } : structuredClone(setup);
-  return normalized.contentMode === 'provisional-original-full' || normalized.contentMode === 'custom-adventurers-full'
+type WebGameSetupInput = WebGameSetup | { contentMode: WebContentMode; advancedRules: { helpers: boolean }; cpuDifficulty?: CpuDifficulty; customRules?: { bossDeckSize: number } };
+function normalizeSetup(setup: WebGameSetupInput | WebContentMode): WebGameSetup {
+  const normalized: WebGameSetup = typeof setup === 'string'
+    ? { schemaVersion: 1, contentMode: setup, cpuDifficulty: 'standard', advancedRules: { helpers: false } }
+    : { schemaVersion: 1, cpuDifficulty: setup.cpuDifficulty ?? 'standard', ...structuredClone(setup) };
+  if (!['beginner', 'standard', 'challenge'].includes(normalized.cpuDifficulty)) throw new Error('CPU 強度設定無效。');
+  if (normalized.contentMode !== 'custom-adventurers-full' && normalized.customRules) throw new Error('只有自訂冒險者完整牌組可設定魔王數量。');
+  if (normalized.contentMode === 'custom-adventurers-full') {
+    const size = normalized.customRules?.bossDeckSize ?? formalCustomBossDeckSize;
+    if (!Number.isInteger(size) || size < formalCustomBossDeckSize || size > customBossDeckMaximum) throw new Error(`魔王數量必須介於 ${formalCustomBossDeckSize} 與 ${customBossDeckMaximum} 之間。`);
+    if (size > enabledHelperCopies) throw new Error(`協助者候選只有 ${enabledHelperCopies} 張，不足以支援 ${size} 隻魔王。`);
+    return { ...normalized, advancedRules: { helpers: true }, customRules: { bossDeckSize: size } };
+  }
+  return normalized.contentMode === 'provisional-original-full'
     ? { ...normalized, advancedRules: { helpers: true } }
-    : normalized;
+    : { schemaVersion: 1, contentMode: normalized.contentMode, cpuDifficulty: normalized.cpuDifficulty, advancedRules: normalized.advancedRules };
 }
 
 function e2eHelperDefinitionIds(scenario: E2EScenario): Set<string> {
@@ -214,7 +257,7 @@ function e2eHelperModule(scenario: E2EScenario): RulesModule {
   };
 }
 
-export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetup | WebContentMode = defaultWebGameSetup) {
+export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetupInput | WebContentMode = defaultWebGameSetup) {
   const setup = normalizeSetup(setupInput);
   if (!scenario && setup.contentMode === 'demo' && setup.advancedRules.helpers) throw new Error('Helper advanced rules require provisional playtest content.');
   const scenarioModule = scenario === 'lifecycle-choice'
@@ -238,6 +281,7 @@ export function createWebRuleset(scenario?: E2EScenario, setupInput: WebGameSetu
     [
       baseRulesModule,
       ...(!scenario && setup.contentMode === 'custom-adventurers-full' ? [customAdventurerRulesModule, baseHelpersRulesModule, customAdventurerHelperRulesModule] : []),
+      ...(!scenario && setup.contentMode === 'custom-adventurers-full' && (setup.customRules?.bossDeckSize ?? formalCustomBossDeckSize) > formalCustomBossDeckSize ? [customBossSetupModule(setup.customRules!.bossDeckSize)] : []),
       ...(!scenario && setup.contentMode === 'provisional-original-full' ? [baseProvisionalOriginalFullRulesModule, baseHelpersRulesModule] : []),
       ...(scenarioModule ? [scenarioModule] : []),
       ...(helperScenario ? [e2eHelperModule(scenario)] : !scenario && setup.advancedRules.helpers && setup.contentMode !== 'provisional-original-full' && setup.contentMode !== 'custom-adventurers-full' ? [baseHelpersRulesModule] : []),

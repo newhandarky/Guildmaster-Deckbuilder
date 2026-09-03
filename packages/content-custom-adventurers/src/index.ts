@@ -31,7 +31,7 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/melee-05", "melee", 2, 4, 0, 1, "enabled", "base:adventurer/adventurer-14"],
   ["custom:adventurer/melee-06", "melee", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-18"],
   ["custom:adventurer/melee-07", "melee", 2, 5, 1, 1, "enabled", undefined],
-  ["custom:adventurer/melee-08", "melee", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-21"],
+  ["custom:adventurer/melee-08", "melee", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-21"],
   ["custom:adventurer/melee-09", "melee", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-24"],
   ["custom:starter/mage", "mage", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/mage-01", "mage", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-11"],
@@ -41,7 +41,7 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/mage-05", "mage", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-23"],
   ["custom:adventurer/mage-06", "mage", 2, 5, 0, 1, "enabled", undefined],
   ["custom:adventurer/mage-07", "mage", 2, 4, 1, 1, "enabled", undefined],
-  ["custom:adventurer/mage-08", "mage", 2, 5, 1, 1, "enabled", "base:adventurer/adventurer-29"],
+  ["custom:adventurer/mage-08", "mage", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-29"],
   ["custom:starter/tank", "tank", 1, undefined, 2, undefined, "none", undefined],
   ["custom:adventurer/tank-01", "tank", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-04"],
   ["custom:adventurer/tank-02", "tank", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-09"],
@@ -50,8 +50,8 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/tank-05", "tank", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-22"],
   ["custom:adventurer/tank-06", "tank", 2, 4, 1, 1, "enabled", undefined],
   ["custom:adventurer/tank-07", "tank", 2, 5, 1, 1, "enabled", undefined],
-  ["custom:adventurer/tank-08", "tank", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-25"],
-  ["custom:adventurer/tank-09", "tank", 2, 4, 2, 2, "enabled", undefined],
+  ["custom:adventurer/tank-08", "tank", 2, 4, 2, 2, "enabled", "base:adventurer/adventurer-25"],
+  ["custom:adventurer/tank-09", "tank", 2, 4, 1, 1, "enabled", undefined],
   ["custom:starter/support", "support", 1, undefined, 1, undefined, "none", undefined],
   ["custom:adventurer/support-01", "support", 2, 4, 1, 1, "enabled", "base:adventurer/adventurer-13"],
   ["custom:adventurer/support-02", "support", 2, 3, 1, 1, "enabled", "base:adventurer/adventurer-05"],
@@ -66,7 +66,7 @@ const provisionalCustomCardRows: readonly CustomCardRow[] = [
   ["custom:adventurer/ranged-01", "ranged", 2, 3, 2, 1, "enabled", "base:adventurer/adventurer-15"],
   ["custom:adventurer/ranged-02", "ranged", 2, 3, 2, 1, "enabled", "base:adventurer/adventurer-07"],
   ["custom:adventurer/ranged-03", "ranged", 2, 5, 1, 1, "enabled", undefined],
-  ["custom:adventurer/ranged-04", "ranged", 2, 4, 2, 1, "enabled", "base:adventurer/adventurer-26"],
+  ["custom:adventurer/ranged-04", "ranged", 2, 4, 3, 2, "enabled", "base:adventurer/adventurer-26"],
   ["custom:adventurer/ranged-05", "ranged", 2, 5, 1, 1, "enabled", undefined]
 ];
 
@@ -173,8 +173,8 @@ const customDefinitions: CardDefinition[] = customCardRows.map(([
 export const customAdventurerContentPack: ContentPack = {
   manifest: {
     id: customAdventurerContentPackId,
-    version: '0.9.0',
-    hash: 'custom-adventurers-full-v9-remove-expansion-placeholders',
+    version: '0.10.0',
+    hash: 'custom-adventurers-full-v10-approved-five-card-balance-values',
     role: 'expansion',
     contentStatus: 'provisional-playtest',
     dependencies: ['base:provisional-original-full'],

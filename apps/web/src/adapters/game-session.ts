@@ -10,6 +10,7 @@ import type {
   PlayerView,
   ReplayDiagnostic,
   ReplayAutomationDecision,
+  CpuDifficulty,
 } from '@guildmaster/game-protocol';
 
 export type SessionPersistenceStatus = {
@@ -29,6 +30,8 @@ export type SessionEntrySummary = {
   schemaVersion: 3;
   contentMode: 'demo' | 'provisional-playtest' | 'provisional-original-full' | 'custom-adventurers-full';
   advancedRules: { helpers: boolean };
+  cpuDifficulty?: CpuDifficulty;
+  bossDeckSize?: number;
   contentPackId: string;
   canContinue: boolean;
   gameId: string;
@@ -52,7 +55,7 @@ export type SessionUpdate = {
   persistence: SessionPersistenceStatus;
   replayHistoryComplete: boolean;
   cpu: {
-    profileId: string; profileVersion: string;
+    profileId: string; profileVersion: string; difficulty?: CpuDifficulty;
     status: 'idle' | 'ready' | 'blocked';
     nextActorId?: string;
     stepKey: string;
